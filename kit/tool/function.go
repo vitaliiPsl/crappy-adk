@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/google/jsonschema-go/jsonschema"
+
 	"github.com/vitaliiPsl/crappy-adk/kit"
 )
 
@@ -45,6 +46,20 @@ func NewFunction[T any](
 		resolved:    resolved,
 		fn:          fn,
 	}, nil
+}
+
+// MustFunction wraps [NewFunction] and panics if the tool cannot be created.
+func MustFunction[T any](
+	name string,
+	description string,
+	fn func(ctx context.Context, args T) (string, error),
+) *FunctionTool[T] {
+	tool, err := NewFunction(name, description, fn)
+	if err != nil {
+		panic(fmt.Sprintf("failed to create function tool: %v", err))
+	}
+
+	return tool
 }
 
 func (f *FunctionTool[T]) Definition() *kit.ToolDefinition {
