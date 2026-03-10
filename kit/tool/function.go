@@ -62,8 +62,8 @@ func MustFunction[T any](
 	return tool
 }
 
-func (f *FunctionTool[T]) Definition() *kit.ToolDefinition {
-	return &kit.ToolDefinition{
+func (f *FunctionTool[T]) Definition() kit.ToolDefinition {
+	return kit.ToolDefinition{
 		Name:        f.name,
 		Description: f.description,
 		Schema:      f.schema,

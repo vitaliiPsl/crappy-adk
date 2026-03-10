@@ -9,7 +9,7 @@ import (
 // Tool is an action the agent can perform.
 type Tool interface {
 	// Definition returns the tool's metadata, used to describe it to the model.
-	Definition() *ToolDefinition
+	Definition() ToolDefinition
 	// Execute runs the tool with the given arguments and returns its output.
 	Execute(ctx context.Context, args map[string]any) (string, error)
 }

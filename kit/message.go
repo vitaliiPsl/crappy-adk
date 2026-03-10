@@ -57,6 +57,7 @@ func NewToolMessage(content string, toolCall ToolCall) Message {
 	return Message{
 		Role:       MessageRoleTool,
 		Content:    content,
+		ToolName:   toolCall.Name,
 		ToolCallID: toolCall.ID,
 	}
 }
