@@ -1,0 +1,34 @@
+version: "2"
+
+linters:
+  enable:
+    - govet
+    - staticcheck
+    - errcheck
+    - ineffassign
+    - revive
+    - unused
+    - unconvert
+    - copyloopvar
+    - whitespace
+    - nlreturn
+
+  exclusions:
+    presets:
+      - comments
+
+formatters:
+  enable:
+    - goimports
+    - gofmt
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/vitaliiPsl/crappy-adk
+
+output:
+  sort-order:
+    - file
+
+issues:
+  max-same-issues: 5
