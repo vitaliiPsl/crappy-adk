@@ -3,6 +3,7 @@ version: "2"
 linters:
   enable:
     - govet
+    - godoclint
     - staticcheck
     - errcheck
     - ineffassign
