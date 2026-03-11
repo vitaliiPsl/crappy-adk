@@ -2,6 +2,7 @@ package kit
 
 import (
 	"context"
+	"iter"
 )
 
 // Provider is a factory for creating models from a specific AI provider.
@@ -20,6 +21,10 @@ type Model interface {
 
 	// Generate sends a request to the model and returns its response.
 	Generate(ctx context.Context, req ModelRequest) (ModelResponse, error)
+
+	// GenerateStream sends a request to the model and streams the response as
+	// a sequence of chunks. The iterator yields an error and stops on failure.
+	GenerateStream(ctx context.Context, req ModelRequest) iter.Seq2[ModelChunk, error]
 }
 
 // ModelConfig holds static metadata for a model.
@@ -53,6 +58,16 @@ type ModelRequest struct {
 
 	// Tools is the set of available tools.
 	Tools []ToolDefinition
+}
+
+// ModelChunk is a single incremental piece of a streamed model response.
+type ModelChunk struct {
+	// Text is an incremental text token. May be empty if the chunk only carries tool calls.
+	Text string
+
+	// ToolCalls are the complete tool invocations requested by the model.
+	// Populated only at the end of the stream, once all tool calls are known.
+	ToolCalls []ToolCall
 }
 
 // ModelResponse is the output of a model generation call.

@@ -2,6 +2,7 @@ package google
 
 import (
 	"context"
+	"iter"
 
 	"google.golang.org/genai"
 
@@ -33,6 +34,28 @@ func (m *model) Generate(ctx context.Context, req kit.ModelRequest) (kit.ModelRe
 	}
 
 	return convertResponse(resp), nil
+}
+
+func (m *model) GenerateStream(ctx context.Context, req kit.ModelRequest) iter.Seq2[kit.ModelChunk, error] {
+	return func(yield func(kit.ModelChunk, error) bool) {
+		contents := convertMessages(req.Messages)
+		config := &genai.GenerateContentConfig{
+			SystemInstruction: genai.NewContentFromText(req.Instructions, genai.RoleUser),
+			Tools:             convertTools(req.Tools),
+		}
+
+		for resp, err := range m.client.Models.GenerateContentStream(ctx, m.config.ID, contents, config) {
+			if err != nil {
+				yield(kit.ModelChunk{}, convertError(err))
+				return
+			}
+
+			chunk := convertStreamChunk(resp)
+			if !yield(chunk, nil) {
+				return
+			}
+		}
+	}
 }
 
 func convertMessages(msgs []kit.Message) []*genai.Content {
@@ -111,6 +134,39 @@ func convertTools(tools []kit.ToolDefinition) []*genai.Tool {
 	}
 
 	return []*genai.Tool{{FunctionDeclarations: decls}}
+}
+
+func convertStreamChunk(resp *genai.GenerateContentResponse) kit.ModelChunk {
+	if resp == nil || len(resp.Candidates) == 0 {
+		return kit.ModelChunk{}
+	}
+
+	candidate := resp.Candidates[0]
+	if candidate.Content == nil {
+		return kit.ModelChunk{}
+	}
+
+	var chunk kit.ModelChunk
+	for _, p := range candidate.Content.Parts {
+		if p.Text != "" {
+			chunk.Text += p.Text
+		}
+
+		if p.FunctionCall != nil {
+			id := p.FunctionCall.ID
+			if id == "" {
+				id = p.FunctionCall.Name
+			}
+
+			chunk.ToolCalls = append(chunk.ToolCalls, kit.ToolCall{
+				ID:        id,
+				Name:      p.FunctionCall.Name,
+				Arguments: p.FunctionCall.Args,
+			})
+		}
+	}
+
+	return chunk
 }
 
 func convertResponse(resp *genai.GenerateContentResponse) kit.ModelResponse {
