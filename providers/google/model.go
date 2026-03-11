@@ -47,6 +47,7 @@ func (m *model) GenerateStream(ctx context.Context, req kit.ModelRequest) iter.S
 		for resp, err := range m.client.Models.GenerateContentStream(ctx, m.config.ID, contents, config) {
 			if err != nil {
 				yield(kit.ModelChunk{}, convertError(err))
+
 				return
 			}
 

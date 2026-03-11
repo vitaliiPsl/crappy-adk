@@ -3,7 +3,9 @@ package kit
 import (
 	"context"
 	"fmt"
+	"iter"
 	"slices"
+	"strings"
 )
 
 // Agent runs a ReAct loop: it calls the model, executes any requested tool
@@ -28,33 +30,70 @@ func NewAgent(model Model, options ...AgentOptions) *Agent {
 	return agent
 }
 
-// Run executes the ReAct loop starting with the provided message history and
-// returns the final assistant message once the model stops requesting tool calls.
-func (a *Agent) Run(ctx context.Context, messages []Message) (Message, error) {
-	msgs := slices.Clone(messages)
+// Run executes the ReAct loop and streams the response as a sequence of [Event]
+// values. Delta events carry incremental text tokens. A Message event is emitted
+// each time a complete message is ready. Tool calls are handled transparently.
+func (a *Agent) Run(ctx context.Context, messages []Message) iter.Seq2[Event, error] {
+	return func(yield func(Event, error) bool) {
+		msgs := slices.Clone(messages)
 
-	for {
-		req := ModelRequest{
-			Instructions: a.instructions,
-			Messages:     msgs,
-			Tools:        a.toolDefinitions(),
+		for {
+			req := ModelRequest{
+				Instructions: a.instructions,
+				Messages:     msgs,
+				Tools:        a.toolDefinitions(),
+			}
+
+			assistantMsg, err := a.callModel(ctx, req, yield)
+			if err != nil {
+				yield(Event{}, err)
+
+				return
+			}
+
+			msgs = append(msgs, assistantMsg)
+			if !yield(Event{Message: &assistantMsg}, nil) {
+				return
+			}
+
+			if len(assistantMsg.ToolCalls) == 0 {
+				return
+			}
+
+			toolMsgs := a.callTools(ctx, assistantMsg.ToolCalls)
+			for i := range toolMsgs {
+				if !yield(Event{Message: &toolMsgs[i]}, nil) {
+					return
+				}
+			}
+
+			msgs = append(msgs, toolMsgs...)
 		}
+	}
+}
 
-		resp, err := a.model.Generate(ctx, req)
+// callModel streams a single model turn, yielding Delta events for each text
+// token, and returns the assembled assistant message.
+func (a *Agent) callModel(ctx context.Context, req ModelRequest, yield func(Event, error) bool) (Message, error) {
+	var content strings.Builder
+	var toolCalls []ToolCall
+
+	for chunk, err := range a.model.GenerateStream(ctx, req) {
 		if err != nil {
 			return Message{}, err
 		}
 
-		assistantMsg := NewAssistantMessage(resp.Content, resp.ToolCalls)
-		msgs = append(msgs, assistantMsg)
-
-		if len(resp.ToolCalls) == 0 {
-			return assistantMsg, nil
+		if chunk.Text != "" {
+			if !yield(Event{Delta: &Delta{Text: chunk.Text}}, nil) {
+				break
+			}
+			content.WriteString(chunk.Text)
 		}
 
-		toolMsgs := a.callTools(ctx, resp.ToolCalls)
-		msgs = append(msgs, toolMsgs...)
+		toolCalls = append(toolCalls, chunk.ToolCalls...)
 	}
+
+	return NewAssistantMessage(content.String(), toolCalls), nil
 }
 
 func (a *Agent) callTools(ctx context.Context, toolCalls []ToolCall) []Message {

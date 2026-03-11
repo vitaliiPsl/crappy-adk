@@ -8,6 +8,7 @@ import (
 
 	"github.com/vitaliiPsl/crappy-adk/kit"
 	"github.com/vitaliiPsl/crappy-adk/providers/google"
+	filesystem "github.com/vitaliiPsl/crappy-adk/tools/fs"
 )
 
 func main() {
@@ -24,15 +25,58 @@ func main() {
 	}
 
 	agent := kit.NewAgent(model,
-		kit.WithInstructions("You are a helpful assistant."),
+		kit.WithInstructions("You are a helpful coding assistant with access to the filesystem."),
+		kit.WithTools(
+			filesystem.NewReadFile(),
+			filesystem.NewListDirectory(),
+		),
 	)
 
-	reply, err := agent.Run(ctx, []kit.Message{
-		kit.NewUserMessage("What is the capital of France?"),
-	})
-	if err != nil {
-		log.Fatal(err)
+	messages := []kit.Message{
+		kit.NewUserMessage("List the files in the current directory and summarize what this project does."),
 	}
 
-	fmt.Println(reply.Content)
+	// UI — render text in real time
+	for event, err := range agent.Run(ctx, messages) {
+		if err != nil {
+			log.Fatal(err)
+		}
+		if event.Delta != nil {
+			fmt.Print(event.Delta.Text)
+		}
+	}
+	fmt.Println()
+
+	// Both — stream text while building history for multi-turn conversations
+	var history []kit.Message
+	history = append(history, messages...)
+
+	for event, err := range agent.Run(ctx, history) {
+		if err != nil {
+			log.Fatal(err)
+		}
+		switch {
+		case event.Delta != nil:
+			fmt.Print(event.Delta.Text)
+		case event.Message != nil:
+			history = append(history, *event.Message)
+		}
+	}
+	fmt.Println()
+
+	// Follow-up — pass history with a new user message to continue the conversation
+	history = append(history, kit.NewUserMessage("Which file is the entry point?"))
+
+	for event, err := range agent.Run(ctx, history) {
+		if err != nil {
+			log.Fatal(err)
+		}
+		switch {
+		case event.Delta != nil:
+			fmt.Print(event.Delta.Text)
+		case event.Message != nil:
+			history = append(history, *event.Message)
+		}
+	}
+	fmt.Println()
 }
