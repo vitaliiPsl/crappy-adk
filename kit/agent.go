@@ -12,24 +12,28 @@ import (
 // calls, and feeds the results back until the model returns a final response.
 type Agent struct {
 	instructions []Instruction
-	model        Model
-	tools        map[string]Tool
+
+	model Model
+	tools map[string]Tool
 
 	generationConfig GenerationConfig
+	hooks            hooks
 }
 
 // NewAgent creates an agent backed by the given model. Options are applied in order.
-func NewAgent(model Model, options ...AgentOptions) *Agent {
+func NewAgent(model Model, options ...AgentOptions) (*Agent, error) {
 	agent := &Agent{
 		model: model,
 		tools: make(map[string]Tool),
 	}
 
 	for _, opt := range options {
-		opt(agent)
+		if err := opt(agent); err != nil {
+			return nil, err
+		}
 	}
 
-	return agent
+	return agent, nil
 }
 
 // Run executes the ReAct loop and streams the response as a sequence of [Event]
@@ -85,6 +89,10 @@ func (a *Agent) Run(ctx context.Context, messages []Message) iter.Seq2[Event, er
 // callModel streams a single model turn, yielding Delta events for each text
 // or thinking token, and returns the assembled assistant message.
 func (a *Agent) callModel(ctx context.Context, req ModelRequest, yield func(Event, error) bool) (Message, error) {
+	if err := a.hooks.onModelRequest(ctx, req); err != nil {
+		return Message{}, fmt.Errorf("model request hook failed: %w", err)
+	}
+
 	var content, thinking strings.Builder
 	var toolCalls []ToolCall
 
@@ -110,6 +118,14 @@ func (a *Agent) callModel(ctx context.Context, req ModelRequest, yield func(Even
 		toolCalls = append(toolCalls, chunk.ToolCalls...)
 	}
 
+	if err := a.hooks.onModelResponse(ctx, ModelResponse{
+		Content:   content.String(),
+		Thinking:  thinking.String(),
+		ToolCalls: toolCalls,
+	}); err != nil {
+		return Message{}, fmt.Errorf("model response hook failed: %w", err)
+	}
+
 	return NewAssistantMessage(content.String(), thinking.String(), toolCalls), nil
 }
 
@@ -124,6 +140,10 @@ func (a *Agent) callTools(ctx context.Context, toolCalls []ToolCall) []Message {
 }
 
 func (a *Agent) callTool(ctx context.Context, toolCall ToolCall) string {
+	if err := a.hooks.onToolCall(ctx, toolCall); err != nil {
+		return fmt.Sprintf("error: %v", err)
+	}
+
 	t, ok := a.tools[toolCall.Name]
 	if !ok {
 		return fmt.Sprintf("error: tool not found: %s", toolCall.Name)
@@ -132,6 +152,10 @@ func (a *Agent) callTool(ctx context.Context, toolCall ToolCall) string {
 	result, err := t.Execute(ctx, toolCall.Arguments)
 	if err != nil {
 		result = fmt.Sprintf("error: %v", err)
+	}
+
+	if hookErr := a.hooks.onToolResult(ctx, toolCall, result, err); hookErr != nil {
+		return fmt.Sprintf("error: %v", hookErr)
 	}
 
 	return result

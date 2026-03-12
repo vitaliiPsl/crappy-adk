@@ -24,13 +24,16 @@ func main() {
 		log.Fatal(err)
 	}
 
-	agent := kit.NewAgent(model,
+	agent, err := kit.NewAgent(model,
 		kit.WithInstruction("You are a helpful coding assistant with access to the filesystem."),
 		kit.WithTools(
 			filesystem.NewReadFile(),
 			filesystem.NewListDirectory(),
 		),
 	)
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	messages := []kit.Message{
 		kit.NewUserMessage("List the files in the current directory and summarize what this project does."),
