@@ -72,6 +72,7 @@ func (m *model) GenerateStream(ctx context.Context, req kit.ModelRequest) iter.S
 
 		if err := stream.Err(); err != nil {
 			yield(kit.ModelChunk{}, convertError(err))
+
 			return
 		}
 
@@ -85,6 +86,7 @@ func (m *model) GenerateStream(ctx context.Context, req kit.ModelRequest) iter.S
 			tc, err := parseToolCall(tu.ID, tu.Name, string(tu.Input))
 			if err != nil {
 				yield(kit.ModelChunk{}, err)
+
 				return
 			}
 			toolCalls = append(toolCalls, tc)

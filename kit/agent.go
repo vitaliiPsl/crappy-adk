@@ -41,7 +41,7 @@ func NewAgent(model Model, options ...AgentOptions) (*Agent, error) {
 // each time a complete message is ready. Tool calls are handled transparently.
 func (a *Agent) Run(ctx context.Context, messages []Message) iter.Seq2[Event, error] {
 	return func(yield func(Event, error) bool) {
-		instruction, err := ComposeInstructions("\n\n", a.instructions...)(ctx)
+		instruction, err := ComposeInstructions(ctx, "\n\n", a.instructions...)
 		if err != nil {
 			yield(Event{}, err)
 
