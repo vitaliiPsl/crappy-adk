@@ -50,8 +50,8 @@ type ModelConfig struct {
 
 // ModelRequest is the input to a model generation call.
 type ModelRequest struct {
-	// Instructions is the system prompt passed to the model.
-	Instructions string
+	// Instruction is the system prompt passed to the model.
+	Instruction string
 
 	// Messages is the conversation history.
 	Messages []Message

@@ -61,7 +61,7 @@ var thinkingBudgets = map[kit.ThinkingLevel]int32{
 
 func buildConfig(req kit.ModelRequest) *genai.GenerateContentConfig {
 	config := &genai.GenerateContentConfig{
-		SystemInstruction: genai.NewContentFromText(req.Instructions, genai.RoleUser),
+		SystemInstruction: genai.NewContentFromText(req.Instruction, genai.RoleUser),
 		Tools:             convertTools(req.Tools),
 		Temperature:       req.Config.Temperature,
 		TopP:              req.Config.TopP,

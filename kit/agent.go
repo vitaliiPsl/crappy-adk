@@ -11,7 +11,7 @@ import (
 // Agent runs a ReAct loop: it calls the model, executes any requested tool
 // calls, and feeds the results back until the model returns a final response.
 type Agent struct {
-	instructions string
+	instructions []Instruction
 	model        Model
 	tools        map[string]Tool
 
@@ -37,14 +37,21 @@ func NewAgent(model Model, options ...AgentOptions) *Agent {
 // each time a complete message is ready. Tool calls are handled transparently.
 func (a *Agent) Run(ctx context.Context, messages []Message) iter.Seq2[Event, error] {
 	return func(yield func(Event, error) bool) {
+		instruction, err := ComposeInstructions("\n\n", a.instructions...)(ctx)
+		if err != nil {
+			yield(Event{}, err)
+
+			return
+		}
+
 		msgs := slices.Clone(messages)
 
 		for {
 			req := ModelRequest{
-				Instructions: a.instructions,
-				Messages:     msgs,
-				Tools:        a.toolDefinitions(),
-				Config:       a.generationConfig,
+				Instruction: instruction,
+				Messages:    msgs,
+				Tools:       a.toolDefinitions(),
+				Config:      a.generationConfig,
 			}
 
 			assistantMsg, err := a.callModel(ctx, req, yield)

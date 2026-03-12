@@ -1,12 +1,22 @@
 package kit
 
+import "context"
+
 // AgentOptions is a functional option for configuring an [Agent].
 type AgentOptions func(*Agent)
 
-// WithInstructions sets the system prompt passed to the model on every request.
-func WithInstructions(instructions string) AgentOptions {
+// WithInstruction adds a static string to the agent's system prompt.
+func WithInstruction(text string) AgentOptions {
+	return WithInstructions(func(_ context.Context) (string, error) {
+		return text, nil
+	})
+}
+
+// WithInstructions appends one or more [Instruction] values to the
+// agent's system prompt. Sources are evaluated in order on each [Agent.Run].
+func WithInstructions(sources ...Instruction) AgentOptions {
 	return func(a *Agent) {
-		a.instructions = instructions
+		a.instructions = append(a.instructions, sources...)
 	}
 }
 

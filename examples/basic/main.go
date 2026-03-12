@@ -25,7 +25,7 @@ func main() {
 	}
 
 	agent := kit.NewAgent(model,
-		kit.WithInstructions("You are a helpful coding assistant with access to the filesystem."),
+		kit.WithInstruction("You are a helpful coding assistant with access to the filesystem."),
 		kit.WithTools(
 			filesystem.NewReadFile(),
 			filesystem.NewListDirectory(),
