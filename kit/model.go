@@ -36,10 +36,10 @@ type ModelConfig struct {
 	Provider string
 
 	// ContextWindow is the maximum number of input tokens the model accepts.
-	ContextWindow int
+	ContextWindow int64
 
 	// MaxOutputTokens is the maximum number of tokens the model can generate.
-	MaxOutputTokens int
+	MaxOutputTokens int64
 
 	// InputPricePerM is the cost in USD per million input tokens.
 	InputPricePerM float64

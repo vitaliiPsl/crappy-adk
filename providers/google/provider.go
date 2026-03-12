@@ -11,12 +11,12 @@ import (
 
 const providerID = "google"
 
+var _ kit.Provider = (*Provider)(nil)
+
 // Provider implements [kit.Provider] for the Google Gemini API.
 type Provider struct {
 	client *genai.Client
 }
-
-var _ kit.Provider = (*Provider)(nil)
 
 // New creates a Google provider authenticated with the given API key.
 func New(ctx context.Context, apiKey string) (*Provider, error) {

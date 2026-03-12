@@ -65,6 +65,7 @@ func (m *model) GenerateStream(ctx context.Context, req kit.ModelRequest) iter.S
 				tc, err := convertFunctionCall(e.Item)
 				if err != nil {
 					yield(kit.ModelChunk{}, err)
+
 					return
 				}
 
@@ -142,6 +143,7 @@ func convertMessages(msgs []kit.Message) responses.ResponseInputParam {
 	for _, msg := range msgs {
 		result = append(result, convertInputItems(msg)...)
 	}
+
 	return result
 }
 
@@ -274,6 +276,7 @@ func convertStatus(resp *responses.Response) kit.FinishReason {
 				return kit.FinishReasonToolCall
 			}
 		}
+
 		return kit.FinishReasonStop
 	case responses.ResponseStatusIncomplete:
 		switch resp.IncompleteDetails.Reason {
@@ -282,6 +285,7 @@ func convertStatus(resp *responses.Response) kit.FinishReason {
 		case "content_filter":
 			return kit.FinishReasonSafety
 		}
+
 		return kit.FinishReasonMaxTokens
 	default:
 		return kit.FinishReasonUnknown

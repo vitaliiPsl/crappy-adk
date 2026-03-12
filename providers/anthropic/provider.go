@@ -1,26 +1,27 @@
-package openai
+package anthropic
 
 import (
 	"fmt"
 
-	openaisdk "github.com/openai/openai-go/v3"
-	"github.com/openai/openai-go/v3/option"
+	"github.com/anthropics/anthropic-sdk-go"
+	"github.com/anthropics/anthropic-sdk-go/option"
 
 	"github.com/vitaliiPsl/crappy-adk/kit"
 )
 
-const providerID = "openai"
+const providerID = "anthropic"
 
 var _ kit.Provider = (*Provider)(nil)
 
-// Provider implements [kit.Provider] for the OpenAI Responses API.
+// Provider implements [kit.Provider] for the Anthropic API.
 type Provider struct {
-	client *openaisdk.Client
+	client *anthropic.Client
 }
 
-// New creates an OpenAI provider authenticated with the given API key.
 func New(apiKey string) *Provider {
-	client := openaisdk.NewClient(option.WithAPIKey(apiKey))
+	client := anthropic.NewClient(
+		option.WithAPIKey(apiKey),
+	)
 
 	return &Provider{client: &client}
 }
@@ -33,7 +34,7 @@ func (p *Provider) Model(id string) (kit.Model, error) {
 		}
 	}
 
-	return nil, fmt.Errorf("openai: unknown model %q", id)
+	return nil, fmt.Errorf("anthropic: unknown model %q", id)
 }
 
 // Models returns the list of supported models.
