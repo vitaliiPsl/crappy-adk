@@ -17,6 +17,10 @@ type Message struct {
 	// The text content of the message. TODO: extend this to support more than just text.
 	Content string
 
+	// Thinking is the reasoning produced by the model when extended thinking is
+	// enabled. Must be preserved in conversation history for thinking-enabled models.
+	Thinking string
+
 	// Name of the tool that produced this message. Set on tool messages.
 	ToolName string
 	// ID of the tool call this message is a result for. Set on tool messages.
@@ -44,10 +48,11 @@ func NewUserMessage(content string) Message {
 }
 
 // NewAssistantMessage creates a complete assistant message.
-func NewAssistantMessage(content string, toolCalls []ToolCall) Message {
+func NewAssistantMessage(content, thinking string, toolCalls []ToolCall) Message {
 	return Message{
 		Role:      MessageRoleAssistant,
 		Content:   content,
+		Thinking:  thinking,
 		ToolCalls: toolCalls,
 	}
 }

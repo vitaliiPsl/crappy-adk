@@ -25,3 +25,10 @@ func WithTools(tools ...Tool) AgentOptions {
 		}
 	}
 }
+
+// WithGenerationConfig sets the generation parameters used on every model request.
+func WithGenerationConfig(config GenerationConfig) AgentOptions {
+	return func(a *Agent) {
+		a.generationConfig = config
+	}
+}

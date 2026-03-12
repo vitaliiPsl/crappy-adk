@@ -14,6 +14,8 @@ type Agent struct {
 	instructions string
 	model        Model
 	tools        map[string]Tool
+
+	generationConfig GenerationConfig
 }
 
 // NewAgent creates an agent backed by the given model. Options are applied in order.
@@ -42,6 +44,7 @@ func (a *Agent) Run(ctx context.Context, messages []Message) iter.Seq2[Event, er
 				Instructions: a.instructions,
 				Messages:     msgs,
 				Tools:        a.toolDefinitions(),
+				Config:       a.generationConfig,
 			}
 
 			assistantMsg, err := a.callModel(ctx, req, yield)
@@ -52,7 +55,7 @@ func (a *Agent) Run(ctx context.Context, messages []Message) iter.Seq2[Event, er
 			}
 
 			msgs = append(msgs, assistantMsg)
-			if !yield(Event{Message: &assistantMsg}, nil) {
+			if !yield(newMessageEvent(&assistantMsg), nil) {
 				return
 			}
 
@@ -62,7 +65,7 @@ func (a *Agent) Run(ctx context.Context, messages []Message) iter.Seq2[Event, er
 
 			toolMsgs := a.callTools(ctx, assistantMsg.ToolCalls)
 			for i := range toolMsgs {
-				if !yield(Event{Message: &toolMsgs[i]}, nil) {
+				if !yield(newMessageEvent(&toolMsgs[i]), nil) {
 					return
 				}
 			}
@@ -73,9 +76,9 @@ func (a *Agent) Run(ctx context.Context, messages []Message) iter.Seq2[Event, er
 }
 
 // callModel streams a single model turn, yielding Delta events for each text
-// token, and returns the assembled assistant message.
+// or thinking token, and returns the assembled assistant message.
 func (a *Agent) callModel(ctx context.Context, req ModelRequest, yield func(Event, error) bool) (Message, error) {
-	var content strings.Builder
+	var content, thinking strings.Builder
 	var toolCalls []ToolCall
 
 	for chunk, err := range a.model.GenerateStream(ctx, req) {
@@ -83,8 +86,15 @@ func (a *Agent) callModel(ctx context.Context, req ModelRequest, yield func(Even
 			return Message{}, err
 		}
 
+		if chunk.Thinking != "" {
+			if !yield(newDeltaEvent("", chunk.Thinking), nil) {
+				break
+			}
+			thinking.WriteString(chunk.Thinking)
+		}
+
 		if chunk.Text != "" {
-			if !yield(Event{Delta: &Delta{Text: chunk.Text}}, nil) {
+			if !yield(newDeltaEvent(chunk.Text, ""), nil) {
 				break
 			}
 			content.WriteString(chunk.Text)
@@ -93,7 +103,7 @@ func (a *Agent) callModel(ctx context.Context, req ModelRequest, yield func(Even
 		toolCalls = append(toolCalls, chunk.ToolCalls...)
 	}
 
-	return NewAssistantMessage(content.String(), toolCalls), nil
+	return NewAssistantMessage(content.String(), thinking.String(), toolCalls), nil
 }
 
 func (a *Agent) callTools(ctx context.Context, toolCalls []ToolCall) []Message {

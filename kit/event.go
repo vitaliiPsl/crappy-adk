@@ -14,4 +14,15 @@ type Event struct {
 type Delta struct {
 	// Incremental response token.
 	Text string
+
+	// Incremental thinking token. Only populated when extended thinking is enabled.
+	Thinking string
+}
+
+func newDeltaEvent(text, thinking string) Event {
+	return Event{Delta: &Delta{Text: text, Thinking: thinking}}
+}
+
+func newMessageEvent(msg *Message) Event {
+	return Event{Message: msg}
 }
