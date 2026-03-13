@@ -72,3 +72,23 @@ type ToolResult struct {
 	Content    string
 	IsError    bool
 }
+
+// NewTextDeltaEvent returns a text delta event with the given text.
+func NewTextDeltaEvent(text string) Event {
+	return Event{Type: EventTextDelta, Text: text}
+}
+
+// NewThinkingDeltaEvent returns a thinking delta event with the given text.
+func NewThinkingDeltaEvent(text string) Event {
+	return Event{Type: EventThinkingDelta, Text: text}
+}
+
+// NewToolCallEvent returns a tool call event for the given tool call.
+func NewToolCallEvent(tc ToolCall) Event {
+	return Event{Type: EventToolCall, ToolCall: tc}
+}
+
+// NewToolResultEvent returns a tool result event for the given tool result.
+func NewToolResultEvent(tr ToolResult) Event {
+	return Event{Type: EventToolResult, ToolResult: tr}
+}

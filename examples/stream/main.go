@@ -39,21 +39,46 @@ func main() {
 		kit.NewUserMessage("List the files in the current directory and summarize what this project does."),
 	}
 
-	resp, err := agent.Run(ctx, messages)
+	stream, err := agent.Stream(ctx, messages)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	fmt.Println(resp.LastMessage().Content)
+	for event, err := range stream.Iter() {
+		if err != nil {
+			log.Fatal(err)
+		}
 
-	// Append new messages produced this run, then ask a follow-up.
-	messages = append(messages, resp.Messages...)
+		switch event.Type {
+		case kit.EventTextDelta:
+			fmt.Print(event.Text)
+		case kit.EventToolCall:
+			fmt.Printf("\n[tool call] %s\n", event.ToolCall.Name)
+		case kit.EventToolResult:
+			fmt.Printf("[tool result] %s\n\n", event.ToolResult.ToolCallID)
+		}
+	}
+
+	fmt.Println()
+
+	// Multi-turn: collect produced messages and continue the conversation.
+	messages = append(messages, stream.Result().Messages...)
 	messages = append(messages, kit.NewUserMessage("Which file is the entry point?"))
 
-	resp, err = agent.Run(ctx, messages)
+	stream, err = agent.Stream(ctx, messages)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	fmt.Println(resp.LastMessage().Content)
+	for event, err := range stream.Iter() {
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		if event.Type == kit.EventTextDelta {
+			fmt.Print(event.Text)
+		}
+	}
+
+	fmt.Println()
 }

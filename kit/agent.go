@@ -34,7 +34,23 @@ func NewAgent(model Model, options ...AgentOptions) (*Agent, error) {
 	return agent, nil
 }
 
-func (a *Agent) Run(ctx context.Context, messages []Message) (*Stream, error) {
+// Run executes the ReAct loop and returns the accumulated [Response] once the
+// agent reaches a final answer. Use [Agent.Stream] instead to receive
+// incremental events as the agent works.
+func (a *Agent) Run(ctx context.Context, messages []Message) (Response, error) {
+	s, err := a.Stream(ctx, messages)
+	if err != nil {
+		return Response{}, err
+	}
+
+	return s.Result(), nil
+}
+
+// Stream executes the ReAct loop and returns a [Stream] that emits incremental
+// [Event] values — text deltas, thinking deltas, tool calls, and tool results —
+// as the agent works. Call [Stream.Result] after iteration to retrieve the
+// accumulated [Response].
+func (a *Agent) Stream(ctx context.Context, messages []Message) (*Stream, error) {
 	instruction, err := ComposeInstructions(ctx, "\n\n", a.instructions...)
 	if err != nil {
 		return nil, err
@@ -64,26 +80,13 @@ func (a *Agent) Run(ctx context.Context, messages []Message) (*Stream, error) {
 				return
 			}
 
-			for _, tc := range assistantMsg.ToolCalls {
-				if !yield(Event{Type: EventToolCall, ToolCall: tc}, nil) {
-					return
-				}
-
-				content, isError := a.callTool(ctx, tc)
-				toolResult := ToolResult{
-					ToolCallID: tc.ID,
-					Content:    content,
-					IsError:    isError,
-				}
-
-				if !yield(Event{Type: EventToolResult, ToolResult: toolResult}, nil) {
-					return
-				}
-
-				toolMsg := NewToolMessage(content, tc)
-				msgs = append(msgs, toolMsg)
-				s.response.Messages = append(s.response.Messages, toolMsg)
+			toolMsgs, ok := a.callTools(ctx, assistantMsg.ToolCalls, yield)
+			if !ok {
+				return
 			}
+
+			msgs = append(msgs, toolMsgs...)
+			s.response.Messages = append(s.response.Messages, toolMsgs...)
 		}
 	}
 
@@ -113,13 +116,13 @@ func (a *Agent) callModel(ctx context.Context, instruction string, msgs []Messag
 		}
 
 		if chunk.Type == ChunkTypeThinking {
-			if !yield(Event{Type: EventThinkingDelta, Text: chunk.Thinking}, nil) {
+			if !yield(NewThinkingDeltaEvent(chunk.Thinking), nil) {
 				break
 			}
 		}
 
 		if chunk.Type == ChunkTypeText {
-			if !yield(Event{Type: EventTextDelta, Text: chunk.Text}, nil) {
+			if !yield(NewTextDeltaEvent(chunk.Text), nil) {
 				break
 			}
 		}
@@ -133,28 +136,46 @@ func (a *Agent) callModel(ctx context.Context, instruction string, msgs []Messag
 	return resp.Message, resp.Usage, nil
 }
 
-func (a *Agent) callTool(ctx context.Context, toolCall ToolCall) (string, bool) {
+func (a *Agent) callTools(ctx context.Context, toolCalls []ToolCall, yield func(Event, error) bool) ([]Message, bool) {
+	var msgs []Message
+
+	for _, tc := range toolCalls {
+		if !yield(NewToolCallEvent(tc), nil) {
+			return msgs, false
+		}
+
+		content, err := a.callTool(ctx, tc)
+
+		if !yield(NewToolResultEvent(ToolResult{ToolCallID: tc.ID, Content: content, IsError: err != nil}), nil) {
+			return msgs, false
+		}
+
+		msgs = append(msgs, NewToolMessage(content, tc))
+	}
+
+	return msgs, true
+}
+
+func (a *Agent) callTool(ctx context.Context, toolCall ToolCall) (string, error) {
 	if err := a.hooks.onToolCall(ctx, toolCall); err != nil {
-		return fmt.Sprintf("error: %v", err), true
+		return "", err
 	}
 
 	t, ok := a.tools[toolCall.Name]
 	if !ok {
-		return fmt.Sprintf("error: tool not found: %s", toolCall.Name), true
+		return "", fmt.Errorf("tool not found: %s", toolCall.Name)
 	}
 
 	result, err := t.Execute(ctx, toolCall.Arguments)
-	isError := err != nil
-
 	if err != nil {
-		result = fmt.Sprintf("error: %v", err)
+		result = err.Error()
 	}
 
 	if hookErr := a.hooks.onToolResult(ctx, toolCall, result, err); hookErr != nil {
-		return fmt.Sprintf("error: %v", hookErr), true
+		return "", hookErr
 	}
 
-	return result, isError
+	return result, err
 }
 
 func (a *Agent) toolDefinitions() []ToolDefinition {
