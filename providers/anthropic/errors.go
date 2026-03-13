@@ -2,6 +2,7 @@ package anthropic
 
 import (
 	"errors"
+	"strings"
 
 	"github.com/anthropics/anthropic-sdk-go"
 
@@ -25,7 +26,11 @@ func convertError(err error) error {
 
 	switch apiErr.StatusCode {
 	case 400:
-		kind = kit.ErrInvalidRequest
+		if strings.Contains(apiErr.RawJSON(), "context") {
+			kind = kit.ErrContextLength
+		} else {
+			kind = kit.ErrInvalidRequest
+		}
 	case 401:
 		kind = kit.ErrAuthentication
 	case 429:

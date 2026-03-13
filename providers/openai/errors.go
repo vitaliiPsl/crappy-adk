@@ -25,7 +25,11 @@ func convertError(err error) error {
 
 	switch apiErr.Type {
 	case "invalid_request_error":
-		kind = kit.ErrInvalidRequest
+		if apiErr.Code == "context_length_exceeded" {
+			kind = kit.ErrContextLength
+		} else {
+			kind = kit.ErrInvalidRequest
+		}
 	case "insufficient_quota", "rate_limit_error":
 		kind = kit.ErrRateLimit
 		retryable = true
