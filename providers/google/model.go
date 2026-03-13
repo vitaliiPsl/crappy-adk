@@ -70,8 +70,8 @@ func (m *model) GenerateStream(ctx context.Context, req kit.ModelRequest) (*kit.
 						}
 
 						tc := kit.ToolCall{
-							ID: id,
-							Name: p.FunctionCall.Name,
+							ID:        id,
+							Name:      p.FunctionCall.Name,
 							Arguments: p.FunctionCall.Args,
 						}
 						if !yield(kit.NewToolCallChunk(tc), nil) {

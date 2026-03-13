@@ -3,7 +3,6 @@ package kit
 import (
 	"context"
 	"fmt"
-	"iter"
 	"slices"
 )
 
@@ -35,81 +34,92 @@ func NewAgent(model Model, options ...AgentOptions) (*Agent, error) {
 	return agent, nil
 }
 
-// Run executes the ReAct loop and streams the response as a sequence of [Event]
-// values. Delta events carry incremental text tokens. A Message event is emitted
-// each time a complete message is ready. Tool calls are handled transparently.
-func (a *Agent) Run(ctx context.Context, messages []Message) iter.Seq2[Event, error] {
-	return func(yield func(Event, error) bool) {
-		instruction, err := ComposeInstructions(ctx, "\n\n", a.instructions...)
-		if err != nil {
-			yield(Event{}, err)
+func (a *Agent) Run(ctx context.Context, messages []Message) (*Stream, error) {
+	instruction, err := ComposeInstructions(ctx, "\n\n", a.instructions...)
+	if err != nil {
+		return nil, err
+	}
 
-			return
-		}
+	msgs := slices.Clone(messages)
+	s := &Stream{}
 
-		msgs := slices.Clone(messages)
+	s.iter = func(yield func(Event, error) bool) {
+		defer func() { s.done = true }()
 
 		for {
-			req := ModelRequest{
-				Instruction: instruction,
-				Messages:    msgs,
-				Tools:       a.toolDefinitions(),
-				Config:      a.generationConfig,
-			}
-
-			assistantMsg, err := a.callModel(ctx, req, yield)
+			assistantMsg, usage, err := a.callModel(ctx, instruction, msgs, yield)
 			if err != nil {
 				yield(Event{}, err)
 
 				return
 			}
 
+			s.response.Usage.InputTokens += usage.InputTokens
+			s.response.Usage.OutputTokens += usage.OutputTokens
+
 			msgs = append(msgs, assistantMsg)
-			if !yield(newMessageEvent(&assistantMsg), nil) {
-				return
-			}
+			s.response.Messages = append(s.response.Messages, assistantMsg)
 
 			if len(assistantMsg.ToolCalls) == 0 {
 				return
 			}
 
-			toolMsgs := a.callTools(ctx, assistantMsg.ToolCalls)
-			for i := range toolMsgs {
-				if !yield(newMessageEvent(&toolMsgs[i]), nil) {
+			for _, tc := range assistantMsg.ToolCalls {
+				if !yield(Event{Type: EventToolCall, ToolCall: tc}, nil) {
 					return
 				}
-			}
 
-			msgs = append(msgs, toolMsgs...)
+				content, isError := a.callTool(ctx, tc)
+				toolResult := ToolResult{
+					ToolCallID: tc.ID,
+					Content:    content,
+					IsError:    isError,
+				}
+
+				if !yield(Event{Type: EventToolResult, ToolResult: toolResult}, nil) {
+					return
+				}
+
+				toolMsg := NewToolMessage(content, tc)
+				msgs = append(msgs, toolMsg)
+				s.response.Messages = append(s.response.Messages, toolMsg)
+			}
 		}
 	}
+
+	return s, nil
 }
 
-// callModel streams a single model turn, yielding Delta events for each text
-// or thinking token, and returns the assembled assistant message.
-func (a *Agent) callModel(ctx context.Context, req ModelRequest, yield func(Event, error) bool) (Message, error) {
+func (a *Agent) callModel(ctx context.Context, instruction string, msgs []Message, yield func(Event, error) bool) (Message, Usage, error) {
+	req := ModelRequest{
+		Instruction: instruction,
+		Messages:    msgs,
+		Tools:       a.toolDefinitions(),
+		Config:      a.generationConfig,
+	}
+
 	if err := a.hooks.onModelRequest(ctx, req); err != nil {
-		return Message{}, fmt.Errorf("model request hook failed: %w", err)
+		return Message{}, Usage{}, fmt.Errorf("model request hook failed: %w", err)
 	}
 
 	stream, err := a.model.GenerateStream(ctx, req)
 	if err != nil {
-		return Message{}, err
+		return Message{}, Usage{}, err
 	}
 
 	for chunk, err := range stream.Iter() {
 		if err != nil {
-			return Message{}, err
+			return Message{}, Usage{}, err
 		}
 
-		if chunk.Thinking != "" {
-			if !yield(newDeltaEvent("", chunk.Thinking), nil) {
+		if chunk.Type == ChunkTypeThinking {
+			if !yield(Event{Type: EventThinkingDelta, Text: chunk.Thinking}, nil) {
 				break
 			}
 		}
 
-		if chunk.Text != "" {
-			if !yield(newDeltaEvent(chunk.Text, ""), nil) {
+		if chunk.Type == ChunkTypeText {
+			if !yield(Event{Type: EventTextDelta, Text: chunk.Text}, nil) {
 				break
 			}
 		}
@@ -117,42 +127,34 @@ func (a *Agent) callModel(ctx context.Context, req ModelRequest, yield func(Even
 
 	resp := stream.Response()
 	if err := a.hooks.onModelResponse(ctx, resp); err != nil {
-		return Message{}, fmt.Errorf("model response hook failed: %w", err)
+		return Message{}, Usage{}, fmt.Errorf("model response hook failed: %w", err)
 	}
 
-	return resp.Message, nil
+	return resp.Message, resp.Usage, nil
 }
 
-func (a *Agent) callTools(ctx context.Context, toolCalls []ToolCall) []Message {
-	messages := make([]Message, 0, len(toolCalls))
-	for _, toolCall := range toolCalls {
-		result := a.callTool(ctx, toolCall)
-		messages = append(messages, NewToolMessage(result, toolCall))
-	}
-
-	return messages
-}
-
-func (a *Agent) callTool(ctx context.Context, toolCall ToolCall) string {
+func (a *Agent) callTool(ctx context.Context, toolCall ToolCall) (string, bool) {
 	if err := a.hooks.onToolCall(ctx, toolCall); err != nil {
-		return fmt.Sprintf("error: %v", err)
+		return fmt.Sprintf("error: %v", err), true
 	}
 
 	t, ok := a.tools[toolCall.Name]
 	if !ok {
-		return fmt.Sprintf("error: tool not found: %s", toolCall.Name)
+		return fmt.Sprintf("error: tool not found: %s", toolCall.Name), true
 	}
 
 	result, err := t.Execute(ctx, toolCall.Arguments)
+	isError := err != nil
+
 	if err != nil {
 		result = fmt.Sprintf("error: %v", err)
 	}
 
 	if hookErr := a.hooks.onToolResult(ctx, toolCall, result, err); hookErr != nil {
-		return fmt.Sprintf("error: %v", hookErr)
+		return fmt.Sprintf("error: %v", hookErr), true
 	}
 
-	return result
+	return result, isError
 }
 
 func (a *Agent) toolDefinitions() []ToolDefinition {

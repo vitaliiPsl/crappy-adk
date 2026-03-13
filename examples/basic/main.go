@@ -40,46 +40,66 @@ func main() {
 	}
 
 	// UI — render text in real time
-	for event, err := range agent.Run(ctx, messages) {
+	stream, err := agent.Run(ctx, messages)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	for event, err := range stream.Iter() {
 		if err != nil {
 			log.Fatal(err)
 		}
-		if event.Delta != nil {
-			fmt.Print(event.Delta.Text)
+
+		if event.Type == kit.EventTextDelta {
+			fmt.Print(event.Text)
 		}
 	}
+
 	fmt.Println()
 
 	// Both — stream text while building history for multi-turn conversations
 	var history []kit.Message
+
 	history = append(history, messages...)
 
-	for event, err := range agent.Run(ctx, history) {
+	stream, err = agent.Run(ctx, history)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	for event, err := range stream.Iter() {
 		if err != nil {
 			log.Fatal(err)
 		}
-		switch {
-		case event.Delta != nil:
-			fmt.Print(event.Delta.Text)
-		case event.Message != nil:
-			history = append(history, *event.Message)
+
+		if event.Type == kit.EventTextDelta {
+			fmt.Print(event.Text)
 		}
 	}
+
+	history = append(history, stream.Result().Messages...)
+
 	fmt.Println()
 
 	// Follow-up — pass history with a new user message to continue the conversation
 	history = append(history, kit.NewUserMessage("Which file is the entry point?"))
 
-	for event, err := range agent.Run(ctx, history) {
+	stream, err = agent.Run(ctx, history)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	for event, err := range stream.Iter() {
 		if err != nil {
 			log.Fatal(err)
 		}
-		switch {
-		case event.Delta != nil:
-			fmt.Print(event.Delta.Text)
-		case event.Message != nil:
-			history = append(history, *event.Message)
+
+		if event.Type == kit.EventTextDelta {
+			fmt.Print(event.Text)
 		}
 	}
+
+	history = append(history, stream.Result().Messages...)
+
 	fmt.Println()
 }
