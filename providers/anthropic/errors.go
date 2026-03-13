@@ -26,7 +26,10 @@ func convertError(err error) error {
 
 	switch apiErr.StatusCode {
 	case 400:
-		if strings.Contains(apiErr.RawJSON(), "context") {
+		raw := apiErr.RawJSON()
+		if strings.Contains(raw, "prompt is too long") ||
+			strings.Contains(raw, "context_length") ||
+			strings.Contains(raw, "context window") {
 			kind = kit.ErrContextLength
 		} else {
 			kind = kit.ErrInvalidRequest

@@ -233,8 +233,10 @@ func convertResponse(resp *genai.GenerateContentResponse) kit.ModelResponse {
 
 	if resp.UsageMetadata != nil {
 		result.Usage = kit.Usage{
-			InputTokens:  resp.UsageMetadata.PromptTokenCount,
-			OutputTokens: resp.UsageMetadata.CandidatesTokenCount,
+			InputTokens:     resp.UsageMetadata.PromptTokenCount,
+			OutputTokens:    resp.UsageMetadata.CandidatesTokenCount,
+			CacheReadTokens: resp.UsageMetadata.CachedContentTokenCount,
+			ReasoningTokens: resp.UsageMetadata.ThoughtsTokenCount,
 		}
 	}
 

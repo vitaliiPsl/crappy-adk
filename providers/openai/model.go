@@ -264,8 +264,10 @@ func convertResponse(resp *responses.Response) kit.ModelResponse {
 		Message:      kit.NewAssistantMessage(content, thinking, toolCalls),
 		FinishReason: convertStatus(resp),
 		Usage: kit.Usage{
-			InputTokens:  int32(resp.Usage.InputTokens),
-			OutputTokens: int32(resp.Usage.OutputTokens),
+			InputTokens:     int32(resp.Usage.InputTokens),
+			OutputTokens:    int32(resp.Usage.OutputTokens),
+			CacheReadTokens: int32(resp.Usage.InputTokensDetails.CachedTokens),
+			ReasoningTokens: int32(resp.Usage.OutputTokensDetails.ReasoningTokens),
 		},
 	}
 }

@@ -163,7 +163,9 @@ func (a *Agent) callTool(ctx context.Context, toolCall ToolCall) (string, error)
 
 	t, ok := a.tools[toolCall.Name]
 	if !ok {
-		return "", fmt.Errorf("tool not found: %s", toolCall.Name)
+		err := fmt.Errorf("tool not found: %s", toolCall.Name)
+
+		return err.Error(), err
 	}
 
 	result, err := t.Execute(ctx, toolCall.Arguments)

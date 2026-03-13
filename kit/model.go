@@ -3,6 +3,7 @@ package kit
 import (
 	"context"
 	"iter"
+	"time"
 )
 
 // Provider is a factory for creating models from a specific AI provider.
@@ -36,17 +37,58 @@ type ModelConfig struct {
 	// Provider is the name of the provider that owns this model.
 	Provider string
 
-	// ContextWindow is the maximum number of input tokens the model accepts.
-	ContextWindow int64
+	// ContextWindow is the total token budget (input + output).
+	ContextWindow int
 
-	// MaxOutputTokens is the maximum number of tokens the model can generate.
-	MaxOutputTokens int64
+	// InputLimit is the maximum number of input tokens the model accepts.
+	InputLimit int
 
-	// InputPricePerM is the cost in USD per million input tokens.
-	InputPricePerM float64
+	// OutputLimit is the maximum number of tokens the model can generate.
+	OutputLimit int
 
-	// OutputPricePerM is the cost in USD per million output tokens.
-	OutputPricePerM float64
+	// Cost holds the pricing information for this model.
+	Cost ModelCost
+
+	// Capabilities describes what the model can do.
+	Capabilities ModelCapabilities
+
+	// KnowledgeCutoff is the date after which the model has no training data.
+	KnowledgeCutoff time.Time
+
+	// ReleaseDate is when the model became publicly available.
+	ReleaseDate time.Time
+}
+
+// ModelCost holds the pricing information for a model in USD per million tokens.
+type ModelCost struct {
+	// Input is the cost per million input tokens.
+	Input float64
+
+	// Output is the cost per million output tokens.
+	Output float64
+
+	// CacheRead is the cost per million cache-read tokens. Zero if unsupported.
+	CacheRead float64
+
+	// CacheWrite is the cost per million cache-write tokens. Zero if unsupported.
+	CacheWrite float64
+}
+
+// ModelCapabilities describes the input modalities and features a model supports.
+type ModelCapabilities struct {
+	// Input modalities
+	Text  bool
+	Image bool
+	Audio bool
+	Video bool
+	PDF   bool
+
+	// Features
+	Tools     bool
+	Streaming bool
+	Reasoning bool // extended thinking / o1-style reasoning
+	Caching   bool
+	Batch     bool
 }
 
 // ModelRequest is the input to a model generation call.
@@ -204,4 +246,30 @@ type Usage struct {
 
 	// OutputTokens is the number of tokens generated in the response.
 	OutputTokens int32
+
+	// CacheReadTokens is the number of input tokens read from the cache.
+	// Zero if caching was not used or not supported.
+	CacheReadTokens int32
+
+	// CacheWriteTokens is the number of input tokens written to the cache.
+	// Zero if no new cache entry was created or not supported.
+	CacheWriteTokens int32
+
+	// ReasoningTokens is the number of tokens used for internal reasoning.
+	// Zero if the model does not support extended thinking.
+	ReasoningTokens int32
+}
+
+// Cost calculates the total USD cost of this usage given the model's pricing.
+// CacheReadTokens are subtracted from InputTokens before applying the input rate
+// since providers include them in the InputTokens total.
+func (u Usage) Cost(c ModelCost) float64 {
+	const perMillion = 1_000_000.0
+
+	netInput := float64(u.InputTokens-u.CacheReadTokens) / perMillion
+	cacheRead := float64(u.CacheReadTokens) / perMillion
+	cacheWrite := float64(u.CacheWriteTokens) / perMillion
+	output := float64(u.OutputTokens) / perMillion
+
+	return netInput*c.Input + cacheRead*c.CacheRead + cacheWrite*c.CacheWrite + output*c.Output
 }

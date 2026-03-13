@@ -107,7 +107,7 @@ func buildParams(req kit.ModelRequest, cfg kit.ModelConfig) anthropic.MessageNew
 		params.TopP = param.NewOpt(float64(*gc.TopP))
 	}
 
-	maxTokens := cfg.MaxOutputTokens
+	maxTokens := int64(cfg.OutputLimit)
 	if gc.MaxOutputTokens != nil {
 		maxTokens = int64(*gc.MaxOutputTokens)
 	}
@@ -236,8 +236,10 @@ func convertResponse(resp *anthropic.Message) kit.ModelResponse {
 		Message:      kit.NewAssistantMessage(content, thinking, toolCalls),
 		FinishReason: convertStopReason(resp.StopReason),
 		Usage: kit.Usage{
-			InputTokens:  int32(resp.Usage.InputTokens),
-			OutputTokens: int32(resp.Usage.OutputTokens),
+			InputTokens:      int32(resp.Usage.InputTokens),
+			OutputTokens:     int32(resp.Usage.OutputTokens),
+			CacheReadTokens:  int32(resp.Usage.CacheReadInputTokens),
+			CacheWriteTokens: int32(resp.Usage.CacheCreationInputTokens),
 		},
 	}
 }
