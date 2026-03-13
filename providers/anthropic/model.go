@@ -35,10 +35,10 @@ func (m *model) Generate(ctx context.Context, req kit.ModelRequest) (kit.ModelRe
 }
 
 func (m *model) GenerateStream(ctx context.Context, req kit.ModelRequest) (*kit.ModelStream, error) {
-	return kit.NewModelStream(func(yield func(kit.ModelChunk, error) bool) kit.ModelResponse {
-		params := buildParams(req, m.config)
+	params := buildParams(req, m.config)
+	stream := m.client.Messages.NewStreaming(ctx, params)
 
-		stream := m.client.Messages.NewStreaming(ctx, params)
+	return kit.NewModelStream(func(yield func(kit.ModelChunk, error) bool) kit.ModelResponse {
 		defer func() { _ = stream.Close() }()
 
 		var message anthropic.Message
@@ -74,7 +74,15 @@ func (m *model) GenerateStream(ctx context.Context, req kit.ModelRequest) (*kit.
 			return kit.ModelResponse{}
 		}
 
-		return convertResponse(&message)
+		resp := convertResponse(&message)
+
+		for i := range resp.Message.ToolCalls {
+			if !yield(kit.NewToolCallChunk(resp.Message.ToolCalls[i]), nil) {
+				return resp
+			}
+		}
+
+		return resp
 	}), nil
 }
 

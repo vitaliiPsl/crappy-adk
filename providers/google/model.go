@@ -33,13 +33,14 @@ func (m *model) Generate(ctx context.Context, req kit.ModelRequest) (kit.ModelRe
 }
 
 func (m *model) GenerateStream(ctx context.Context, req kit.ModelRequest) (*kit.ModelStream, error) {
-	return kit.NewModelStream(func(yield func(kit.ModelChunk, error) bool) kit.ModelResponse {
-		contents := convertMessages(req.Messages)
-		config := buildConfig(req)
+	contents := convertMessages(req.Messages)
+	config := buildConfig(req)
+	iter := m.client.Models.GenerateContentStream(ctx, m.config.ID, contents, config)
 
+	return kit.NewModelStream(func(yield func(kit.ModelChunk, error) bool) kit.ModelResponse {
 		var lastResp *genai.GenerateContentResponse
 
-		for resp, err := range m.client.Models.GenerateContentStream(ctx, m.config.ID, contents, config) {
+		for resp, err := range iter {
 			if err != nil {
 				yield(kit.ModelChunk{}, convertError(err))
 
@@ -51,15 +52,29 @@ func (m *model) GenerateStream(ctx context.Context, req kit.ModelRequest) (*kit.
 			if len(resp.Candidates) > 0 && resp.Candidates[0].Content != nil {
 				for _, p := range resp.Candidates[0].Content.Parts {
 					if p.Thought {
-						chunk := kit.NewThinkingChunk(p.Text)
-						if !yield(chunk, nil) {
+						if !yield(kit.NewThinkingChunk(p.Text), nil) {
 							return kit.ModelResponse{}
 						}
 					}
 
 					if p.Text != "" {
-						chunk := kit.NewTextChunk(p.Text)
-						if !yield(chunk, nil) {
+						if !yield(kit.NewTextChunk(p.Text), nil) {
+							return kit.ModelResponse{}
+						}
+					}
+
+					if p.FunctionCall != nil {
+						id := p.FunctionCall.ID
+						if id == "" {
+							id = p.FunctionCall.Name
+						}
+
+						tc := kit.ToolCall{
+							ID: id,
+							Name: p.FunctionCall.Name,
+							Arguments: p.FunctionCall.Args,
+						}
+						if !yield(kit.NewToolCallChunk(tc), nil) {
 							return kit.ModelResponse{}
 						}
 					}

@@ -36,10 +36,10 @@ func (m *model) Generate(ctx context.Context, req kit.ModelRequest) (kit.ModelRe
 }
 
 func (m *model) GenerateStream(ctx context.Context, req kit.ModelRequest) (*kit.ModelStream, error) {
-	return kit.NewModelStream(func(yield func(kit.ModelChunk, error) bool) kit.ModelResponse {
-		params := buildParams(req, m.config.ID)
+	params := buildParams(req, m.config.ID)
+	stream := m.client.Responses.NewStreaming(ctx, params)
 
-		stream := m.client.Responses.NewStreaming(ctx, params)
+	return kit.NewModelStream(func(yield func(kit.ModelChunk, error) bool) kit.ModelResponse {
 		defer func() { _ = stream.Close() }()
 
 		var response *responses.Response
@@ -55,6 +55,22 @@ func (m *model) GenerateStream(ctx context.Context, req kit.ModelRequest) (*kit.
 
 			case responses.ResponseReasoningTextDeltaEvent:
 				if !yield(kit.NewThinkingChunk(e.Delta), nil) {
+					return kit.ModelResponse{}
+				}
+
+			case responses.ResponseOutputItemDoneEvent:
+				if e.Item.Type != "function_call" {
+					continue
+				}
+
+				tc, err := convertFunctionCall(e.Item)
+				if err != nil {
+					yield(kit.ModelChunk{}, err)
+
+					return kit.ModelResponse{}
+				}
+
+				if !yield(kit.NewToolCallChunk(tc), nil) {
 					return kit.ModelResponse{}
 				}
 

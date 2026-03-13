@@ -122,6 +122,8 @@ const (
 	ChunkTypeText ChunkType = "text"
 	// ChunkTypeThinking is an incremental piece of the model's reasoning.
 	ChunkTypeThinking ChunkType = "thinking"
+	// ChunkTypeToolCall is a completed tool call requested by the model.
+	ChunkTypeToolCall ChunkType = "tool_call"
 )
 
 // ModelChunk is a single incremental piece of a streamed model response.
@@ -130,6 +132,7 @@ type ModelChunk struct {
 	Type     ChunkType
 	Text     string
 	Thinking string
+	ToolCall *ToolCall
 }
 
 // NewTextChunk creates a ModelChunk carrying an incremental text delta.
@@ -140,6 +143,11 @@ func NewTextChunk(text string) ModelChunk {
 // NewThinkingChunk creates a ModelChunk carrying an incremental thinking delta.
 func NewThinkingChunk(thinking string) ModelChunk {
 	return ModelChunk{Type: ChunkTypeThinking, Thinking: thinking}
+}
+
+// NewToolCallChunk creates a ModelChunk carrying a completed tool call.
+func NewToolCallChunk(tc ToolCall) ModelChunk {
+	return ModelChunk{Type: ChunkTypeToolCall, ToolCall: &tc}
 }
 
 // GenerationConfig controls how the model generates its response.
