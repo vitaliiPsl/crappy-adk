@@ -206,13 +206,15 @@ func convertResponse(resp *genai.GenerateContentResponse) kit.ModelResponse {
 
 	candidate := resp.Candidates[0]
 
-	var result kit.ModelResponse
+	var content, thinking string
+	var toolCalls []kit.ToolCall
+
 	if candidate.Content != nil {
 		for _, p := range candidate.Content.Parts {
 			if p.Thought {
-				result.Thinking += p.Text
+				thinking += p.Text
 			} else if p.Text != "" {
-				result.Content += p.Text
+				content += p.Text
 			}
 
 			if p.FunctionCall != nil {
@@ -221,7 +223,7 @@ func convertResponse(resp *genai.GenerateContentResponse) kit.ModelResponse {
 					id = p.FunctionCall.Name
 				}
 
-				result.ToolCalls = append(result.ToolCalls, kit.ToolCall{
+				toolCalls = append(toolCalls, kit.ToolCall{
 					ID:        id,
 					Name:      p.FunctionCall.Name,
 					Arguments: p.FunctionCall.Args,
@@ -230,7 +232,10 @@ func convertResponse(resp *genai.GenerateContentResponse) kit.ModelResponse {
 		}
 	}
 
-	result.FinishReason = convertFinishReason(candidate.FinishReason, result.ToolCalls)
+	result := kit.ModelResponse{
+		Message:      kit.NewAssistantMessage(content, thinking, toolCalls),
+		FinishReason: convertFinishReason(candidate.FinishReason, toolCalls),
+	}
 
 	if resp.UsageMetadata != nil {
 		result.Usage = kit.Usage{

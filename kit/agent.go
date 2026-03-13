@@ -118,15 +118,13 @@ func (a *Agent) callModel(ctx context.Context, req ModelRequest, yield func(Even
 		toolCalls = append(toolCalls, chunk.ToolCalls...)
 	}
 
-	if err := a.hooks.onModelResponse(ctx, ModelResponse{
-		Content:   content.String(),
-		Thinking:  thinking.String(),
-		ToolCalls: toolCalls,
-	}); err != nil {
+	msg := NewAssistantMessage(content.String(), thinking.String(), toolCalls)
+
+	if err := a.hooks.onModelResponse(ctx, ModelResponse{Message: msg}); err != nil {
 		return Message{}, fmt.Errorf("model response hook failed: %w", err)
 	}
 
-	return NewAssistantMessage(content.String(), thinking.String(), toolCalls), nil
+	return msg, nil
 }
 
 func (a *Agent) callTools(ctx context.Context, toolCalls []ToolCall) []Message {

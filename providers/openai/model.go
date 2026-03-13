@@ -232,13 +232,8 @@ func convertTools(tools []kit.ToolDefinition) []responses.ToolUnionParam {
 }
 
 func convertResponse(resp *responses.Response) kit.ModelResponse {
-	result := kit.ModelResponse{
-		FinishReason: convertStatus(resp),
-		Usage: kit.Usage{
-			InputTokens:  int32(resp.Usage.InputTokens),
-			OutputTokens: int32(resp.Usage.OutputTokens),
-		},
-	}
+	var content, thinking string
+	var toolCalls []kit.ToolCall
 
 	for _, item := range resp.Output {
 		switch item.Type {
@@ -246,7 +241,7 @@ func convertResponse(resp *responses.Response) kit.ModelResponse {
 			msg := item.AsMessage()
 			for _, part := range msg.Content {
 				if text := part.AsOutputText(); text.Text != "" {
-					result.Content += text.Text
+					content += text.Text
 				}
 			}
 
@@ -255,17 +250,24 @@ func convertResponse(resp *responses.Response) kit.ModelResponse {
 			if err != nil {
 				continue
 			}
-			result.ToolCalls = append(result.ToolCalls, tc)
+			toolCalls = append(toolCalls, tc)
 
 		case "reasoning":
 			reasoning := item.AsReasoning()
 			for _, summary := range reasoning.Summary {
-				result.Thinking += summary.Text
+				thinking += summary.Text
 			}
 		}
 	}
 
-	return result
+	return kit.ModelResponse{
+		Message:      kit.NewAssistantMessage(content, thinking, toolCalls),
+		FinishReason: convertStatus(resp),
+		Usage: kit.Usage{
+			InputTokens:  int32(resp.Usage.InputTokens),
+			OutputTokens: int32(resp.Usage.OutputTokens),
+		},
+	}
 }
 
 func convertStatus(resp *responses.Response) kit.FinishReason {

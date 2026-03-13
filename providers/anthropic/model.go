@@ -231,30 +231,32 @@ func convertTools(tools []kit.ToolDefinition) []anthropic.ToolUnionParam {
 }
 
 func convertResponse(resp *anthropic.Message) kit.ModelResponse {
-	result := kit.ModelResponse{
+	var content, thinking string
+	var toolCalls []kit.ToolCall
+
+	for _, cb := range resp.Content {
+		switch v := cb.AsAny().(type) {
+		case anthropic.TextBlock:
+			content += v.Text
+		case anthropic.ThinkingBlock:
+			thinking += v.Thinking
+		case anthropic.ToolUseBlock:
+			tc, err := parseToolCall(v.ID, v.Name, string(v.Input))
+			if err != nil {
+				continue
+			}
+			toolCalls = append(toolCalls, tc)
+		}
+	}
+
+	return kit.ModelResponse{
+		Message:      kit.NewAssistantMessage(content, thinking, toolCalls),
 		FinishReason: convertStopReason(resp.StopReason),
 		Usage: kit.Usage{
 			InputTokens:  int32(resp.Usage.InputTokens),
 			OutputTokens: int32(resp.Usage.OutputTokens),
 		},
 	}
-
-	for _, cb := range resp.Content {
-		switch v := cb.AsAny().(type) {
-		case anthropic.TextBlock:
-			result.Content += v.Text
-		case anthropic.ThinkingBlock:
-			result.Thinking += v.Thinking
-		case anthropic.ToolUseBlock:
-			tc, err := parseToolCall(v.ID, v.Name, string(v.Input))
-			if err != nil {
-				continue
-			}
-			result.ToolCalls = append(result.ToolCalls, tc)
-		}
-	}
-
-	return result
 }
 
 func convertStopReason(r anthropic.StopReason) kit.FinishReason {
