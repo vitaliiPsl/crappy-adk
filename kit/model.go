@@ -23,8 +23,9 @@ type Model interface {
 	Generate(ctx context.Context, req ModelRequest) (ModelResponse, error)
 
 	// GenerateStream sends a request to the model and streams the response as
-	// a sequence of chunks. The iterator yields an error and stops on failure.
-	GenerateStream(ctx context.Context, req ModelRequest) iter.Seq2[ModelChunk, error]
+	// a sequence of chunks. The stream also exposes the final ModelResponse
+	// once iteration completes.
+	GenerateStream(ctx context.Context, req ModelRequest) (*ModelStream, error)
 }
 
 // ModelConfig holds static metadata for a model.
@@ -75,25 +76,70 @@ type ModelResponse struct {
 	Usage Usage
 }
 
+// ModelStream is the result of a streaming generation call. Callers consume
+// delta chunks via Iter and retrieve the assembled result via Response.
+type ModelStream struct {
+	iter     iter.Seq2[ModelChunk, error]
+	response ModelResponse
+	done     bool
+}
+
+// NewModelStream constructs a ModelStream from fn. fn is invoked lazily on
+// first iteration; it should yield ModelChunk deltas and return the complete
+// ModelResponse when done.
+func NewModelStream(fn func(yield func(ModelChunk, error) bool) ModelResponse) *ModelStream {
+	s := &ModelStream{}
+	s.iter = func(yield func(ModelChunk, error) bool) {
+		s.response = fn(yield)
+		s.done = true
+	}
+
+	return s
+}
+
+// Iter returns an iterator over the incremental chunks of the stream.
+func (s *ModelStream) Iter() iter.Seq2[ModelChunk, error] {
+	return s.iter
+}
+
+// Response returns the complete ModelResponse. If the stream has not been
+// fully consumed, it drains the remaining chunks first.
+func (s *ModelStream) Response() ModelResponse {
+	if !s.done {
+		for range s.iter {
+			_ = "" // drain remaining chunks
+		}
+	}
+
+	return s.response
+}
+
+// ChunkType indicates the kind of content carried by a ModelChunk.
+type ChunkType string
+
+const (
+	// ChunkTypeText is an incremental piece of the model's text response.
+	ChunkTypeText ChunkType = "text"
+	// ChunkTypeThinking is an incremental piece of the model's reasoning.
+	ChunkTypeThinking ChunkType = "thinking"
+)
+
 // ModelChunk is a single incremental piece of a streamed model response.
 type ModelChunk struct {
-	// Text is an incremental text token. May be empty if the chunk only carries
-	// tool calls or thinking tokens.
-	Text string
-
-	// Thinking is an incremental thinking token. Only populated when extended
-	// thinking is enabled.
+	// Type indicates what kind of content this chunk carries.
+	Type     ChunkType
+	Text     string
 	Thinking string
+}
 
-	// ToolCalls are the complete tool invocations requested by the model.
-	// Populated only at the end of the stream, once all tool calls are known.
-	ToolCalls []ToolCall
+// NewTextChunk creates a ModelChunk carrying an incremental text delta.
+func NewTextChunk(text string) ModelChunk {
+	return ModelChunk{Type: ChunkTypeText, Text: text}
+}
 
-	// FinishReason is set on the final chunk to indicate why the model stopped.
-	FinishReason FinishReason
-
-	// Usage reports token consumption. Set on the final chunk.
-	Usage Usage
+// NewThinkingChunk creates a ModelChunk carrying an incremental thinking delta.
+func NewThinkingChunk(thinking string) ModelChunk {
+	return ModelChunk{Type: ChunkTypeThinking, Thinking: thinking}
 }
 
 // GenerationConfig controls how the model generates its response.

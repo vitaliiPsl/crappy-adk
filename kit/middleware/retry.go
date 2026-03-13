@@ -3,7 +3,6 @@ package middleware
 import (
 	"context"
 	"errors"
-	"iter"
 	"math"
 	"math/rand/v2"
 	"time"
@@ -51,8 +50,8 @@ type retryModel struct {
 // Retry wraps model with exponential-backoff retry logic. Only errors where
 // [kit.LLMError.Retryable] is true are retried.
 //
-// For streaming calls, retry is only attempted if the error occurs before the
-// first chunk is received. Mid-stream errors are passed through to the caller.
+// For streaming calls, only the initial connection is retried. Mid-stream
+// errors are passed through to the caller as-is.
 func Retry(model kit.Model, opts ...RetryOption) kit.Model {
 	r := &retryModel{
 		BaseModel:   BaseModel{Next: model},
@@ -90,42 +89,24 @@ func (r *retryModel) Generate(ctx context.Context, req kit.ModelRequest) (kit.Mo
 	return kit.ModelResponse{}, lastErr
 }
 
-func (r *retryModel) GenerateStream(ctx context.Context, req kit.ModelRequest) iter.Seq2[kit.ModelChunk, error] {
-	return func(yield func(kit.ModelChunk, error) bool) {
-		for attempt := 0; attempt < r.maxAttempts; attempt++ {
-			if attempt > 0 {
-				if err := r.wait(ctx, attempt); err != nil {
-					yield(kit.ModelChunk{}, err)
-
-					return
-				}
-			}
-
-			gotFirstChunk := false
-			retry := false
-
-			for chunk, err := range r.Next.GenerateStream(ctx, req) {
-				if err != nil {
-					if !gotFirstChunk && isRetryable(err) && attempt+1 < r.maxAttempts {
-						retry = true
-					} else {
-						yield(kit.ModelChunk{}, err)
-					}
-
-					break
-				}
-
-				gotFirstChunk = true
-				if !yield(chunk, nil) {
-					return
-				}
-			}
-
-			if !retry {
-				return
+func (r *retryModel) GenerateStream(ctx context.Context, req kit.ModelRequest) (*kit.ModelStream, error) {
+	var lastErr error
+	for attempt := 0; attempt < r.maxAttempts; attempt++ {
+		if attempt > 0 {
+			if err := r.wait(ctx, attempt); err != nil {
+				return nil, err
 			}
 		}
+
+		s, err := r.Next.GenerateStream(ctx, req)
+		if err == nil || !isRetryable(err) {
+			return s, err
+		}
+
+		lastErr = err
 	}
+
+	return nil, lastErr
 }
 
 // wait sleeps for the backoff duration for the given attempt, respecting context cancellation.

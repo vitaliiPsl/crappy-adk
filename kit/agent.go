@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"iter"
 	"slices"
-	"strings"
 )
 
 // Agent runs a ReAct loop: it calls the model, executes any requested tool
@@ -93,10 +92,12 @@ func (a *Agent) callModel(ctx context.Context, req ModelRequest, yield func(Even
 		return Message{}, fmt.Errorf("model request hook failed: %w", err)
 	}
 
-	var content, thinking strings.Builder
-	var toolCalls []ToolCall
+	stream, err := a.model.GenerateStream(ctx, req)
+	if err != nil {
+		return Message{}, err
+	}
 
-	for chunk, err := range a.model.GenerateStream(ctx, req) {
+	for chunk, err := range stream.Iter() {
 		if err != nil {
 			return Message{}, err
 		}
@@ -105,26 +106,21 @@ func (a *Agent) callModel(ctx context.Context, req ModelRequest, yield func(Even
 			if !yield(newDeltaEvent("", chunk.Thinking), nil) {
 				break
 			}
-			thinking.WriteString(chunk.Thinking)
 		}
 
 		if chunk.Text != "" {
 			if !yield(newDeltaEvent(chunk.Text, ""), nil) {
 				break
 			}
-			content.WriteString(chunk.Text)
 		}
-
-		toolCalls = append(toolCalls, chunk.ToolCalls...)
 	}
 
-	msg := NewAssistantMessage(content.String(), thinking.String(), toolCalls)
-
-	if err := a.hooks.onModelResponse(ctx, ModelResponse{Message: msg}); err != nil {
+	resp := stream.Response()
+	if err := a.hooks.onModelResponse(ctx, resp); err != nil {
 		return Message{}, fmt.Errorf("model response hook failed: %w", err)
 	}
 
-	return msg, nil
+	return resp.Message, nil
 }
 
 func (a *Agent) callTools(ctx context.Context, toolCalls []ToolCall) []Message {

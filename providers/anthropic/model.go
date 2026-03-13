@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"iter"
 
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/packages/param"
@@ -35,8 +34,8 @@ func (m *model) Generate(ctx context.Context, req kit.ModelRequest) (kit.ModelRe
 	return convertResponse(resp), nil
 }
 
-func (m *model) GenerateStream(ctx context.Context, req kit.ModelRequest) iter.Seq2[kit.ModelChunk, error] {
-	return func(yield func(kit.ModelChunk, error) bool) {
+func (m *model) GenerateStream(ctx context.Context, req kit.ModelRequest) (*kit.ModelStream, error) {
+	return kit.NewModelStream(func(yield func(kit.ModelChunk, error) bool) kit.ModelResponse {
 		params := buildParams(req, m.config)
 
 		stream := m.client.Messages.NewStreaming(ctx, params)
@@ -47,24 +46,23 @@ func (m *model) GenerateStream(ctx context.Context, req kit.ModelRequest) iter.S
 		for stream.Next() {
 			event := stream.Current()
 
-			err := message.Accumulate(event)
-			if err != nil {
+			if err := message.Accumulate(event); err != nil {
 				yield(kit.ModelChunk{}, fmt.Errorf("anthropic: accumulate message: %w", err))
 
-				return
+				return kit.ModelResponse{}
 			}
 
 			switch e := event.AsAny().(type) {
 			case anthropic.ContentBlockDeltaEvent:
 				switch d := e.Delta.AsAny().(type) {
 				case anthropic.TextDelta:
-					if !yield(kit.ModelChunk{Text: d.Text}, nil) {
-						return
+					if !yield(kit.NewTextChunk(d.Text), nil) {
+						return kit.ModelResponse{}
 					}
 
 				case anthropic.ThinkingDelta:
-					if !yield(kit.ModelChunk{Thinking: d.Thinking}, nil) {
-						return
+					if !yield(kit.NewThinkingChunk(d.Thinking), nil) {
+						return kit.ModelResponse{}
 					}
 				}
 			}
@@ -73,34 +71,11 @@ func (m *model) GenerateStream(ctx context.Context, req kit.ModelRequest) iter.S
 		if err := stream.Err(); err != nil {
 			yield(kit.ModelChunk{}, convertError(err))
 
-			return
+			return kit.ModelResponse{}
 		}
 
-		// Extract tool calls and emit the final chunk from the accumulated message.
-		var toolCalls []kit.ToolCall
-		for _, cb := range message.Content {
-			tu, ok := cb.AsAny().(anthropic.ToolUseBlock)
-			if !ok {
-				continue
-			}
-			tc, err := parseToolCall(tu.ID, tu.Name, string(tu.Input))
-			if err != nil {
-				yield(kit.ModelChunk{}, err)
-
-				return
-			}
-			toolCalls = append(toolCalls, tc)
-		}
-
-		yield(kit.ModelChunk{
-			ToolCalls:    toolCalls,
-			FinishReason: convertStopReason(message.StopReason),
-			Usage: kit.Usage{
-				InputTokens:  int32(message.Usage.InputTokens),
-				OutputTokens: int32(message.Usage.OutputTokens),
-			},
-		}, nil)
-	}
+		return convertResponse(&message)
+	}), nil
 }
 
 func buildParams(req kit.ModelRequest, cfg kit.ModelConfig) anthropic.MessageNewParams {

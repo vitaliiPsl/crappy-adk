@@ -7,16 +7,19 @@ import (
 	"os"
 
 	"github.com/vitaliiPsl/crappy-adk/kit"
-	"github.com/vitaliiPsl/crappy-adk/providers/anthropic"
+	"github.com/vitaliiPsl/crappy-adk/providers/google"
 	filesystem "github.com/vitaliiPsl/crappy-adk/tools/fs"
 )
 
 func main() {
 	ctx := context.Background()
 
-	provider := anthropic.New(os.Getenv("ANTHROPIC_API_KEY"))
+	provider, err := google.New(ctx, os.Getenv("GEMINI_API_KEY"))
+	if err != nil {
+		log.Fatal(err)
+	}
 
-	model, err := provider.Model("claude-haiku-4-5")
+	model, err := provider.Model("gemini-2.5-flash")
 	if err != nil {
 		log.Fatal(err)
 	}

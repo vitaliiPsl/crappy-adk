@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"iter"
 
 	openaisdk "github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/responses"
@@ -36,61 +35,46 @@ func (m *model) Generate(ctx context.Context, req kit.ModelRequest) (kit.ModelRe
 	return convertResponse(resp), nil
 }
 
-func (m *model) GenerateStream(ctx context.Context, req kit.ModelRequest) iter.Seq2[kit.ModelChunk, error] {
-	return func(yield func(kit.ModelChunk, error) bool) {
+func (m *model) GenerateStream(ctx context.Context, req kit.ModelRequest) (*kit.ModelStream, error) {
+	return kit.NewModelStream(func(yield func(kit.ModelChunk, error) bool) kit.ModelResponse {
 		params := buildParams(req, m.config.ID)
 
 		stream := m.client.Responses.NewStreaming(ctx, params)
 		defer func() { _ = stream.Close() }()
+
+		var response *responses.Response
 
 		for stream.Next() {
 			event := stream.Current()
 
 			switch e := event.AsAny().(type) {
 			case responses.ResponseTextDeltaEvent:
-				if !yield(kit.ModelChunk{Text: e.Delta}, nil) {
-					return
+				if !yield(kit.NewTextChunk(e.Delta), nil) {
+					return kit.ModelResponse{}
 				}
 
 			case responses.ResponseReasoningTextDeltaEvent:
-				if !yield(kit.ModelChunk{Thinking: e.Delta}, nil) {
-					return
-				}
-
-			case responses.ResponseOutputItemDoneEvent:
-				if e.Item.Type != "function_call" {
-					continue
-				}
-
-				tc, err := convertFunctionCall(e.Item)
-				if err != nil {
-					yield(kit.ModelChunk{}, err)
-
-					return
-				}
-
-				if !yield(kit.ModelChunk{ToolCalls: []kit.ToolCall{tc}}, nil) {
-					return
+				if !yield(kit.NewThinkingChunk(e.Delta), nil) {
+					return kit.ModelResponse{}
 				}
 
 			case responses.ResponseCompletedEvent:
-				resp := e.Response
-				if !yield(kit.ModelChunk{
-					FinishReason: convertStatus(&resp),
-					Usage: kit.Usage{
-						InputTokens:  int32(resp.Usage.InputTokens),
-						OutputTokens: int32(resp.Usage.OutputTokens),
-					},
-				}, nil) {
-					return
-				}
+				response = &e.Response
 			}
 		}
 
 		if err := stream.Err(); err != nil {
 			yield(kit.ModelChunk{}, convertError(err))
+
+			return kit.ModelResponse{}
 		}
-	}
+
+		if response == nil {
+			return kit.ModelResponse{}
+		}
+
+		return convertResponse(response)
+	}), nil
 }
 
 func buildParams(req kit.ModelRequest, modelID string) responses.ResponseNewParams {

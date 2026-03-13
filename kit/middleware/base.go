@@ -2,7 +2,6 @@ package middleware
 
 import (
 	"context"
-	"iter"
 
 	"github.com/vitaliiPsl/crappy-adk/kit"
 )
@@ -21,7 +20,7 @@ func (b *BaseModel) Generate(ctx context.Context, req kit.ModelRequest) (kit.Mod
 	return b.Next.Generate(ctx, req)
 }
 
-func (b *BaseModel) GenerateStream(ctx context.Context, req kit.ModelRequest) iter.Seq2[kit.ModelChunk, error] {
+func (b *BaseModel) GenerateStream(ctx context.Context, req kit.ModelRequest) (*kit.ModelStream, error) {
 	return b.Next.GenerateStream(ctx, req)
 }
 

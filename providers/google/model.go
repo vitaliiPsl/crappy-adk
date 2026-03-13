@@ -2,7 +2,6 @@ package google
 
 import (
 	"context"
-	"iter"
 
 	"google.golang.org/genai"
 
@@ -33,24 +32,47 @@ func (m *model) Generate(ctx context.Context, req kit.ModelRequest) (kit.ModelRe
 	return convertResponse(resp), nil
 }
 
-func (m *model) GenerateStream(ctx context.Context, req kit.ModelRequest) iter.Seq2[kit.ModelChunk, error] {
-	return func(yield func(kit.ModelChunk, error) bool) {
+func (m *model) GenerateStream(ctx context.Context, req kit.ModelRequest) (*kit.ModelStream, error) {
+	return kit.NewModelStream(func(yield func(kit.ModelChunk, error) bool) kit.ModelResponse {
 		contents := convertMessages(req.Messages)
 		config := buildConfig(req)
+
+		var lastResp *genai.GenerateContentResponse
 
 		for resp, err := range m.client.Models.GenerateContentStream(ctx, m.config.ID, contents, config) {
 			if err != nil {
 				yield(kit.ModelChunk{}, convertError(err))
 
-				return
+				return kit.ModelResponse{}
 			}
 
-			chunk := convertStreamChunk(resp)
-			if !yield(chunk, nil) {
-				return
+			lastResp = resp
+
+			if len(resp.Candidates) > 0 && resp.Candidates[0].Content != nil {
+				for _, p := range resp.Candidates[0].Content.Parts {
+					if p.Thought {
+						chunk := kit.NewThinkingChunk(p.Text)
+						if !yield(chunk, nil) {
+							return kit.ModelResponse{}
+						}
+					}
+
+					if p.Text != "" {
+						chunk := kit.NewTextChunk(p.Text)
+						if !yield(chunk, nil) {
+							return kit.ModelResponse{}
+						}
+					}
+				}
 			}
 		}
-	}
+
+		if lastResp == nil {
+			return kit.ModelResponse{}
+		}
+
+		return convertResponse(lastResp)
+	}), nil
 }
 
 var thinkingBudgets = map[kit.ThinkingLevel]int32{
@@ -154,49 +176,6 @@ func convertTools(tools []kit.ToolDefinition) []*genai.Tool {
 	}
 
 	return []*genai.Tool{{FunctionDeclarations: decls}}
-}
-
-func convertStreamChunk(resp *genai.GenerateContentResponse) kit.ModelChunk {
-	if resp == nil || len(resp.Candidates) == 0 {
-		return kit.ModelChunk{}
-	}
-
-	candidate := resp.Candidates[0]
-
-	var chunk kit.ModelChunk
-	if candidate.Content != nil {
-		for _, p := range candidate.Content.Parts {
-			if p.Thought {
-				chunk.Thinking += p.Text
-			} else if p.Text != "" {
-				chunk.Text += p.Text
-			}
-
-			if p.FunctionCall != nil {
-				id := p.FunctionCall.ID
-				if id == "" {
-					id = p.FunctionCall.Name
-				}
-
-				chunk.ToolCalls = append(chunk.ToolCalls, kit.ToolCall{
-					ID:        id,
-					Name:      p.FunctionCall.Name,
-					Arguments: p.FunctionCall.Args,
-				})
-			}
-		}
-	}
-
-	chunk.FinishReason = convertFinishReason(candidate.FinishReason, chunk.ToolCalls)
-
-	if resp.UsageMetadata != nil {
-		chunk.Usage = kit.Usage{
-			InputTokens:  resp.UsageMetadata.PromptTokenCount,
-			OutputTokens: resp.UsageMetadata.CandidatesTokenCount,
-		}
-	}
-
-	return chunk
 }
 
 func convertResponse(resp *genai.GenerateContentResponse) kit.ModelResponse {
