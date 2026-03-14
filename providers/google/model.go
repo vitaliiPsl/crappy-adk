@@ -39,6 +39,8 @@ func (m *model) GenerateStream(ctx context.Context, req kit.ModelRequest) (*kit.
 
 	return kit.NewModelStream(func(yield func(kit.ModelChunk, error) bool) kit.ModelResponse {
 		var lastResp *genai.GenerateContentResponse
+		var content, thinking string
+		var toolCalls []kit.ToolCall
 
 		for resp, err := range iter {
 			if err != nil {
@@ -52,12 +54,14 @@ func (m *model) GenerateStream(ctx context.Context, req kit.ModelRequest) (*kit.
 			if len(resp.Candidates) > 0 && resp.Candidates[0].Content != nil {
 				for _, p := range resp.Candidates[0].Content.Parts {
 					if p.Thought {
+						thinking += p.Text
 						if !yield(kit.NewThinkingChunk(p.Text), nil) {
 							return kit.ModelResponse{}
 						}
 					}
 
 					if p.Text != "" {
+						content += p.Text
 						if !yield(kit.NewTextChunk(p.Text), nil) {
 							return kit.ModelResponse{}
 						}
@@ -74,6 +78,7 @@ func (m *model) GenerateStream(ctx context.Context, req kit.ModelRequest) (*kit.
 							Name:      p.FunctionCall.Name,
 							Arguments: p.FunctionCall.Args,
 						}
+						toolCalls = append(toolCalls, tc)
 						if !yield(kit.NewToolCallChunk(tc), nil) {
 							return kit.ModelResponse{}
 						}
@@ -86,7 +91,26 @@ func (m *model) GenerateStream(ctx context.Context, req kit.ModelRequest) (*kit.
 			return kit.ModelResponse{}
 		}
 
-		return convertResponse(lastResp)
+		var finishReason genai.FinishReason
+		if len(lastResp.Candidates) > 0 {
+			finishReason = lastResp.Candidates[0].FinishReason
+		}
+
+		result := kit.ModelResponse{
+			Message:      kit.NewAssistantMessage(content, thinking, toolCalls),
+			FinishReason: convertFinishReason(finishReason, toolCalls),
+		}
+
+		if lastResp.UsageMetadata != nil {
+			result.Usage = kit.Usage{
+				InputTokens:     lastResp.UsageMetadata.PromptTokenCount,
+				OutputTokens:    lastResp.UsageMetadata.CandidatesTokenCount,
+				CacheReadTokens: lastResp.UsageMetadata.CachedContentTokenCount,
+				ReasoningTokens: lastResp.UsageMetadata.ThoughtsTokenCount,
+			}
+		}
+
+		return result
 	}), nil
 }
 
