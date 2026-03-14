@@ -2,6 +2,7 @@ package google
 
 import (
 	"context"
+	"strings"
 
 	"google.golang.org/genai"
 
@@ -35,13 +36,15 @@ func (m *model) Generate(ctx context.Context, req kit.ModelRequest) (kit.ModelRe
 func (m *model) GenerateStream(ctx context.Context, req kit.ModelRequest) (*kit.ModelStream, error) {
 	contents := convertMessages(req.Messages)
 	config := buildConfig(req)
+
 	iter := m.client.Models.GenerateContentStream(ctx, m.config.ID, contents, config)
 
 	return kit.NewModelStream(func(yield func(kit.ModelChunk, error) bool) kit.ModelResponse {
 		var (
-			lastResp          *genai.GenerateContentResponse
-			content, thinking string
-			toolCalls         []kit.ToolCall
+			lastResp  *genai.GenerateContentResponse
+			content   strings.Builder
+			thinking  strings.Builder
+			toolCalls []kit.ToolCall
 		)
 
 		for resp, err := range iter {
@@ -56,14 +59,16 @@ func (m *model) GenerateStream(ctx context.Context, req kit.ModelRequest) (*kit.
 			if len(resp.Candidates) > 0 && resp.Candidates[0].Content != nil {
 				for _, p := range resp.Candidates[0].Content.Parts {
 					if p.Thought {
-						thinking += p.Text
+						thinking.WriteString(p.Text)
+
 						if !yield(kit.NewThinkingChunk(p.Text), nil) {
 							return kit.ModelResponse{}
 						}
 					}
 
 					if p.Text != "" {
-						content += p.Text
+						content.WriteString(p.Text)
+
 						if !yield(kit.NewTextChunk(p.Text), nil) {
 							return kit.ModelResponse{}
 						}
@@ -79,6 +84,10 @@ func (m *model) GenerateStream(ctx context.Context, req kit.ModelRequest) (*kit.
 							ID:        id,
 							Name:      p.FunctionCall.Name,
 							Arguments: p.FunctionCall.Args,
+						}
+
+						if len(p.ThoughtSignature) > 0 {
+							tc.Metadata = map[string]any{"thought_signature": p.ThoughtSignature}
 						}
 
 						toolCalls = append(toolCalls, tc)
@@ -100,7 +109,7 @@ func (m *model) GenerateStream(ctx context.Context, req kit.ModelRequest) (*kit.
 		}
 
 		result := kit.ModelResponse{
-			Message:      kit.NewAssistantMessage(content, thinking, toolCalls),
+			Message:      kit.NewAssistantMessage(content.String(), thinking.String(), toolCalls),
 			FinishReason: convertFinishReason(finishReason, toolCalls),
 		}
 
@@ -176,12 +185,19 @@ func convertAssistantMessage(msg kit.Message) *genai.Content {
 	}
 
 	for _, tc := range msg.ToolCalls {
-		content.Parts = append(content.Parts, &genai.Part{
+		part := &genai.Part{
 			FunctionCall: &genai.FunctionCall{
 				Name: tc.Name,
 				Args: tc.Arguments,
 			},
-		})
+		}
+		if tc.Metadata != nil {
+			if sig, ok := tc.Metadata["thought_signature"].([]byte); ok {
+				part.ThoughtSignature = sig
+			}
+		}
+
+		content.Parts = append(content.Parts, part)
 	}
 
 	return content
@@ -229,17 +245,17 @@ func convertResponse(resp *genai.GenerateContentResponse) kit.ModelResponse {
 	candidate := resp.Candidates[0]
 
 	var (
-		content   string
-		thinking  string
+		content   strings.Builder
+		thinking  strings.Builder
 		toolCalls []kit.ToolCall
 	)
 
 	if candidate.Content != nil {
 		for _, p := range candidate.Content.Parts {
 			if p.Thought {
-				thinking += p.Text
+				thinking.WriteString(p.Text)
 			} else if p.Text != "" {
-				content += p.Text
+				content.WriteString(p.Text)
 			}
 
 			if p.FunctionCall != nil {
@@ -248,17 +264,22 @@ func convertResponse(resp *genai.GenerateContentResponse) kit.ModelResponse {
 					id = p.FunctionCall.Name
 				}
 
-				toolCalls = append(toolCalls, kit.ToolCall{
+				tc := kit.ToolCall{
 					ID:        id,
 					Name:      p.FunctionCall.Name,
 					Arguments: p.FunctionCall.Args,
-				})
+				}
+				if len(p.ThoughtSignature) > 0 {
+					tc.Metadata = map[string]any{"thought_signature": p.ThoughtSignature}
+				}
+
+				toolCalls = append(toolCalls, tc)
 			}
 		}
 	}
 
 	result := kit.ModelResponse{
-		Message:      kit.NewAssistantMessage(content, thinking, toolCalls),
+		Message:      kit.NewAssistantMessage(content.String(), thinking.String(), toolCalls),
 		FinishReason: convertFinishReason(candidate.FinishReason, toolCalls),
 	}
 

@@ -37,6 +37,9 @@ type ToolCall struct {
 	Name string
 	// Arguments parsed from the model's response.
 	Arguments map[string]any
+	// Metadata holds provider-specific data that must be preserved across turns
+	// (e.g. Gemini's thought_signature for thinking models).
+	Metadata map[string]any
 }
 
 // NewUserMessage creates a user message with the given content.

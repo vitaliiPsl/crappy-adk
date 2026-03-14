@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	openaisdk "github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/responses"
@@ -236,8 +237,8 @@ func convertTools(tools []kit.ToolDefinition) []responses.ToolUnionParam {
 
 func convertResponse(resp *responses.Response) kit.ModelResponse {
 	var (
-		content   string
-		thinking  string
+		content   strings.Builder
+		thinking  strings.Builder
 		toolCalls []kit.ToolCall
 	)
 
@@ -247,7 +248,7 @@ func convertResponse(resp *responses.Response) kit.ModelResponse {
 			msg := item.AsMessage()
 			for _, part := range msg.Content {
 				if text := part.AsOutputText(); text.Text != "" {
-					content += text.Text
+					content.WriteString(text.Text)
 				}
 			}
 
@@ -262,13 +263,13 @@ func convertResponse(resp *responses.Response) kit.ModelResponse {
 		case "reasoning":
 			reasoning := item.AsReasoning()
 			for _, summary := range reasoning.Summary {
-				thinking += summary.Text
+				thinking.WriteString(summary.Text)
 			}
 		}
 	}
 
 	return kit.ModelResponse{
-		Message:      kit.NewAssistantMessage(content, thinking, toolCalls),
+		Message:      kit.NewAssistantMessage(content.String(), thinking.String(), toolCalls),
 		FinishReason: convertStatus(resp),
 		Usage: kit.Usage{
 			InputTokens:     int32(resp.Usage.InputTokens),
