@@ -111,6 +111,7 @@ func buildParams(req kit.ModelRequest, cfg kit.ModelConfig) anthropic.MessageNew
 	if gc.MaxOutputTokens != nil {
 		maxTokens = int64(*gc.MaxOutputTokens)
 	}
+
 	params.MaxTokens = maxTokens
 
 	if gc.Thinking != kit.ThinkingDisabled {
@@ -214,8 +215,10 @@ func convertTools(tools []kit.ToolDefinition) []anthropic.ToolUnionParam {
 }
 
 func convertResponse(resp *anthropic.Message) kit.ModelResponse {
-	var content, thinking string
-	var toolCalls []kit.ToolCall
+	var (
+		content, thinking string
+		toolCalls         []kit.ToolCall
+	)
 
 	for _, cb := range resp.Content {
 		switch v := cb.AsAny().(type) {
@@ -228,6 +231,7 @@ func convertResponse(resp *anthropic.Message) kit.ModelResponse {
 			if err != nil {
 				continue
 			}
+
 			toolCalls = append(toolCalls, tc)
 		}
 	}

@@ -43,6 +43,7 @@ func New() kit.Tool {
 			cmd := exec.CommandContext(ctx, "bash", "-c", input.Command)
 
 			var stdout, stderr bytes.Buffer
+
 			cmd.Stdout = &stdout
 			cmd.Stderr = &stderr
 

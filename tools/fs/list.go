@@ -61,6 +61,7 @@ func listDirectory(path string, limit int) (string, error) {
 		if entry.IsDir() {
 			name = name + string(filepath.Separator)
 		}
+
 		result.WriteString(name)
 		result.WriteString("\n")
 	}

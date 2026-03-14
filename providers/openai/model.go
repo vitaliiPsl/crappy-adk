@@ -110,12 +110,15 @@ func buildParams(req kit.ModelRequest, modelID string) responses.ResponseNewPara
 	if gc.Temperature != nil {
 		params.Temperature = openaisdk.Float(float64(*gc.Temperature))
 	}
+
 	if gc.TopP != nil {
 		params.TopP = openaisdk.Float(float64(*gc.TopP))
 	}
+
 	if gc.MaxOutputTokens != nil {
 		params.MaxOutputTokens = openaisdk.Int(int64(*gc.MaxOutputTokens))
 	}
+
 	if gc.Thinking != kit.ThinkingDisabled {
 		params.Reasoning = shared.ReasoningParam{
 			Effort: reasoningEffort(gc.Thinking),
@@ -232,8 +235,11 @@ func convertTools(tools []kit.ToolDefinition) []responses.ToolUnionParam {
 }
 
 func convertResponse(resp *responses.Response) kit.ModelResponse {
-	var content, thinking string
-	var toolCalls []kit.ToolCall
+	var (
+		content   string
+		thinking  string
+		toolCalls []kit.ToolCall
+	)
 
 	for _, item := range resp.Output {
 		switch item.Type {
@@ -250,6 +256,7 @@ func convertResponse(resp *responses.Response) kit.ModelResponse {
 			if err != nil {
 				continue
 			}
+
 			toolCalls = append(toolCalls, tc)
 
 		case "reasoning":

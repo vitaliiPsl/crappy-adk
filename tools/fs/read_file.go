@@ -37,6 +37,7 @@ func readFileLines(path string, start, end *int) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("failed to open file: %w", err)
 	}
+
 	defer func() { _ = file.Close() }()
 
 	startLine := 0
@@ -50,6 +51,7 @@ func readFileLines(path string, start, end *int) (string, error) {
 	}
 
 	scanner := bufio.NewScanner(file)
+
 	var result strings.Builder
 
 	currLine := 0

@@ -17,6 +17,7 @@ func File(path string) kit.Instruction {
 		if os.IsNotExist(err) {
 			return "", nil
 		}
+
 		if err != nil {
 			return "", fmt.Errorf("instruction file %q: %w", path, err)
 		}

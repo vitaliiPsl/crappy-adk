@@ -30,6 +30,7 @@ func TestReadFileLines_Range(t *testing.T) {
 	_ = os.WriteFile(path, []byte("a\nb\nc\nd\n"), 0644)
 
 	start, end := 1, 2
+
 	out, err := readFileLines(path, &start, &end)
 	if err != nil {
 		t.Fatal(err)
@@ -50,6 +51,7 @@ func TestReadFileLines_StartBeyondFile(t *testing.T) {
 	_ = os.WriteFile(path, []byte("only one line\n"), 0644)
 
 	start := 99
+
 	_, err := readFileLines(path, &start, nil)
 	if err == nil {
 		t.Fatal("expected error for start beyond file length")

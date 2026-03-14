@@ -38,9 +38,11 @@ func (m *model) GenerateStream(ctx context.Context, req kit.ModelRequest) (*kit.
 	iter := m.client.Models.GenerateContentStream(ctx, m.config.ID, contents, config)
 
 	return kit.NewModelStream(func(yield func(kit.ModelChunk, error) bool) kit.ModelResponse {
-		var lastResp *genai.GenerateContentResponse
-		var content, thinking string
-		var toolCalls []kit.ToolCall
+		var (
+			lastResp          *genai.GenerateContentResponse
+			content, thinking string
+			toolCalls         []kit.ToolCall
+		)
 
 		for resp, err := range iter {
 			if err != nil {
@@ -78,6 +80,7 @@ func (m *model) GenerateStream(ctx context.Context, req kit.ModelRequest) (*kit.
 							Name:      p.FunctionCall.Name,
 							Arguments: p.FunctionCall.Args,
 						}
+
 						toolCalls = append(toolCalls, tc)
 						if !yield(kit.NewToolCallChunk(tc), nil) {
 							return kit.ModelResponse{}
@@ -211,6 +214,7 @@ func convertTools(tools []kit.ToolDefinition) []*genai.Tool {
 		if t.Schema != nil {
 			decl.ParametersJsonSchema = t.Schema
 		}
+
 		decls = append(decls, decl)
 	}
 
@@ -224,8 +228,11 @@ func convertResponse(resp *genai.GenerateContentResponse) kit.ModelResponse {
 
 	candidate := resp.Candidates[0]
 
-	var content, thinking string
-	var toolCalls []kit.ToolCall
+	var (
+		content   string
+		thinking  string
+		toolCalls []kit.ToolCall
+	)
 
 	if candidate.Content != nil {
 		for _, p := range candidate.Content.Parts {

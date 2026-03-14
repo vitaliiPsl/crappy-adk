@@ -13,10 +13,15 @@ linters:
     - copyloopvar
     - whitespace
     - nlreturn
+    - wsl_v5
 
   exclusions:
     presets:
       - comments
+  settings:
+    wsl_v5:
+      # allows cuddling if the variable is used anywhere in the following (or nested) block
+      allow-whole-block: true
 
 formatters:
   enable:

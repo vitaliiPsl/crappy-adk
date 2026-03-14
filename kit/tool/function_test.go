@@ -88,6 +88,7 @@ func TestMustFunction_Panics(t *testing.T) {
 	type bad struct {
 		Ch chan int `json:"ch"`
 	}
+
 	MustFunction("bad", "bad tool", func(_ context.Context, _ bad) (string, error) {
 		return "", nil
 	})

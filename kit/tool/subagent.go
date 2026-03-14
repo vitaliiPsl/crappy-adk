@@ -46,9 +46,11 @@ func WithSubAgents(subAgents ...SubAgent) kit.AgentOptions {
 			if sa.Name == "" {
 				return fmt.Errorf("WithSubAgents: subagent name cannot be empty")
 			}
+
 			if sa.Agent == nil {
 				return fmt.Errorf("WithSubAgents: subagent %q has a nil agent", sa.Name)
 			}
+
 			if _, exists := registry[sa.Name]; exists {
 				return fmt.Errorf("WithSubAgents: duplicate subagent name: %q", sa.Name)
 			}
