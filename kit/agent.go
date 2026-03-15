@@ -57,14 +57,37 @@ func (a *Agent) Stream(ctx context.Context, messages []Message) (*Stream, error)
 	}
 
 	msgs := slices.Clone(messages)
+
+	ctx, msgs, err = a.hooks.onRunStart(ctx, msgs)
+	if err != nil {
+		return nil, err
+	}
+
 	s := &Stream{}
 
 	s.iter = func(yield func(Event, error) bool) {
+		var runErr error
+
 		defer func() { s.done = true }()
 
+		defer func() {
+			if _, err := a.hooks.onRunEnd(ctx, s.response, runErr); err != nil {
+				yield(Event{}, err)
+			}
+		}()
+
 		for {
+			ctx, msgs, err = a.hooks.onTurnStart(ctx, msgs)
+			if err != nil {
+				runErr = err
+				yield(Event{}, err)
+
+				return
+			}
+
 			assistantMsg, usage, err := a.callModel(ctx, instruction, msgs, yield)
 			if err != nil {
+				runErr = err
 				yield(Event{}, err)
 
 				return
@@ -87,6 +110,14 @@ func (a *Agent) Stream(ctx context.Context, messages []Message) (*Stream, error)
 
 			msgs = append(msgs, toolMsgs...)
 			s.response.Messages = append(s.response.Messages, toolMsgs...)
+
+			ctx, err = a.hooks.onTurnEnd(ctx, msgs)
+			if err != nil {
+				runErr = err
+				yield(Event{}, err)
+
+				return
+			}
 		}
 	}
 

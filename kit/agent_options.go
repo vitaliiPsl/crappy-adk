@@ -51,6 +51,24 @@ func WithGenerationConfig(config GenerationConfig) AgentOption {
 	}
 }
 
+// WithOnRunStart registers a hook called once before the ReAct loop begins.
+func WithOnRunStart(fn OnRunStart) AgentOption {
+	return func(a *Agent) error {
+		a.hooks.runStart = append(a.hooks.runStart, fn)
+
+		return nil
+	}
+}
+
+// WithOnRunEnd registers a hook called once after the ReAct loop completes.
+func WithOnRunEnd(fn OnRunEnd) AgentOption {
+	return func(a *Agent) error {
+		a.hooks.runEnd = append(a.hooks.runEnd, fn)
+
+		return nil
+	}
+}
+
 // WithOnModelRequest registers a hook called before each model request.
 func WithOnModelRequest(fn OnModelRequest) AgentOption {
 	return func(a *Agent) error {
@@ -82,6 +100,24 @@ func WithOnToolCall(fn OnToolCall) AgentOption {
 func WithOnToolResult(fn OnToolResult) AgentOption {
 	return func(a *Agent) error {
 		a.hooks.toolResult = append(a.hooks.toolResult, fn)
+
+		return nil
+	}
+}
+
+// WithOnTurnStart registers a hook called at the start of each ReAct loop iteration.
+func WithOnTurnStart(fn OnTurnStart) AgentOption {
+	return func(a *Agent) error {
+		a.hooks.turnStart = append(a.hooks.turnStart, fn)
+
+		return nil
+	}
+}
+
+// WithOnTurnEnd registers a hook called at the end of each ReAct loop iteration.
+func WithOnTurnEnd(fn OnTurnEnd) AgentOption {
+	return func(a *Agent) error {
+		a.hooks.turnEnd = append(a.hooks.turnEnd, fn)
 
 		return nil
 	}
