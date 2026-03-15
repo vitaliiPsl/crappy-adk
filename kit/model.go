@@ -263,6 +263,15 @@ type Usage struct {
 	ReasoningTokens int32
 }
 
+// Add accumulates the token counts from other into u.
+func (u *Usage) Add(other Usage) {
+	u.InputTokens += other.InputTokens
+	u.OutputTokens += other.OutputTokens
+	u.CacheReadTokens += other.CacheReadTokens
+	u.CacheWriteTokens += other.CacheWriteTokens
+	u.ReasoningTokens += other.ReasoningTokens
+}
+
 // Cost calculates the total USD cost of this usage given the model's pricing.
 // CacheReadTokens are subtracted from InputTokens before applying the input rate
 // since providers include them in the InputTokens total.

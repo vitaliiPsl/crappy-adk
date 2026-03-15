@@ -93,8 +93,7 @@ func (a *Agent) Stream(ctx context.Context, messages []Message) (*Stream, error)
 				return
 			}
 
-			s.response.Usage.InputTokens += usage.InputTokens
-			s.response.Usage.OutputTokens += usage.OutputTokens
+			s.response.Usage.Add(usage)
 
 			msgs = append(msgs, assistantMsg)
 			s.response.Messages = append(s.response.Messages, assistantMsg)
