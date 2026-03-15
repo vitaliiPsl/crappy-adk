@@ -19,7 +19,7 @@ type Agent struct {
 }
 
 // NewAgent creates an agent backed by the given model. Options are applied in order.
-func NewAgent(model Model, options ...AgentOptions) (*Agent, error) {
+func NewAgent(model Model, options ...AgentOption) (*Agent, error) {
 	agent := &Agent{
 		model: model,
 		tools: make(map[string]Tool),

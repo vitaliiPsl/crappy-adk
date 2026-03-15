@@ -6,6 +6,9 @@ import (
 	"time"
 )
 
+// ModelMiddleware wraps a [Model] to intercept and modify its behaviour.
+type ModelMiddleware func(Model) Model
+
 // Provider is a factory for creating models from a specific AI provider.
 type Provider interface {
 	// Model returns the model with the given ID, or an error if it is unknown.

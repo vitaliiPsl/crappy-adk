@@ -47,6 +47,14 @@ type retryModel struct {
 	maxDelay    time.Duration
 }
 
+// NewRetry returns a [kit.ModelMiddleware] that applies exponential-backoff
+// retry logic.
+func NewRetry(opts ...RetryOption) kit.ModelMiddleware {
+	return func(model kit.Model) kit.Model {
+		return Retry(model, opts...)
+	}
+}
+
 // Retry wraps model with exponential-backoff retry logic. Only errors where
 // [kit.LLMError.Retryable] is true are retried.
 //

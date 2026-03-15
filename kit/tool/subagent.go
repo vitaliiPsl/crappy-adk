@@ -32,7 +32,7 @@ type delegateInput struct {
 // WithSubAgents registers a set of subagents on the parent agent as a single
 // "delegate" tool. The parent calls delegate with an agent name and task;
 // the selected subagent runs its own full loop and returns result.
-func WithSubAgents(subAgents ...SubAgent) kit.AgentOptions {
+func WithSubAgents(subAgents ...SubAgent) kit.AgentOption {
 	return func(a *kit.Agent) error {
 		if len(subAgents) == 0 {
 			return fmt.Errorf("WithSubAgents: at least one subagent is required")
