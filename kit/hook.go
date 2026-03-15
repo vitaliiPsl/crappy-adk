@@ -2,17 +2,25 @@ package kit
 
 import "context"
 
-// OnModelRequest is called before each model request. Returning an error cancels the request.
-type OnModelRequest func(ctx context.Context, req ModelRequest) error
+// OnModelRequest is called before each model request.
+// The returned context and [ModelRequest] replace the originals for the model call.
+// Returning an error cancels the request.
+type OnModelRequest func(ctx context.Context, req ModelRequest) (context.Context, ModelRequest, error)
 
-// OnModelResponse is called after each model response. Returning an error stops the agent.
-type OnModelResponse func(ctx context.Context, resp ModelResponse) error
+// OnModelResponse is called after each model response.
+// The returned context and [ModelResponse] replace the originals for the agent loop.
+// Returning an error stops the agent.
+type OnModelResponse func(ctx context.Context, resp ModelResponse) (context.Context, ModelResponse, error)
 
-// OnToolCall is called before a tool is executed. Returning an error cancels the tool call.
-type OnToolCall func(ctx context.Context, call ToolCall) error
+// OnToolCall is called before a tool is executed.
+// The returned context and [ToolCall] replace the originals for the tool execution.
+// Returning an error cancels the tool call.
+type OnToolCall func(ctx context.Context, call ToolCall) (context.Context, ToolCall, error)
 
 // OnToolResult is called after a tool finishes executing.
-type OnToolResult func(ctx context.Context, call ToolCall, result string, err error) error
+// The returned context and string replace the originals for the agent loop.
+// Returning an error stops the agent.
+type OnToolResult func(ctx context.Context, call ToolCall, result string, err error) (context.Context, string, error)
 
 type hooks struct {
 	modelRequest  []OnModelRequest
@@ -21,42 +29,54 @@ type hooks struct {
 	toolResult    []OnToolResult
 }
 
-func (h *hooks) onModelRequest(ctx context.Context, req ModelRequest) error {
+func (h *hooks) onModelRequest(ctx context.Context, req ModelRequest) (context.Context, ModelRequest, error) {
 	for _, fn := range h.modelRequest {
-		if err := fn(ctx, req); err != nil {
-			return err
+		var err error
+
+		ctx, req, err = fn(ctx, req)
+		if err != nil {
+			return ctx, ModelRequest{}, err
 		}
 	}
 
-	return nil
+	return ctx, req, nil
 }
 
-func (h *hooks) onModelResponse(ctx context.Context, resp ModelResponse) error {
+func (h *hooks) onModelResponse(ctx context.Context, resp ModelResponse) (context.Context, ModelResponse, error) {
 	for _, fn := range h.modelResponse {
-		if err := fn(ctx, resp); err != nil {
-			return err
+		var err error
+
+		ctx, resp, err = fn(ctx, resp)
+		if err != nil {
+			return ctx, ModelResponse{}, err
 		}
 	}
 
-	return nil
+	return ctx, resp, nil
 }
 
-func (h *hooks) onToolCall(ctx context.Context, call ToolCall) error {
+func (h *hooks) onToolCall(ctx context.Context, call ToolCall) (context.Context, ToolCall, error) {
 	for _, fn := range h.toolCall {
-		if err := fn(ctx, call); err != nil {
-			return err
+		var err error
+
+		ctx, call, err = fn(ctx, call)
+		if err != nil {
+			return ctx, ToolCall{}, err
 		}
 	}
 
-	return nil
+	return ctx, call, nil
 }
 
-func (h *hooks) onToolResult(ctx context.Context, call ToolCall, result string, err error) error {
+func (h *hooks) onToolResult(ctx context.Context, call ToolCall, result string, err error) (context.Context, string, error) {
 	for _, fn := range h.toolResult {
-		if err := fn(ctx, call, result, err); err != nil {
-			return err
+		var hookErr error
+
+		ctx, result, hookErr = fn(ctx, call, result, err)
+		if hookErr != nil {
+			return ctx, "", hookErr
 		}
 	}
 
-	return nil
+	return ctx, result, nil
 }

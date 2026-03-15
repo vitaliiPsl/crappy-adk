@@ -101,7 +101,8 @@ func (a *Agent) callModel(ctx context.Context, instruction string, msgs []Messag
 		Config:      a.generationConfig,
 	}
 
-	if err := a.hooks.onModelRequest(ctx, req); err != nil {
+	ctx, req, err := a.hooks.onModelRequest(ctx, req)
+	if err != nil {
 		return Message{}, Usage{}, fmt.Errorf("model request hook failed: %w", err)
 	}
 
@@ -128,8 +129,8 @@ func (a *Agent) callModel(ctx context.Context, instruction string, msgs []Messag
 		}
 	}
 
-	resp := stream.Response()
-	if err := a.hooks.onModelResponse(ctx, resp); err != nil {
+	_, resp, err := a.hooks.onModelResponse(ctx, stream.Response())
+	if err != nil {
 		return Message{}, Usage{}, fmt.Errorf("model response hook failed: %w", err)
 	}
 
@@ -157,7 +158,8 @@ func (a *Agent) callTools(ctx context.Context, toolCalls []ToolCall, yield func(
 }
 
 func (a *Agent) callTool(ctx context.Context, toolCall ToolCall) (string, error) {
-	if err := a.hooks.onToolCall(ctx, toolCall); err != nil {
+	ctx, toolCall, err := a.hooks.onToolCall(ctx, toolCall)
+	if err != nil {
 		return "", err
 	}
 
@@ -168,16 +170,17 @@ func (a *Agent) callTool(ctx context.Context, toolCall ToolCall) (string, error)
 		return err.Error(), err
 	}
 
-	result, err := t.Execute(ctx, toolCall.Arguments)
+	result, execErr := t.Execute(ctx, toolCall.Arguments)
+	if execErr != nil {
+		result = execErr.Error()
+	}
+
+	_, result, err = a.hooks.onToolResult(ctx, toolCall, result, execErr)
 	if err != nil {
-		result = err.Error()
+		return "", err
 	}
 
-	if hookErr := a.hooks.onToolResult(ctx, toolCall, result, err); hookErr != nil {
-		return "", hookErr
-	}
-
-	return result, err
+	return result, execErr
 }
 
 func (a *Agent) toolDefinitions() []ToolDefinition {
