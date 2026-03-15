@@ -64,9 +64,7 @@ func (m *model) GenerateStream(ctx context.Context, req kit.ModelRequest) (*kit.
 						if !yield(kit.NewThinkingChunk(p.Text), nil) {
 							return kit.ModelResponse{}
 						}
-					}
-
-					if p.Text != "" {
+					} else if p.Text != "" {
 						content.WriteString(p.Text)
 
 						if !yield(kit.NewTextChunk(p.Text), nil) {
@@ -145,7 +143,10 @@ func buildConfig(req kit.ModelRequest) *genai.GenerateContentConfig {
 	}
 
 	if budget, ok := thinkingBudgets[req.Config.Thinking]; ok {
-		config.ThinkingConfig = &genai.ThinkingConfig{ThinkingBudget: &budget}
+		config.ThinkingConfig = &genai.ThinkingConfig{
+			IncludeThoughts: true,
+			ThinkingBudget:  &budget,
+		}
 	}
 
 	return config
