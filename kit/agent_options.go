@@ -99,3 +99,16 @@ func WithModelMiddleware(middlewares ...ModelMiddleware) AgentOption {
 		return nil
 	}
 }
+
+// WithExtension applies all options from extension to the agent.
+func WithExtension(extension []AgentOption) AgentOption {
+	return func(a *Agent) error {
+		for _, opt := range extension {
+			if err := opt(a); err != nil {
+				return err
+			}
+		}
+
+		return nil
+	}
+}

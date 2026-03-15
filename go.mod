@@ -7,6 +7,7 @@ require (
 	github.com/google/jsonschema-go v0.4.2
 	github.com/openai/openai-go/v3 v3.26.0
 	google.golang.org/genai v1.49.0
+	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (
