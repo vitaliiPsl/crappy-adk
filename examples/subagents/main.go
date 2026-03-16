@@ -79,7 +79,7 @@ Use markdown with headers, bullet points, and code blocks where appropriate.`),
 	}
 
 	stream, err := orchestrator.Stream(ctx, []kit.Message{
-		kit.NewUserMessage("Produce a short developer overview of this project: what it does, its main packages, and key abstractions."),
+		kit.NewUserMessage(kit.NewTextPart("Produce a short developer overview of this project: what it does, its main packages, and key abstractions.")),
 	})
 	if err != nil {
 		log.Fatal(err)

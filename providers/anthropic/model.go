@@ -2,6 +2,7 @@ package anthropic
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -143,13 +144,13 @@ func convertMessages(msgs []kit.Message) []anthropic.MessageParam {
 	for _, msg := range msgs {
 		switch msg.Role {
 		case kit.MessageRoleUser:
-			result = append(result, anthropic.NewUserMessage(anthropic.NewTextBlock(msg.Content)))
+			result = append(result, anthropic.NewUserMessage(convertContentParts(msg.Content)...))
 		case kit.MessageRoleAssistant:
 			result = append(result, convertAssistantMessage(msg))
 		case kit.MessageRoleTool:
 			// Consecutive turns are combined by the API into a single turn
 			result = append(result, anthropic.NewUserMessage(
-				anthropic.NewToolResultBlock(msg.ToolCallID, msg.Content, false),
+				anthropic.NewToolResultBlock(msg.ToolCallID, msg.Text(), false),
 			))
 		}
 	}
@@ -164,8 +165,8 @@ func convertAssistantMessage(msg kit.Message) anthropic.MessageParam {
 		blocks = append(blocks, anthropic.NewThinkingBlock("", msg.Thinking))
 	}
 
-	if msg.Content != "" {
-		blocks = append(blocks, anthropic.NewTextBlock(msg.Content))
+	if text := msg.Text(); text != "" {
+		blocks = append(blocks, anthropic.NewTextBlock(text))
 	}
 
 	for _, tc := range msg.ToolCalls {
@@ -173,6 +174,42 @@ func convertAssistantMessage(msg kit.Message) anthropic.MessageParam {
 	}
 
 	return anthropic.NewAssistantMessage(blocks...)
+}
+
+func convertContentParts(parts []kit.ContentPart) []anthropic.ContentBlockParamUnion {
+	blocks := make([]anthropic.ContentBlockParamUnion, 0, len(parts))
+	for _, p := range parts {
+		if block, ok := convertContentPart(p); ok {
+			blocks = append(blocks, block)
+		}
+	}
+
+	return blocks
+}
+
+func convertContentPart(p kit.ContentPart) (anthropic.ContentBlockParamUnion, bool) {
+	switch p.Type {
+	case kit.ContentTypeText:
+		return anthropic.NewTextBlock(p.Text), true
+	case kit.ContentTypeImage:
+		if len(p.Data) > 0 {
+			return anthropic.NewImageBlockBase64(p.MediaType, base64.StdEncoding.EncodeToString(p.Data)), true
+		}
+
+		if p.URL != "" {
+			return anthropic.NewImageBlock(anthropic.URLImageSourceParam{URL: p.URL}), true
+		}
+	case kit.ContentTypeDocument:
+		if len(p.Data) > 0 {
+			return anthropic.NewDocumentBlock(anthropic.Base64PDFSourceParam{Data: base64.StdEncoding.EncodeToString(p.Data)}), true
+		}
+
+		if p.URL != "" {
+			return anthropic.NewDocumentBlock(anthropic.URLPDFSourceParam{URL: p.URL}), true
+		}
+	}
+
+	return anthropic.ContentBlockParamUnion{}, false
 }
 
 func convertTools(tools []kit.ToolDefinition) []anthropic.ToolUnionParam {

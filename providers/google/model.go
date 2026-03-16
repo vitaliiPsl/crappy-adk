@@ -169,10 +169,31 @@ func convertMessages(msgs []kit.Message) []*genai.Content {
 }
 
 func convertUserMessage(msg kit.Message) *genai.Content {
-	return &genai.Content{
-		Role:  genai.RoleUser,
-		Parts: []*genai.Part{{Text: msg.Content}},
+	parts := make([]*genai.Part, 0, len(msg.Content))
+	for _, p := range msg.Content {
+		if part := convertContentPart(p); part != nil {
+			parts = append(parts, part)
+		}
 	}
+
+	return &genai.Content{Role: genai.RoleUser, Parts: parts}
+}
+
+func convertContentPart(p kit.ContentPart) *genai.Part {
+	switch p.Type {
+	case kit.ContentTypeText:
+		return &genai.Part{Text: p.Text}
+	case kit.ContentTypeImage, kit.ContentTypeDocument:
+		if len(p.Data) > 0 {
+			return &genai.Part{InlineData: &genai.Blob{Data: p.Data, MIMEType: p.MediaType}}
+		}
+
+		if p.URL != "" {
+			return &genai.Part{FileData: &genai.FileData{FileURI: p.URL, MIMEType: p.MediaType}}
+		}
+	}
+
+	return nil
 }
 
 func convertAssistantMessage(msg kit.Message) *genai.Content {
@@ -181,8 +202,8 @@ func convertAssistantMessage(msg kit.Message) *genai.Content {
 		Parts: make([]*genai.Part, 0),
 	}
 
-	if msg.Content != "" {
-		content.Parts = append(content.Parts, &genai.Part{Text: msg.Content})
+	if text := msg.Text(); text != "" {
+		content.Parts = append(content.Parts, &genai.Part{Text: text})
 	}
 
 	for _, tc := range msg.ToolCalls {
@@ -211,7 +232,7 @@ func convertToolMessage(msg kit.Message) *genai.Content {
 			FunctionResponse: &genai.FunctionResponse{
 				ID:       msg.ToolCallID,
 				Name:     msg.ToolName,
-				Response: map[string]any{"output": msg.Content},
+				Response: map[string]any{"output": msg.Text()},
 			},
 		}},
 	}

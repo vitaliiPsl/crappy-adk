@@ -36,7 +36,7 @@ func main() {
 	}
 
 	messages := []kit.Message{
-		kit.NewUserMessage("List the files in the current directory and summarize what this project does."),
+		kit.NewUserMessage(kit.NewTextPart("List the files in the current directory and summarize what this project does.")),
 	}
 
 	stream, err := agent.Stream(ctx, messages)
@@ -63,7 +63,7 @@ func main() {
 
 	// Multi-turn: collect produced messages and continue the conversation.
 	messages = append(messages, stream.Result().Messages...)
-	messages = append(messages, kit.NewUserMessage("Which file is the entry point?"))
+	messages = append(messages, kit.NewUserMessage(kit.NewTextPart("Which file is the entry point?")))
 
 	stream, err = agent.Stream(ctx, messages)
 	if err != nil {

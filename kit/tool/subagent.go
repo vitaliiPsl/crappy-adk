@@ -73,13 +73,13 @@ func WithSubAgents(subAgents ...SubAgent) kit.AgentOption {
 				}
 
 				resp, err := sa.Agent.Run(ctx, []kit.Message{
-					kit.NewUserMessage(input.Task),
+					kit.NewUserMessage(kit.NewTextPart(input.Task)),
 				})
 				if err != nil {
 					return "", fmt.Errorf("subagent %q failed: %w", input.Agent, err)
 				}
 
-				return resp.LastMessage().Content, nil
+				return resp.LastMessage().Text(), nil
 			},
 		)
 

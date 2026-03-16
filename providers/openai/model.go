@@ -2,6 +2,7 @@ package openai
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -157,18 +158,18 @@ func convertInputItems(msg kit.Message) []responses.ResponseInputItemUnionParam 
 		return []responses.ResponseInputItemUnionParam{{
 			OfMessage: &responses.EasyInputMessageParam{
 				Role:    responses.EasyInputMessageRoleUser,
-				Content: responses.EasyInputMessageContentUnionParam{OfString: openaisdk.String(msg.Content)},
+				Content: convertUserContent(msg.Content),
 			},
 		}}
 
 	case kit.MessageRoleAssistant:
 		var items []responses.ResponseInputItemUnionParam
 
-		if msg.Content != "" {
+		if text := msg.Text(); text != "" {
 			items = append(items, responses.ResponseInputItemUnionParam{
 				OfMessage: &responses.EasyInputMessageParam{
 					Role:    responses.EasyInputMessageRoleAssistant,
-					Content: responses.EasyInputMessageContentUnionParam{OfString: openaisdk.String(msg.Content)},
+					Content: responses.EasyInputMessageContentUnionParam{OfString: openaisdk.String(text)},
 				},
 			})
 		}
@@ -191,7 +192,7 @@ func convertInputItems(msg kit.Message) []responses.ResponseInputItemUnionParam 
 			OfFunctionCallOutput: &responses.ResponseInputItemFunctionCallOutputParam{
 				CallID: msg.ToolCallID,
 				Output: responses.ResponseInputItemFunctionCallOutputOutputUnionParam{
-					OfString: openaisdk.String(msg.Content),
+					OfString: openaisdk.String(msg.Text()),
 				},
 			},
 		}}
@@ -200,10 +201,47 @@ func convertInputItems(msg kit.Message) []responses.ResponseInputItemUnionParam 
 		return []responses.ResponseInputItemUnionParam{{
 			OfMessage: &responses.EasyInputMessageParam{
 				Role:    responses.EasyInputMessageRoleUser,
-				Content: responses.EasyInputMessageContentUnionParam{OfString: openaisdk.String(msg.Content)},
+				Content: responses.EasyInputMessageContentUnionParam{OfString: openaisdk.String(msg.Text())},
 			},
 		}}
 	}
+}
+
+func convertUserContent(parts []kit.ContentPart) responses.EasyInputMessageContentUnionParam {
+	if len(parts) == 1 && parts[0].Type == kit.ContentTypeText {
+		return responses.EasyInputMessageContentUnionParam{OfString: openaisdk.String(parts[0].Text)}
+	}
+
+	list := make(responses.ResponseInputMessageContentListParam, 0, len(parts))
+	for _, p := range parts {
+		if item, ok := convertContentPart(p); ok {
+			list = append(list, item)
+		}
+	}
+
+	return responses.EasyInputMessageContentUnionParam{OfInputItemContentList: list}
+}
+
+func convertContentPart(p kit.ContentPart) (responses.ResponseInputContentUnionParam, bool) {
+	switch p.Type {
+	case kit.ContentTypeText:
+		return responses.ResponseInputContentUnionParam{
+			OfInputText: &responses.ResponseInputTextParam{Text: p.Text},
+		}, true
+	case kit.ContentTypeImage:
+		img := &responses.ResponseInputImageParam{Detail: responses.ResponseInputImageDetailAuto}
+		if p.URL != "" {
+			img.ImageURL = openaisdk.String(p.URL)
+		} else if len(p.Data) > 0 {
+			img.ImageURL = openaisdk.String("data:" + p.MediaType + ";base64," + base64.StdEncoding.EncodeToString(p.Data))
+		} else {
+			return responses.ResponseInputContentUnionParam{}, false
+		}
+
+		return responses.ResponseInputContentUnionParam{OfInputImage: img}, true
+	}
+
+	return responses.ResponseInputContentUnionParam{}, false
 }
 
 func convertTools(tools []kit.ToolDefinition) []responses.ToolUnionParam {
