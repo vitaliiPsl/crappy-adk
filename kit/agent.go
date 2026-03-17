@@ -77,6 +77,13 @@ func (a *Agent) Stream(ctx context.Context, messages []Message) (*Stream, error)
 		}()
 
 		for {
+			if err := ctx.Err(); err != nil {
+				runErr = err
+				yield(Event{}, err)
+
+				return
+			}
+
 			ctx, msgs, err = a.hooks.onTurnStart(ctx, msgs)
 			if err != nil {
 				runErr = err
