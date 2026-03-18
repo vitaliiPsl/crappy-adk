@@ -226,9 +226,12 @@ func (a *Agent) callTools(ctx context.Context, toolCalls []ToolCall, yield func(
 			return msgs, false
 		}
 
-		content, err := a.callTool(ctx, tc)
+		content, errStr := a.callTool(ctx, tc)
+		if errStr != "" {
+			content = errStr
+		}
 
-		if !yield(NewToolResultEvent(ToolResult{ToolCallID: tc.ID, Content: content, IsError: err != nil}), nil) {
+		if !yield(NewToolResultEvent(ToolResult{ToolCallID: tc.ID, Content: content, Error: errStr}), nil) {
 			return msgs, false
 		}
 
@@ -238,30 +241,35 @@ func (a *Agent) callTools(ctx context.Context, toolCalls []ToolCall, yield func(
 	return msgs, true
 }
 
-func (a *Agent) callTool(ctx context.Context, toolCall ToolCall) (string, error) {
+func (a *Agent) callTool(ctx context.Context, toolCall ToolCall) (result string, errStr string) {
+	defer func() {
+		if r := recover(); r != nil {
+			result = ""
+			errStr = fmt.Sprintf("recovered. Error: %v", r)
+		}
+	}()
+
 	ctx, toolCall, err := a.hooks.onToolCall(ctx, toolCall)
 	if err != nil {
-		return "", err
+		return "", err.Error()
 	}
 
 	t, ok := a.tools[toolCall.Name]
 	if !ok {
-		err := fmt.Errorf("tool not found: %s", toolCall.Name)
-
-		return err.Error(), err
+		return "", fmt.Sprintf("tool not found: %s", toolCall.Name)
 	}
 
-	result, execErr := t.Execute(ctx, toolCall.Arguments)
-	if execErr != nil {
-		result = execErr.Error()
-	}
-
-	_, result, err = a.hooks.onToolResult(ctx, toolCall, result, execErr)
+	result, err = t.Execute(ctx, toolCall.Arguments)
 	if err != nil {
-		return "", err
+		return "", err.Error()
 	}
 
-	return result, execErr
+	_, result, err = a.hooks.onToolResult(ctx, toolCall, result, err)
+	if err != nil {
+		return "", err.Error()
+	}
+
+	return result, ""
 }
 
 func (a *Agent) needsCompaction(lastUsage Usage) bool {

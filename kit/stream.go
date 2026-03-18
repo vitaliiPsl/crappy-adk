@@ -72,7 +72,7 @@ type Event struct {
 type ToolResult struct {
 	ToolCallID string
 	Content    string
-	IsError    bool
+	Error      string
 }
 
 // NewTextDeltaEvent returns a text delta event with the given text.
