@@ -47,19 +47,14 @@ type retryModel struct {
 	maxDelay    time.Duration
 }
 
-// NewRetry returns a [kit.ModelMiddleware] that applies exponential-backoff
-// retry logic.
+// NewRetry returns a [kit.ModelMiddleware] that applies retry logic.
 func NewRetry(opts ...RetryOption) kit.ModelMiddleware {
 	return func(model kit.Model) kit.Model {
 		return Retry(model, opts...)
 	}
 }
 
-// Retry wraps model with exponential-backoff retry logic. Only errors where
-// [kit.LLMError.Retryable] is true are retried.
-//
-// For streaming calls, only the initial connection is retried. Mid-stream
-// errors are passed through to the caller as-is.
+// Retry wraps model with exponential-backoff retry logic.
 func Retry(model kit.Model, opts ...RetryOption) kit.Model {
 	r := &retryModel{
 		BaseModel:   BaseModel{Next: model},
@@ -74,6 +69,7 @@ func Retry(model kit.Model, opts ...RetryOption) kit.Model {
 	return r
 }
 
+// Generate retries the call up to maxAttempts on retryable errors.
 func (r *retryModel) Generate(ctx context.Context, req kit.ModelRequest) (kit.ModelResponse, error) {
 	var lastErr error
 	for attempt := 0; attempt < r.maxAttempts; attempt++ {
@@ -97,24 +93,67 @@ func (r *retryModel) Generate(ctx context.Context, req kit.ModelRequest) (kit.Mo
 	return kit.ModelResponse{}, lastErr
 }
 
+// GenerateStream retries on retryable errors before the first chunk. Mid-stream errors pass through.
 func (r *retryModel) GenerateStream(ctx context.Context, req kit.ModelRequest) (*kit.ModelStream, error) {
-	var lastErr error
-	for attempt := 0; attempt < r.maxAttempts; attempt++ {
-		if attempt > 0 {
-			if err := r.wait(ctx, attempt); err != nil {
-				return nil, err
+	return kit.NewModelStream(func(yield func(kit.ModelChunk, error) bool) kit.ModelResponse {
+		var lastErr error
+
+		for attempt := 0; attempt < r.maxAttempts; attempt++ {
+			if attempt > 0 {
+				if err := r.wait(ctx, attempt); err != nil {
+					yield(kit.ModelChunk{}, err)
+
+					return kit.ModelResponse{}
+				}
 			}
+
+			s, err := r.Next.GenerateStream(ctx, req)
+			if err != nil {
+				lastErr = err
+				if !isRetryable(err) {
+					yield(kit.ModelChunk{}, err)
+
+					return kit.ModelResponse{}
+				}
+
+				continue
+			}
+
+			started := false
+			retryable := false
+
+			for chunk, err := range s.Iter() {
+				if err != nil {
+					if !started && isRetryable(err) {
+						lastErr = err
+						retryable = true
+
+						break
+					}
+
+					yield(kit.ModelChunk{}, err)
+
+					return kit.ModelResponse{}
+				}
+
+				started = true
+
+				if !yield(chunk, nil) {
+					return s.Response()
+				}
+			}
+
+			if retryable {
+				continue
+			}
+
+			return s.Response()
 		}
 
-		s, err := r.Next.GenerateStream(ctx, req)
-		if err == nil || !isRetryable(err) {
-			return s, err
-		}
+		yield(kit.ModelChunk{}, lastErr)
 
-		lastErr = err
-	}
-
-	return nil, lastErr
+		return kit.ModelResponse{}
+	}), nil
 }
 
 // wait sleeps for the backoff duration for the given attempt, respecting context cancellation.
