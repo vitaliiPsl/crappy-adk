@@ -22,6 +22,15 @@ func WithInstructions(sources ...Instruction) AgentOption {
 	}
 }
 
+// WithGenerationConfig sets the generation parameters used on every model request.
+func WithGenerationConfig(config GenerationConfig) AgentOption {
+	return func(a *Agent) error {
+		a.config.Generation = config
+
+		return nil
+	}
+}
+
 // WithTool registers a single tool with the agent.
 func WithTool(tool Tool) AgentOption {
 	return func(a *Agent) error {
@@ -42,10 +51,14 @@ func WithTools(tools ...Tool) AgentOption {
 	}
 }
 
-// WithGenerationConfig sets the generation parameters used on every model request.
-func WithGenerationConfig(config GenerationConfig) AgentOption {
+// WithCompactor sets the [Compactor] and optional compaction threshold.
+func WithCompactor(c Compactor, threshold ...float64) AgentOption {
 	return func(a *Agent) error {
-		a.generationConfig = config
+		a.compactor = c
+
+		if len(threshold) > 0 {
+			a.config.CompactionThreshold = threshold[0]
+		}
 
 		return nil
 	}

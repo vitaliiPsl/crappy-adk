@@ -93,6 +93,11 @@ type Message struct {
 
 	// Tool calls requested by the model. Set on assistant messages.
 	ToolCalls []ToolCall
+
+	// IsSummary marks this message as a compaction summary. When building
+	// input for the next run, clients can use the last summary message as
+	// the starting point — everything before it has been compacted away.
+	IsSummary bool
 }
 
 // Text returns the concatenation of all text parts in the message.
@@ -140,6 +145,16 @@ func NewAssistantMessage(content, thinking string, toolCalls []ToolCall) Message
 		Content:   parts,
 		Thinking:  thinking,
 		ToolCalls: toolCalls,
+	}
+}
+
+// NewSummaryMessage creates a user message that carries a compaction summary.
+// IsSummary is set to true so clients can identify the compaction boundary.
+func NewSummaryMessage(summary string) Message {
+	return Message{
+		Role:      MessageRoleUser,
+		Content:   []ContentPart{NewTextPart(summary)},
+		IsSummary: true,
 	}
 }
 

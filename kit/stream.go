@@ -52,10 +52,11 @@ func (s *Stream) Result() Response {
 type EventType string
 
 const (
-	EventThinkingDelta EventType = "thinking_delta"
-	EventTextDelta     EventType = "text_delta"
-	EventToolCall      EventType = "tool_call"
-	EventToolResult    EventType = "tool_result"
+	EventThinkingDelta  EventType = "thinking_delta"
+	EventTextDelta      EventType = "text_delta"
+	EventToolCall       EventType = "tool_call"
+	EventToolResult     EventType = "tool_result"
+	EventContextSummary EventType = "context_summary"
 )
 
 // Event is a single item emitted by [Stream.Iter].
@@ -64,6 +65,7 @@ type Event struct {
 	Text       string
 	ToolCall   ToolCall
 	ToolResult ToolResult
+	Summary    string
 }
 
 // ToolResult carries the output of a tool execution.
@@ -91,4 +93,10 @@ func NewToolCallEvent(tc ToolCall) Event {
 // NewToolResultEvent returns a tool result event for the given tool result.
 func NewToolResultEvent(tr ToolResult) Event {
 	return Event{Type: EventToolResult, ToolResult: tr}
+}
+
+// NewContextSummaryEvent returns an event indicating that the conversation
+// history was compacted. The summary contains the condensed conversation text.
+func NewContextSummaryEvent(summary string) Event {
+	return Event{Type: EventContextSummary, Summary: summary}
 }

@@ -6,16 +6,27 @@ import (
 	"slices"
 )
 
+// AgentConfig holds configuration for an [Agent].
+type AgentConfig struct {
+	// Generation controls generation parameters used on every model request.
+	Generation GenerationConfig
+
+	// CompactionThreshold is the fraction of the context window that triggers
+	// compaction. Defaults to 0.8 when zero.
+	CompactionThreshold float64
+}
+
 // Agent runs a ReAct loop: it calls the model, executes any requested tool
 // calls, and feeds the results back until the model returns a final response.
 type Agent struct {
+	config       AgentConfig
 	instructions []Instruction
 
 	model Model
 	tools map[string]Tool
 
-	generationConfig GenerationConfig
-	hooks            hooks
+	compactor Compactor
+	hooks     hooks
 }
 
 // NewAgent creates an agent backed by the given model. Options are applied in order.
@@ -23,6 +34,9 @@ func NewAgent(model Model, options ...AgentOption) (*Agent, error) {
 	agent := &Agent{
 		model: model,
 		tools: make(map[string]Tool),
+		config: AgentConfig{
+			CompactionThreshold: 0.8,
+		},
 	}
 
 	for _, opt := range options {
@@ -117,6 +131,27 @@ func (a *Agent) Stream(ctx context.Context, messages []Message) (*Stream, error)
 			msgs = append(msgs, toolMsgs...)
 			s.response.Messages = append(s.response.Messages, toolMsgs...)
 
+			if a.needsCompaction(usage) {
+				compacted, summary, compactErr := a.compactor.Compact(ctx, msgs)
+				if compactErr != nil {
+					runErr = fmt.Errorf("compactor failed: %w", compactErr)
+					yield(Event{}, runErr)
+
+					return
+				}
+
+				if summary != "" {
+					msgs = compacted
+
+					summaryMsg := NewSummaryMessage(summary)
+					s.response.Messages = append(s.response.Messages, summaryMsg)
+
+					if !yield(NewContextSummaryEvent(summary), nil) {
+						return
+					}
+				}
+			}
+
 			ctx, err = a.hooks.onTurnEnd(ctx, msgs)
 			if err != nil {
 				runErr = err
@@ -135,7 +170,7 @@ func (a *Agent) callModel(ctx context.Context, instruction string, msgs []Messag
 		Instruction: instruction,
 		Messages:    msgs,
 		Tools:       a.toolDefinitions(),
-		Config:      a.generationConfig,
+		Config:      a.config.Generation,
 	}
 
 	ctx, req, err := a.hooks.onModelRequest(ctx, req)
@@ -172,6 +207,15 @@ func (a *Agent) callModel(ctx context.Context, instruction string, msgs []Messag
 	}
 
 	return resp.Message, resp.Usage, nil
+}
+
+func (a *Agent) toolDefinitions() []ToolDefinition {
+	defs := make([]ToolDefinition, 0, len(a.tools))
+	for _, tool := range a.tools {
+		defs = append(defs, tool.Definition())
+	}
+
+	return defs
 }
 
 func (a *Agent) callTools(ctx context.Context, toolCalls []ToolCall, yield func(Event, error) bool) ([]Message, bool) {
@@ -220,11 +264,17 @@ func (a *Agent) callTool(ctx context.Context, toolCall ToolCall) (string, error)
 	return result, execErr
 }
 
-func (a *Agent) toolDefinitions() []ToolDefinition {
-	defs := make([]ToolDefinition, 0, len(a.tools))
-	for _, tool := range a.tools {
-		defs = append(defs, tool.Definition())
+func (a *Agent) needsCompaction(lastUsage Usage) bool {
+	if a.compactor == nil {
+		return false
 	}
 
-	return defs
+	contextWindow := a.model.Config().ContextWindow
+	if contextWindow <= 0 {
+		return false
+	}
+
+	used := lastUsage.InputTokens + lastUsage.OutputTokens
+
+	return used > int32(float64(contextWindow)*a.config.CompactionThreshold)
 }
