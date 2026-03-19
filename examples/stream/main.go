@@ -7,6 +7,7 @@ import (
 	"os"
 
 	"github.com/vitaliiPsl/crappy-adk/kit"
+	"github.com/vitaliiPsl/crappy-adk/kit/middleware"
 	"github.com/vitaliiPsl/crappy-adk/providers/google"
 	filesystem "github.com/vitaliiPsl/crappy-adk/tools/fs"
 )
@@ -30,6 +31,7 @@ func main() {
 			filesystem.NewReadFile(),
 			filesystem.NewListDirectory(),
 		),
+		kit.WithModelMiddleware(middleware.NewRetry()),
 	)
 	if err != nil {
 		log.Fatal(err)
