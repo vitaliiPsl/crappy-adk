@@ -2,6 +2,16 @@ package kit
 
 import "context"
 
+// ToolExecutionMode controls how multiple tool calls in a single turn are executed.
+type ToolExecutionMode string
+
+const (
+	// ToolExecutionParallel executes tool calls concurrently. This is the default.
+	ToolExecutionParallel ToolExecutionMode = "parallel"
+	// ToolExecutionSequential executes tool calls one at a time, in order.
+	ToolExecutionSequential ToolExecutionMode = "sequential"
+)
+
 // AgentOption is a functional option for configuring an [Agent].
 type AgentOption func(*Agent) error
 
@@ -17,6 +27,24 @@ func WithInstruction(text string) AgentOption {
 func WithInstructions(sources ...Instruction) AgentOption {
 	return func(a *Agent) error {
 		a.instructions = append(a.instructions, sources...)
+
+		return nil
+	}
+}
+
+// WithParallelToolExecution sets tool execution to the parallel mode.
+func WithParallelToolExecution() AgentOption {
+	return func(a *Agent) error {
+		a.config.ToolExecution = ToolExecutionParallel
+
+		return nil
+	}
+}
+
+// WithSequentialToolExecution sets tool execution to the sequential mode.
+func WithSequentialToolExecution() AgentOption {
+	return func(a *Agent) error {
+		a.config.ToolExecution = ToolExecutionSequential
 
 		return nil
 	}

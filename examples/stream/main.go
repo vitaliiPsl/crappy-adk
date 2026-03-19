@@ -55,7 +55,7 @@ func main() {
 		case kit.EventToolCall:
 			fmt.Printf("\n[tool call] %s\n", event.ToolCall.Name)
 		case kit.EventToolResult:
-			fmt.Printf("[tool result] %s\n\n", event.ToolResult.ToolCallID)
+			fmt.Printf("[tool result] %s\n\n", event.ToolResult.ToolCall.ID)
 		}
 	}
 

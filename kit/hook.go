@@ -18,9 +18,9 @@ type OnModelResponse func(ctx context.Context, resp ModelResponse) (context.Cont
 type OnToolCall func(ctx context.Context, call ToolCall) (context.Context, ToolCall, error)
 
 // OnToolResult is called after a tool finishes executing.
-// The returned context and string replace the originals for the agent loop.
-// Returning an error stops the agent.
-type OnToolResult func(ctx context.Context, call ToolCall, result string, err error) (context.Context, string, error)
+// The returned context and [ToolResult] replace the originals for the agent loop.
+// Returning an error replaces the tool result with the error message.
+type OnToolResult func(ctx context.Context, result ToolResult) (context.Context, ToolResult, error)
 
 // OnRunStart is called once before the ReAct loop begins.
 // The returned context and messages replace the originals for the run.
@@ -91,13 +91,13 @@ func (h *hooks) onToolCall(ctx context.Context, call ToolCall) (context.Context,
 	return ctx, call, nil
 }
 
-func (h *hooks) onToolResult(ctx context.Context, call ToolCall, result string, err error) (context.Context, string, error) {
+func (h *hooks) onToolResult(ctx context.Context, result ToolResult) (context.Context, ToolResult, error) {
 	for _, fn := range h.toolResult {
-		var hookErr error
+		var err error
 
-		ctx, result, hookErr = fn(ctx, call, result, err)
-		if hookErr != nil {
-			return ctx, "", hookErr
+		ctx, result, err = fn(ctx, result)
+		if err != nil {
+			return ctx, ToolResult{}, err
 		}
 	}
 

@@ -70,9 +70,9 @@ type Event struct {
 
 // ToolResult carries the output of a tool execution.
 type ToolResult struct {
-	ToolCallID string
-	Content    string
-	Error      string
+	ToolCall ToolCall
+	Content  string
+	Error    string
 }
 
 // NewTextDeltaEvent returns a text delta event with the given text.

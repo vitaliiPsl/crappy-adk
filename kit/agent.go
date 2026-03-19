@@ -11,6 +11,10 @@ type AgentConfig struct {
 	// Generation controls generation parameters used on every model request.
 	Generation GenerationConfig
 
+	// ToolExecution controls whether tool calls run in parallel or sequentially.
+	// Defaults to ToolExecutionParallel.
+	ToolExecution ToolExecutionMode
+
 	// CompactionThreshold is the fraction of the context window that triggers
 	// compaction. Defaults to 0.8 when zero.
 	CompactionThreshold float64
@@ -219,57 +223,111 @@ func (a *Agent) toolDefinitions() []ToolDefinition {
 }
 
 func (a *Agent) callTools(ctx context.Context, toolCalls []ToolCall, yield func(Event, error) bool) ([]Message, bool) {
-	var msgs []Message
+	if a.config.ToolExecution == ToolExecutionSequential {
+		return a.callToolsSequential(ctx, toolCalls, yield)
+	}
 
-	for _, tc := range toolCalls {
-		if !yield(NewToolCallEvent(tc), nil) {
+	return a.callToolsParallel(ctx, toolCalls, yield)
+}
+
+func (a *Agent) callToolsSequential(ctx context.Context, toolCalls []ToolCall, yield func(Event, error) bool) ([]Message, bool) {
+	msgs := make([]Message, 0, len(toolCalls))
+
+	for _, toolCall := range toolCalls {
+		if !yield(NewToolCallEvent(toolCall), nil) {
 			return msgs, false
 		}
 
-		content, errStr := a.callTool(ctx, tc)
-		if errStr != "" {
-			content = errStr
-		}
+		result := a.callTool(ctx, toolCall)
 
-		if !yield(NewToolResultEvent(ToolResult{ToolCallID: tc.ID, Content: content, Error: errStr}), nil) {
+		if !yield(NewToolResultEvent(result), nil) {
 			return msgs, false
 		}
 
-		msgs = append(msgs, NewToolMessage(content, tc))
+		msgs = append(msgs, NewToolMessage(result.Content, result.ToolCall))
 	}
 
 	return msgs, true
 }
 
-func (a *Agent) callTool(ctx context.Context, toolCall ToolCall) (result string, errStr string) {
+func (a *Agent) callToolsParallel(ctx context.Context, toolCalls []ToolCall, yield func(Event, error) bool) ([]Message, bool) {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	msgs := make([]Message, 0, len(toolCalls))
+
+	results := make(chan ToolResult, len(toolCalls))
+
+	for _, toolCall := range toolCalls {
+		if !yield(NewToolCallEvent(toolCall), nil) {
+			return nil, false
+		}
+
+		go func() {
+			results <- a.callTool(ctx, toolCall)
+		}()
+	}
+
+	for range len(toolCalls) {
+		var result ToolResult
+
+		select {
+		case result = <-results:
+		case <-ctx.Done():
+			return msgs, false
+		}
+
+		if !yield(NewToolResultEvent(result), nil) {
+			return msgs, false
+		}
+
+		msgs = append(msgs, NewToolMessage(result.Content, result.ToolCall))
+	}
+
+	return msgs, true
+}
+
+func (a *Agent) callTool(ctx context.Context, toolCall ToolCall) (result ToolResult) {
+	result.ToolCall = toolCall
+
 	defer func() {
-		if r := recover(); r != nil {
-			result = ""
-			errStr = fmt.Sprintf("recovered. Error: %v", r)
+		if recovered := recover(); recovered != nil {
+			result.Error = fmt.Sprintf("recovered. Error: %v", recovered)
+			result.Content = result.Error
 		}
 	}()
 
 	ctx, toolCall, err := a.hooks.onToolCall(ctx, toolCall)
+	result.ToolCall = toolCall
+
 	if err != nil {
-		return "", err.Error()
+		result.Error = err.Error()
+		result.Content = result.Error
+
+		return result
 	}
 
-	t, ok := a.tools[toolCall.Name]
+	tool, ok := a.tools[toolCall.Name]
 	if !ok {
-		return "", fmt.Sprintf("tool not found: %s", toolCall.Name)
+		result.Error = fmt.Sprintf("tool not found: %s", toolCall.Name)
+		result.Content = result.Error
+
+		return result
 	}
 
-	result, err = t.Execute(ctx, toolCall.Arguments)
+	result.Content, err = tool.Execute(ctx, toolCall.Arguments)
 	if err != nil {
-		return "", err.Error()
+		result.Error = err.Error()
+		result.Content = result.Error
 	}
 
-	_, result, err = a.hooks.onToolResult(ctx, toolCall, result, err)
+	_, result, err = a.hooks.onToolResult(ctx, result)
 	if err != nil {
-		return "", err.Error()
+		result.Error = err.Error()
+		result.Content = result.Error
 	}
 
-	return result, ""
+	return result
 }
 
 func (a *Agent) needsCompaction(lastUsage Usage) bool {
