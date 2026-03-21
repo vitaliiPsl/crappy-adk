@@ -57,6 +57,7 @@ const (
 	EventToolCall       EventType = "tool_call"
 	EventToolResult     EventType = "tool_result"
 	EventContextSummary EventType = "context_summary"
+	EventMessage        EventType = "message"
 )
 
 // Event is a single item emitted by [Stream.Iter].
@@ -66,6 +67,7 @@ type Event struct {
 	ToolCall   ToolCall
 	ToolResult ToolResult
 	Summary    string
+	Message    Message
 }
 
 // ToolResult carries the output of a tool execution.
@@ -99,4 +101,9 @@ func NewToolResultEvent(tr ToolResult) Event {
 // history was compacted. The summary contains the condensed conversation text.
 func NewContextSummaryEvent(summary string) Event {
 	return Event{Type: EventContextSummary, Summary: summary}
+}
+
+// NewMessageEvent returns an event carrying a complete assembled message.
+func NewMessageEvent(msg Message) Event {
+	return Event{Type: EventMessage, Message: msg}
 }

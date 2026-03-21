@@ -123,6 +123,10 @@ func (a *Agent) Stream(ctx context.Context, messages []Message) (*Stream, error)
 			msgs = append(msgs, assistantMsg)
 			s.response.Messages = append(s.response.Messages, assistantMsg)
 
+			if !yield(NewMessageEvent(assistantMsg), nil) {
+				return
+			}
+
 			if len(assistantMsg.ToolCalls) == 0 {
 				return
 			}
@@ -151,6 +155,10 @@ func (a *Agent) Stream(ctx context.Context, messages []Message) (*Stream, error)
 					s.response.Messages = append(s.response.Messages, summaryMsg)
 
 					if !yield(NewContextSummaryEvent(summary), nil) {
+						return
+					}
+
+					if !yield(NewMessageEvent(summaryMsg), nil) {
 						return
 					}
 				}
@@ -244,7 +252,13 @@ func (a *Agent) callToolsSequential(ctx context.Context, toolCalls []ToolCall, y
 			return msgs, false
 		}
 
-		msgs = append(msgs, NewToolMessage(result.Content, result.ToolCall))
+		toolMsg := NewToolMessage(result.Content, result.ToolCall)
+
+		if !yield(NewMessageEvent(toolMsg), nil) {
+			return msgs, false
+		}
+
+		msgs = append(msgs, toolMsg)
 	}
 
 	return msgs, true
@@ -281,7 +295,13 @@ func (a *Agent) callToolsParallel(ctx context.Context, toolCalls []ToolCall, yie
 			return msgs, false
 		}
 
-		msgs = append(msgs, NewToolMessage(result.Content, result.ToolCall))
+		toolMsg := NewToolMessage(result.Content, result.ToolCall)
+
+		if !yield(NewMessageEvent(toolMsg), nil) {
+			return msgs, false
+		}
+
+		msgs = append(msgs, toolMsg)
 	}
 
 	return msgs, true
