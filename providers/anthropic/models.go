@@ -9,7 +9,7 @@ import (
 var knownModels = []kit.ModelConfig{
 	{
 		ID:            "claude-opus-4-6",
-		Provider:      providerID,
+		Provider:      ProviderID,
 		ContextWindow: 200_000,
 		InputLimit:    200_000,
 		OutputLimit:   128_000,
@@ -34,7 +34,7 @@ var knownModels = []kit.ModelConfig{
 	},
 	{
 		ID:            "claude-opus-4-5",
-		Provider:      providerID,
+		Provider:      ProviderID,
 		ContextWindow: 200_000,
 		InputLimit:    200_000,
 		OutputLimit:   64_000,
@@ -59,7 +59,7 @@ var knownModels = []kit.ModelConfig{
 	},
 	{
 		ID:            "claude-sonnet-4-6",
-		Provider:      providerID,
+		Provider:      ProviderID,
 		ContextWindow: 200_000,
 		InputLimit:    200_000,
 		OutputLimit:   64_000,
@@ -84,7 +84,7 @@ var knownModels = []kit.ModelConfig{
 	},
 	{
 		ID:            "claude-sonnet-4-5",
-		Provider:      providerID,
+		Provider:      ProviderID,
 		ContextWindow: 200_000,
 		InputLimit:    200_000,
 		OutputLimit:   64_000,
@@ -109,7 +109,7 @@ var knownModels = []kit.ModelConfig{
 	},
 	{
 		ID:            "claude-haiku-4-5",
-		Provider:      providerID,
+		Provider:      ProviderID,
 		ContextWindow: 200_000,
 		InputLimit:    200_000,
 		OutputLimit:   64_000,

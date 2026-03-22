@@ -1,6 +1,7 @@
 package openai
 
 import (
+	"context"
 	"fmt"
 
 	openaisdk "github.com/openai/openai-go/v3"
@@ -9,27 +10,25 @@ import (
 	"github.com/vitaliiPsl/crappy-adk/kit"
 )
 
-const providerID = "openai"
+// ProviderID uniquely identifies the OpenAI provider.
+const ProviderID = "openai"
 
 var _ kit.Provider = (*Provider)(nil)
 
 // Provider implements [kit.Provider] for the OpenAI Responses API.
-type Provider struct {
-	client *openaisdk.Client
+type Provider struct{}
+
+// New creates an OpenAI provider.
+func New() *Provider {
+	return &Provider{}
 }
 
-// New creates an OpenAI provider authenticated with the given API key.
-func New(apiKey string) *Provider {
-	client := openaisdk.NewClient(option.WithAPIKey(apiKey))
-
-	return &Provider{client: &client}
-}
-
-// Model returns the model with the given ID, or an error if it is unknown.
-func (p *Provider) Model(id string) (kit.Model, error) {
+// Model returns an authenticated model for the given ID and API key.
+func (p *Provider) Model(ctx context.Context, id string, apiKey string) (kit.Model, error) {
 	for _, cfg := range knownModels {
 		if cfg.ID == id {
-			return &model{client: p.client, config: cfg}, nil
+			client := openaisdk.NewClient(option.WithAPIKey(apiKey))
+			return &model{client: &client, config: cfg}, nil
 		}
 	}
 
@@ -37,6 +36,6 @@ func (p *Provider) Model(id string) (kit.Model, error) {
 }
 
 // Models returns the list of supported models.
-func (p *Provider) Models() ([]kit.ModelConfig, error) {
-	return knownModels, nil
+func (p *Provider) Models() []kit.ModelConfig {
+	return knownModels
 }

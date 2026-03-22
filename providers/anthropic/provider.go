@@ -1,6 +1,7 @@
 package anthropic
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/anthropics/anthropic-sdk-go"
@@ -9,28 +10,25 @@ import (
 	"github.com/vitaliiPsl/crappy-adk/kit"
 )
 
-const providerID = "anthropic"
+// ProviderID uniquely identifies the Anthropic provider.
+const ProviderID = "anthropic"
 
 var _ kit.Provider = (*Provider)(nil)
 
 // Provider implements [kit.Provider] for the Anthropic API.
-type Provider struct {
-	client *anthropic.Client
+type Provider struct{}
+
+// New creates an Anthropic provider.
+func New() *Provider {
+	return &Provider{}
 }
 
-func New(apiKey string) *Provider {
-	client := anthropic.NewClient(
-		option.WithAPIKey(apiKey),
-	)
-
-	return &Provider{client: &client}
-}
-
-// Model returns the model with the given ID, or an error if it is unknown.
-func (p *Provider) Model(id string) (kit.Model, error) {
+// Model returns an authenticated model for the given ID and API key.
+func (p *Provider) Model(ctx context.Context, id string, apiKey string) (kit.Model, error) {
 	for _, cfg := range knownModels {
 		if cfg.ID == id {
-			return &model{client: p.client, config: cfg}, nil
+			client := anthropic.NewClient(option.WithAPIKey(apiKey))
+			return &model{client: &client, config: cfg}, nil
 		}
 	}
 
@@ -38,6 +36,6 @@ func (p *Provider) Model(id string) (kit.Model, error) {
 }
 
 // Models returns the list of supported models.
-func (p *Provider) Models() ([]kit.ModelConfig, error) {
-	return knownModels, nil
+func (p *Provider) Models() []kit.ModelConfig {
+	return knownModels
 }

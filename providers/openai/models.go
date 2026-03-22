@@ -9,7 +9,7 @@ import (
 var knownModels = []kit.ModelConfig{
 	{
 		ID:            "gpt-5.4",
-		Provider:      providerID,
+		Provider:      ProviderID,
 		ContextWindow: 1_050_000,
 		InputLimit:    922_000,
 		OutputLimit:   128_000,
@@ -33,7 +33,7 @@ var knownModels = []kit.ModelConfig{
 	},
 	{
 		ID:            "gpt-5.4-pro",
-		Provider:      providerID,
+		Provider:      ProviderID,
 		ContextWindow: 1_050_000,
 		InputLimit:    922_000,
 		OutputLimit:   128_000,
@@ -54,7 +54,7 @@ var knownModels = []kit.ModelConfig{
 	},
 	{
 		ID:            "gpt-5.4-mini",
-		Provider:      providerID,
+		Provider:      ProviderID,
 		ContextWindow: 400_000,
 		InputLimit:    272_000,
 		OutputLimit:   128_000,
@@ -77,7 +77,7 @@ var knownModels = []kit.ModelConfig{
 	},
 	{
 		ID:            "gpt-5.4-nano",
-		Provider:      providerID,
+		Provider:      ProviderID,
 		ContextWindow: 400_000,
 		InputLimit:    272_000,
 		OutputLimit:   128_000,
@@ -100,7 +100,7 @@ var knownModels = []kit.ModelConfig{
 	},
 	{
 		ID:            "gpt-5",
-		Provider:      providerID,
+		Provider:      ProviderID,
 		ContextWindow: 400_000,
 		InputLimit:    272_000,
 		OutputLimit:   128_000,
@@ -123,7 +123,7 @@ var knownModels = []kit.ModelConfig{
 	},
 	{
 		ID:            "gpt-5-mini",
-		Provider:      providerID,
+		Provider:      ProviderID,
 		ContextWindow: 400_000,
 		InputLimit:    272_000,
 		OutputLimit:   128_000,
@@ -146,7 +146,7 @@ var knownModels = []kit.ModelConfig{
 	},
 	{
 		ID:            "gpt-5-nano",
-		Provider:      providerID,
+		Provider:      ProviderID,
 		ContextWindow: 400_000,
 		InputLimit:    272_000,
 		OutputLimit:   128_000,
@@ -169,7 +169,7 @@ var knownModels = []kit.ModelConfig{
 	},
 	{
 		ID:            "gpt-4.1",
-		Provider:      providerID,
+		Provider:      ProviderID,
 		ContextWindow: 1_047_576,
 		InputLimit:    1_047_576,
 		OutputLimit:   32_768,

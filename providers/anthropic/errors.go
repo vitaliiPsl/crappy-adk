@@ -16,7 +16,7 @@ func convertError(err error) error {
 			Kind:      kit.ErrServerError,
 			Message:   err.Error(),
 			Retryable: false,
-			Provider:  providerID,
+			Provider:  ProviderID,
 			Cause:     err,
 		}
 	}
@@ -49,7 +49,7 @@ func convertError(err error) error {
 		Message:    apiErr.Error(),
 		StatusCode: apiErr.StatusCode,
 		Retryable:  retryable,
-		Provider:   providerID,
+		Provider:   ProviderID,
 		Cause:      err,
 	}
 }

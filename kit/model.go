@@ -11,11 +11,11 @@ type ModelMiddleware func(Model) Model
 
 // Provider is a factory for creating models from a specific AI provider.
 type Provider interface {
-	// Model returns the model with the given ID, or an error if it is unknown.
-	Model(id string) (Model, error)
+	// Model returns an authenticated model for the given ID and API key.
+	Model(ctx context.Context, id string, apiKey string) (Model, error)
 
 	// Models returns all models supported by this provider.
-	Models() ([]ModelConfig, error)
+	Models() []ModelConfig
 }
 
 // Model is a single AI model capable of generating responses.

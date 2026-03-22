@@ -22,7 +22,7 @@ func convertError(err error) error {
 			Kind:      kit.ErrServerError,
 			Message:   err.Error(),
 			Retryable: false,
-			Provider:  providerID,
+			Provider:  ProviderID,
 			Cause:     err,
 		}
 	}
@@ -49,7 +49,7 @@ func convertError(err error) error {
 		Message:    apiErr.Message,
 		StatusCode: apiErr.StatusCode,
 		Retryable:  retryable,
-		Provider:   providerID,
+		Provider:   ProviderID,
 		Cause:      err,
 	}
 }
@@ -71,7 +71,7 @@ func convertStreamError(streamErr *ssestream.StreamError, original error) error 
 			Kind:      kit.ErrServerError,
 			Message:   streamErr.Message,
 			Retryable: false,
-			Provider:  providerID,
+			Provider:  ProviderID,
 			Cause:     original,
 		}
 	}
@@ -93,7 +93,7 @@ func convertStreamError(streamErr *ssestream.StreamError, original error) error 
 		Kind:      kind,
 		Message:   payload.Error.Message,
 		Retryable: retryable,
-		Provider:  providerID,
+		Provider:  ProviderID,
 		Cause:     original,
 	}
 }
