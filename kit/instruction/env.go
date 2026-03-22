@@ -11,13 +11,8 @@ import (
 )
 
 // Env returns a [kit.Instruction] that describes the runtime environment.
-func Env() kit.Instruction {
+func Env(workdir string) kit.Instruction {
 	return func(_ context.Context) (string, error) {
-		workdir, err := os.Getwd()
-		if err != nil {
-			return "", fmt.Errorf("get working directory: %w", err)
-		}
-
 		hostname, _ := os.Hostname()
 
 		shell := os.Getenv("SHELL")
