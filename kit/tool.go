@@ -2,6 +2,7 @@ package kit
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/google/jsonschema-go/jsonschema"
 )
@@ -22,4 +23,22 @@ type ToolDefinition struct {
 	Description string
 	// JSON schema describing the tool's arguments.
 	Schema *jsonschema.Schema
+}
+
+// ToolResult carries the output of a tool execution.
+type ToolResult struct {
+	ToolCall ToolCall
+	Content  string
+	Error    string
+}
+
+// NewErrorToolResult creates a [ToolResult] that reports an execution error.
+func NewErrorToolResult(toolCall ToolCall, err error) ToolResult {
+	msg := fmt.Sprintf("%v", err)
+
+	return ToolResult{
+		ToolCall: toolCall,
+		Error:    msg,
+		Content:  msg,
+	}
 }

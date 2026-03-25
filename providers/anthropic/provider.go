@@ -24,10 +24,11 @@ func New() *Provider {
 }
 
 // Model returns an authenticated model for the given ID and API key.
-func (p *Provider) Model(ctx context.Context, id string, apiKey string) (kit.Model, error) {
+func (p *Provider) Model(_ context.Context, id string, apiKey string) (kit.Model, error) {
 	for _, cfg := range knownModels {
 		if cfg.ID == id {
 			client := anthropic.NewClient(option.WithAPIKey(apiKey))
+
 			return &model{client: &client, config: cfg}, nil
 		}
 	}

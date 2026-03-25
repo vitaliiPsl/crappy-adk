@@ -41,7 +41,7 @@ func (s *Stream) Iter() iter.Seq2[Event, error] {
 func (s *Stream) Result() Response {
 	if !s.done {
 		for range s.iter {
-			_ = "" // drain remaininh events
+			_ = "" // drain remaining events
 		}
 	}
 
@@ -68,13 +68,6 @@ type Event struct {
 	ToolResult ToolResult
 	Summary    string
 	Message    Message
-}
-
-// ToolResult carries the output of a tool execution.
-type ToolResult struct {
-	ToolCall ToolCall
-	Content  string
-	Error    string
 }
 
 // NewTextDeltaEvent returns a text delta event with the given text.
@@ -107,3 +100,4 @@ func NewContextSummaryEvent(summary string) Event {
 func NewMessageEvent(msg Message) Event {
 	return Event{Type: EventMessage, Message: msg}
 }
+
