@@ -94,38 +94,27 @@ func (r *retryModel) Generate(ctx context.Context, req kit.ModelRequest) (kit.Mo
 }
 
 // GenerateStream retries on retryable errors before the first chunk. Mid-stream errors pass through.
+// Immediate errors from the underlying GenerateStream are returned directly, preserving the error contract.
 func (r *retryModel) GenerateStream(ctx context.Context, req kit.ModelRequest) (*kit.ModelStream, error) {
+	attempt := 0
+
+	stream, err := r.acquireStream(ctx, req, &attempt)
+	if err != nil {
+		return nil, err
+	}
+
 	return kit.NewModelStream(func(yield func(kit.ModelChunk, error) bool) kit.ModelResponse {
 		var lastErr error
 
-		for attempt := 0; attempt < r.maxAttempts; attempt++ {
-			if attempt > 0 {
-				if err := r.wait(ctx, attempt); err != nil {
-					yield(kit.ModelChunk{}, err)
-
-					return kit.ModelResponse{}
-				}
-			}
-
-			s, err := r.Next.GenerateStream(ctx, req)
-			if err != nil {
-				lastErr = err
-				if !isRetryable(err) {
-					yield(kit.ModelChunk{}, err)
-
-					return kit.ModelResponse{}
-				}
-
-				continue
-			}
-
+		for {
 			started := false
 			retryable := false
 
-			for chunk, err := range s.Iter() {
+			for chunk, err := range stream.Iter() {
 				if err != nil {
 					if !started && isRetryable(err) {
 						lastErr = err
+						attempt++
 						retryable = true
 
 						break
@@ -139,32 +128,73 @@ func (r *retryModel) GenerateStream(ctx context.Context, req kit.ModelRequest) (
 				started = true
 
 				if !yield(chunk, nil) {
-					resp, _ := s.Response()
+					resp, _ := stream.Response()
 
 					return resp
 				}
 			}
 
-			if retryable {
-				continue
+			if !retryable {
+				resp, _ := stream.Response()
+
+				return resp
 			}
 
-			resp, _ := s.Response()
+			s, err := r.acquireStream(ctx, req, &attempt)
+			if err != nil {
+				yield(kit.ModelChunk{}, err)
 
-			return resp
+				return kit.ModelResponse{}
+			}
+
+			if s == nil {
+				yield(kit.ModelChunk{}, lastErr)
+
+				return kit.ModelResponse{}
+			}
+
+			stream = s
+		}
+	}), nil
+}
+
+// acquireStream attempts to get a stream from the underlying model, retrying
+// on retryable errors within the shared attempt budget.
+func (r *retryModel) acquireStream(ctx context.Context, req kit.ModelRequest, attempt *int) (*kit.ModelStream, error) {
+	var lastErr error
+
+	for *attempt < r.maxAttempts {
+		if *attempt > 0 {
+			if err := r.wait(ctx, *attempt); err != nil {
+				return nil, err
+			}
 		}
 
-		yield(kit.ModelChunk{}, lastErr)
+		s, err := r.Next.GenerateStream(ctx, req)
+		if err == nil {
+			return s, nil
+		}
 
-		return kit.ModelResponse{}
-	}), nil
+		lastErr = err
+		*attempt++
+
+		if !isRetryable(err) {
+			return nil, err
+		}
+	}
+
+	return nil, lastErr
 }
 
 // wait sleeps for the backoff duration for the given attempt, respecting context cancellation.
 func (r *retryModel) wait(ctx context.Context, attempt int) error {
 	delay := r.backoff(attempt)
+
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+
 	select {
-	case <-time.After(delay):
+	case <-timer.C:
 		return nil
 	case <-ctx.Done():
 		return ctx.Err()

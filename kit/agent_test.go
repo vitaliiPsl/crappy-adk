@@ -312,7 +312,13 @@ func TestAgent_Run_UsageAccumulated(t *testing.T) {
 
 func TestAgent_Stream_Events(t *testing.T) {
 	model := kittest.NewModel(t,
-		kittest.Turn{Text: "Hello world"},
+		kittest.Turn{
+			Text: "Hello world",
+			Stream: []kittest.ChunkResult{
+				{Chunk: kit.NewTextChunk("Hello ")},
+				{Chunk: kit.NewTextChunk("world")},
+			},
+		},
 	)
 
 	agent, err := kit.NewAgent(model)
@@ -337,8 +343,7 @@ func TestAgent_Stream_Events(t *testing.T) {
 		eventTypes = append(eventTypes, event.Type)
 	}
 
-	// Expect: text delta, then message
-	expected := []kit.EventType{kit.EventTextDelta, kit.EventMessage}
+	expected := []kit.EventType{kit.EventTextDelta, kit.EventTextDelta, kit.EventMessage}
 	if len(eventTypes) != len(expected) {
 		t.Fatalf("event count = %d, want %d: %v", len(eventTypes), len(expected), eventTypes)
 	}
@@ -351,15 +356,26 @@ func TestAgent_Stream_Events(t *testing.T) {
 }
 
 func TestAgent_Stream_ToolCallEvents(t *testing.T) {
+	searchCall := kit.ToolCall{ID: "call_1", Name: "search", Arguments: map[string]any{"q": "test"}}
+
 	tool := kittest.NewTool(t, "search", "Search",
 		kittest.ToolResponse{Result: "found it"},
 	)
 
 	model := kittest.NewModel(t,
-		kittest.Turn{ToolCalls: []kit.ToolCall{
-			{ID: "call_1", Name: "search", Arguments: map[string]any{"q": "test"}},
-		}},
-		kittest.Turn{Text: "Here you go."},
+		kittest.Turn{
+			ToolCalls: []kit.ToolCall{searchCall},
+			Stream: []kittest.ChunkResult{
+				{Chunk: kit.NewThinkingChunk("let me search")},
+				{Chunk: kit.NewToolCallChunk(searchCall)},
+			},
+		},
+		kittest.Turn{
+			Text: "Here you go.",
+			Stream: []kittest.ChunkResult{
+				{Chunk: kit.NewTextChunk("Here you go.")},
+			},
+		},
 	)
 
 	agent, err := kit.NewAgent(model,
@@ -387,9 +403,10 @@ func TestAgent_Stream_ToolCallEvents(t *testing.T) {
 		eventTypes = append(eventTypes, event.Type)
 	}
 
-	// Turn 1: tool_call chunk, assistant message, tool_result, tool message
+	// Turn 1: thinking chunk, tool_call chunk, assistant message, tool_result, tool message
 	// Turn 2: text delta, assistant message
 	expected := []kit.EventType{
+		kit.EventThinkingDelta,
 		kit.EventToolCall,
 		kit.EventMessage,
 		kit.EventToolResult,
@@ -406,6 +423,55 @@ func TestAgent_Stream_ToolCallEvents(t *testing.T) {
 		if got != expected[idx] {
 			t.Errorf("event[%d] = %q, want %q", idx, got, expected[idx])
 		}
+	}
+}
+
+func TestAgent_Run_StreamError(t *testing.T) {
+	model := kittest.NewModel(t,
+		kittest.Turn{Stream: []kittest.ChunkResult{
+			{Err: errors.New("stream broke")},
+		}},
+	)
+
+	agent, err := kit.NewAgent(model)
+	if err != nil {
+		t.Fatalf("NewAgent: %v", err)
+	}
+
+	_, err = agent.Run(context.Background(), []kit.Message{
+		kit.NewUserMessage(kit.NewTextPart("Hi")),
+	})
+	if err == nil {
+		t.Fatal("expected error from Run")
+	}
+
+	if got := err.Error(); got != "stream broke" {
+		t.Errorf("error = %q, want %q", got, "stream broke")
+	}
+}
+
+func TestAgent_Run_MidStreamError(t *testing.T) {
+	model := kittest.NewModel(t,
+		kittest.Turn{Stream: []kittest.ChunkResult{
+			{Chunk: kit.NewTextChunk("partial ")},
+			{Err: errors.New("connection lost")},
+		}},
+	)
+
+	agent, err := kit.NewAgent(model)
+	if err != nil {
+		t.Fatalf("NewAgent: %v", err)
+	}
+
+	_, err = agent.Run(context.Background(), []kit.Message{
+		kit.NewUserMessage(kit.NewTextPart("Hi")),
+	})
+	if err == nil {
+		t.Fatal("expected error from Run")
+	}
+
+	if got := err.Error(); got != "connection lost" {
+		t.Errorf("error = %q, want %q", got, "connection lost")
 	}
 }
 
