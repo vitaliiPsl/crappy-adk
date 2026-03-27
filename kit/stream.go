@@ -32,6 +32,17 @@ type Stream struct {
 	done     bool
 }
 
+// NewStream constructs a Stream from fn. fn is invoked lazily on first
+// iteration; it should yield events and return the accumulated Response.
+func NewStream(fn func(yield func(Event, error) bool) Response) *Stream {
+	s := &Stream{}
+	s.iter = func(yield func(Event, error) bool) {
+		s.response = fn(yield)
+	}
+
+	return s
+}
+
 // Iter returns an iterator over the events produced by the agent.
 func (s *Stream) Iter() iter.Seq2[Event, error] {
 	return func(yield func(Event, error) bool) {

@@ -82,23 +82,21 @@ func (a *Agent) Stream(ctx context.Context, msgs []Message) (*Stream, error) {
 		return nil, err
 	}
 
-	s := &Stream{}
-	s.iter = func(yield func(Event, error) bool) {
+	return NewStream(func(yield func(Event, error) bool) Response {
 		response, runErr := a.runLoop(ctx, instruction, msgs, yield)
-		s.response = response
 
 		if _, hookErr := a.hooks.onRunEnd(ctx, response, runErr); hookErr != nil {
 			yield(Event{}, hookErr)
 
-			return
+			return response
 		}
 
 		if runErr != nil {
 			yield(Event{}, runErr)
 		}
-	}
 
-	return s, nil
+		return response
+	}), nil
 }
 
 func (a *Agent) runLoop(
