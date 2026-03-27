@@ -64,7 +64,7 @@ func (a *Agent) Run(ctx context.Context, messages []Message) (Response, error) {
 		return Response{}, err
 	}
 
-	return s.Result(), nil
+	return s.Result()
 }
 
 // Stream executes the ReAct loop and returns a [Stream] that emits incremental
@@ -84,13 +84,12 @@ func (a *Agent) Stream(ctx context.Context, msgs []Message) (*Stream, error) {
 
 	s := &Stream{}
 	s.iter = func(yield func(Event, error) bool) {
-		defer func() { s.done = true }()
-
 		response, runErr := a.runLoop(ctx, instruction, msgs, yield)
 		s.response = response
 
 		if _, hookErr := a.hooks.onRunEnd(ctx, response, runErr); hookErr != nil {
 			yield(Event{}, hookErr)
+
 			return
 		}
 

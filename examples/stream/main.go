@@ -61,7 +61,12 @@ func main() {
 	fmt.Println()
 
 	// Multi-turn: collect produced messages and continue the conversation.
-	messages = append(messages, stream.Result().Messages...)
+	result, err := stream.Result()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	messages = append(messages, result.Messages...)
 	messages = append(messages, kit.NewUserMessage(kit.NewTextPart("Which file is the entry point?")))
 
 	stream, err = agent.Stream(ctx, messages)

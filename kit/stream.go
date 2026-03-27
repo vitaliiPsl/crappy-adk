@@ -23,29 +23,41 @@ func (r Response) LastMessage() Message {
 	return Message{}
 }
 
-// Stream is returned by [Agent.Run]. It holds a lazy iterator; execution
+// Stream is returned by [Agent.Stream]. It holds a lazy iterator; execution
 // begins when the caller first ranges over Iter.
 type Stream struct {
 	iter     iter.Seq2[Event, error]
 	response Response
+	err      error
 	done     bool
 }
 
 // Iter returns an iterator over the events produced by the agent.
 func (s *Stream) Iter() iter.Seq2[Event, error] {
-	return s.iter
+	return func(yield func(Event, error) bool) {
+		defer func() { s.done = true }()
+
+		for event, err := range s.iter {
+			if err != nil {
+				s.err = err
+			}
+
+			if !yield(event, err) {
+				return
+			}
+		}
+	}
 }
 
-// Result returns the assembled Response. If Iter has not been exhausted,
-// it drains the remaining events first.
-func (s *Stream) Result() Response {
+// Result returns the assembled Response and any error that occurred during
+// the run. If Iter has not been exhausted, it drains the remaining events first.
+func (s *Stream) Result() (Response, error) {
 	if !s.done {
-		for range s.iter {
-			_ = "" // drain remaining events
+		for range s.Iter() { //nolint:revive // drain remaining events
 		}
 	}
 
-	return s.response
+	return s.response, s.err
 }
 
 // EventType classifies events emitted during a streamed agent run.
@@ -100,4 +112,3 @@ func NewContextSummaryEvent(summary string) Event {
 func NewMessageEvent(msg Message) Event {
 	return Event{Type: EventMessage, Message: msg}
 }
-
