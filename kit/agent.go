@@ -209,7 +209,12 @@ func (a *Agent) callModel(
 		}
 	}
 
-	_, resp, err := a.hooks.onModelResponse(ctx, stream.Response())
+	modelResp, streamErr := stream.Response()
+	if streamErr != nil {
+		return Message{}, Usage{}, streamErr
+	}
+
+	_, resp, err := a.hooks.onModelResponse(ctx, modelResp)
 	if err != nil {
 		return Message{}, Usage{}, fmt.Errorf("model response hook failed: %w", err)
 	}

@@ -139,7 +139,9 @@ func (r *retryModel) GenerateStream(ctx context.Context, req kit.ModelRequest) (
 				started = true
 
 				if !yield(chunk, nil) {
-					return s.Response()
+					resp, _ := s.Response()
+
+					return resp
 				}
 			}
 
@@ -147,7 +149,9 @@ func (r *retryModel) GenerateStream(ctx context.Context, req kit.ModelRequest) (
 				continue
 			}
 
-			return s.Response()
+			resp, _ := s.Response()
+
+			return resp
 		}
 
 		yield(kit.ModelChunk{}, lastErr)

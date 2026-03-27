@@ -126,6 +126,7 @@ type ModelResponse struct {
 type ModelStream struct {
 	iter     iter.Seq2[ModelChunk, error]
 	response ModelResponse
+	err      error
 	done     bool
 }
 
@@ -136,7 +137,6 @@ func NewModelStream(fn func(yield func(ModelChunk, error) bool) ModelResponse) *
 	s := &ModelStream{}
 	s.iter = func(yield func(ModelChunk, error) bool) {
 		s.response = fn(yield)
-		s.done = true
 	}
 
 	return s
@@ -144,19 +144,31 @@ func NewModelStream(fn func(yield func(ModelChunk, error) bool) ModelResponse) *
 
 // Iter returns an iterator over the incremental chunks of the stream.
 func (s *ModelStream) Iter() iter.Seq2[ModelChunk, error] {
-	return s.iter
+	return func(yield func(ModelChunk, error) bool) {
+		defer func() { s.done = true }()
+
+		for chunk, err := range s.iter {
+			if err != nil {
+				s.err = err
+			}
+
+			if !yield(chunk, err) {
+				return
+			}
+		}
+	}
 }
 
-// Response returns the complete ModelResponse. If the stream has not been
-// fully consumed, it drains the remaining chunks first.
-func (s *ModelStream) Response() ModelResponse {
+// Response returns the complete ModelResponse and any error that occurred
+// during streaming. If the stream has not been fully consumed, it drains
+// the remaining chunks first.
+func (s *ModelStream) Response() (ModelResponse, error) {
 	if !s.done {
-		for range s.iter {
-			_ = "" // drain remaining chunks
+		for range s.Iter() { //nolint:revive // drain remaining chunks
 		}
 	}
 
-	return s.response
+	return s.response, s.err
 }
 
 // ChunkType indicates the kind of content carried by a ModelChunk.
