@@ -1,0 +1,174 @@
+package kittest
+
+import (
+	"context"
+	"testing"
+
+	"github.com/vitaliiPsl/crappy-adk/kit"
+)
+
+// Turn describes a single model response in terms the test cares about.
+type Turn struct {
+	Text      string
+	Thinking  string
+	ToolCalls []kit.ToolCall
+	Usage     kit.Usage
+	Error     error
+}
+
+func (turn Turn) modelResponse() kit.ModelResponse {
+	return kit.ModelResponse{
+		Message:      kit.NewAssistantMessage(turn.Text, turn.Thinking, turn.ToolCalls),
+		FinishReason: turn.finishReason(),
+		Usage:        turn.Usage,
+	}
+}
+
+func (turn Turn) chunks() []kit.ModelChunk {
+	var chunks []kit.ModelChunk
+
+	if turn.Thinking != "" {
+		chunks = append(chunks, kit.NewThinkingChunk(turn.Thinking))
+	}
+
+	if turn.Text != "" {
+		chunks = append(chunks, kit.NewTextChunk(turn.Text))
+	}
+
+	for _, toolCall := range turn.ToolCalls {
+		chunks = append(chunks, kit.NewToolCallChunk(toolCall))
+	}
+
+	return chunks
+}
+
+func (turn Turn) finishReason() kit.FinishReason {
+	if len(turn.ToolCalls) > 0 {
+		return kit.FinishReasonToolCall
+	}
+
+	return kit.FinishReasonStop
+}
+
+// Model is a programmable test double for [kit.Model]. Callers describe a
+// sequence of [Turn] values. Each Generate or GenerateStream call pops the
+// next one. If the queue is exhausted the test fails.
+type Model struct {
+	t      *testing.T
+	config kit.ModelConfig
+	turns  []Turn
+	calls  []kit.ModelRequest
+	idx    int
+}
+
+// NewModel creates a [Model] that will play through the given turns in order.
+func NewModel(t *testing.T, turns ...Turn) *Model {
+	return &Model{
+		t:     t,
+		turns: turns,
+		config: kit.ModelConfig{
+			ID:            "test-model",
+			Provider:      "test",
+			ContextWindow: 128_000,
+			InputLimit:    128_000,
+			OutputLimit:   16_000,
+		},
+	}
+}
+
+// Config returns the static model configuration.
+func (model *Model) Config() kit.ModelConfig {
+	return model.config
+}
+
+// Generate returns the next queued turn as a complete response.
+func (model *Model) Generate(_ context.Context, req kit.ModelRequest) (kit.ModelResponse, error) {
+	turn := model.next(req)
+	if turn.Error != nil {
+		return kit.ModelResponse{}, turn.Error
+	}
+
+	return turn.modelResponse(), nil
+}
+
+// GenerateStream returns a stream that yields the next turn's chunks, then
+// exposes the assembled response.
+func (model *Model) GenerateStream(_ context.Context, req kit.ModelRequest) (*kit.ModelStream, error) {
+	turn := model.next(req)
+	if turn.Error != nil {
+		return nil, turn.Error
+	}
+
+	chunks := turn.chunks()
+	resp := turn.modelResponse()
+
+	stream := kit.NewModelStream(func(yield func(kit.ModelChunk, error) bool) kit.ModelResponse {
+		for _, chunk := range chunks {
+			if !yield(chunk, nil) {
+				break
+			}
+		}
+
+		return resp
+	})
+
+	return stream, nil
+}
+
+func (model *Model) next(req kit.ModelRequest) Turn {
+	model.t.Helper()
+
+	idx := model.idx
+	model.idx++
+
+	model.calls = append(model.calls, req)
+
+	if idx >= len(model.turns) {
+		model.t.Fatalf("kittest.Model: no more queued turns (call %d)", idx+1)
+	}
+
+	return model.turns[idx]
+}
+
+// Assertion helpers
+
+// CallCount returns the number of times the model was called.
+func (model *Model) CallCount() int {
+	return len(model.calls)
+}
+
+// CallAt returns the request from the call at the given index.
+func (model *Model) CallAt(index int) kit.ModelRequest {
+	model.t.Helper()
+
+	if index >= len(model.calls) {
+		model.t.Fatalf("kittest.Model: call index %d out of range (got %d calls)", index, len(model.calls))
+	}
+
+	return model.calls[index]
+}
+
+// AssertCallCount fails the test if the model was not called exactly n times.
+func (model *Model) AssertCallCount(t *testing.T, expected int) {
+	t.Helper()
+
+	if len(model.calls) != expected {
+		t.Errorf("model call count = %d, want %d", len(model.calls), expected)
+	}
+}
+
+// AssertToolCalled fails the test if none of the model's requests included
+// a tool with the given name.
+func (model *Model) AssertToolCalled(t *testing.T, name string) {
+	t.Helper()
+
+	for _, req := range model.calls {
+		for _, tool := range req.Tools {
+			if tool.Name == name {
+				return
+			}
+		}
+	}
+
+	t.Errorf("model was never called with tool %q", name)
+}
