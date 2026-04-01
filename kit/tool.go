@@ -27,9 +27,9 @@ type ToolDefinition struct {
 
 // ToolResult carries the output of a tool execution.
 type ToolResult struct {
-	ToolCall ToolCall
-	Content  string
-	Error    string
+	ToolCall ToolCall `json:"tool_call"`
+	Content  string   `json:"content,omitempty"`
+	Error    string   `json:"error,omitempty"`
 }
 
 // NewErrorToolResult creates a [ToolResult] that reports an execution error.

@@ -27,22 +27,22 @@ const (
 // A message may contain multiple parts of different types.
 type ContentPart struct {
 	// Type indicates what kind of content this part carries.
-	Type ContentType
+	Type ContentType `json:"type"`
 
 	// Text holds the text value for ContentTypeText parts.
-	Text string
+	Text string `json:"text,omitempty"`
 
 	// MediaType is the MIME type for binary or URL-based parts
 	// (e.g. "image/png", "application/pdf").
-	MediaType string
+	MediaType string `json:"media_type,omitempty"`
 
 	// Data holds raw bytes for inline binary content.
 	// Mutually exclusive with URL.
-	Data []byte
+	Data []byte `json:"data,omitempty"`
 
 	// URL is a remote reference for URL-based content.
 	// Mutually exclusive with Data.
-	URL string
+	URL string `json:"url,omitempty"`
 }
 
 // NewTextPart creates a text content part.
@@ -75,29 +75,29 @@ func NewDocumentDataPart(data []byte, mediaType string) ContentPart {
 // Message is a single entry in the conversation history.
 type Message struct {
 	// Who sent this message.
-	Role MessageRole
+	Role MessageRole `json:"role"`
 
 	// Content holds the parts that make up this message.
 	// User messages may contain text, images, documents, etc.
 	// Assistant and tool messages contain text only.
-	Content []ContentPart
+	Content []ContentPart `json:"content,omitempty"`
 
 	// Thinking is the reasoning produced by the model when extended thinking is
 	// enabled. Must be preserved in conversation history for thinking-enabled models.
-	Thinking string
+	Thinking string `json:"thinking,omitempty"`
 
 	// Name of the tool that produced this message. Set on tool messages.
-	ToolName string
+	ToolName string `json:"tool_name,omitempty"`
 	// ID of the tool call this message is a result for. Set on tool messages.
-	ToolCallID string
+	ToolCallID string `json:"tool_call_id,omitempty"`
 
 	// Tool calls requested by the model. Set on assistant messages.
-	ToolCalls []ToolCall
+	ToolCalls []ToolCall `json:"tool_calls,omitempty"`
 
 	// IsSummary marks this message as a compaction summary. When building
 	// input for the next run, clients can use the last summary message as
 	// the starting point — everything before it has been compacted away.
-	IsSummary bool
+	IsSummary bool `json:"is_summary,omitempty"`
 }
 
 // Text returns the concatenation of all text parts in the message.
@@ -115,14 +115,14 @@ func (m Message) Text() string {
 
 type ToolCall struct {
 	// Unique identifier for this call, used to match results back to the model.
-	ID string
+	ID string `json:"id"`
 	// Name of the tool to execute.
-	Name string
+	Name string `json:"name"`
 	// Arguments parsed from the model's response.
-	Arguments map[string]any
+	Arguments map[string]any `json:"arguments,omitempty"`
 	// Metadata holds provider-specific data that must be preserved across turns
 	// (e.g. Gemini's thought_signature for thinking models).
-	Metadata map[string]any
+	Metadata map[string]any `json:"metadata,omitempty"`
 }
 
 // NewUserMessage creates a user message with the given content parts.
