@@ -84,7 +84,7 @@ func (h *hooks) onToolCall(ctx context.Context, call ToolCall) (context.Context,
 
 		ctx, call, err = fn(ctx, call)
 		if err != nil {
-			return ctx, ToolCall{}, err
+			return ctx, call, err
 		}
 	}
 
@@ -97,7 +97,7 @@ func (h *hooks) onToolResult(ctx context.Context, result ToolResult) (context.Co
 
 		ctx, result, err = fn(ctx, result)
 		if err != nil {
-			return ctx, ToolResult{}, err
+			return ctx, result, err
 		}
 	}
 
