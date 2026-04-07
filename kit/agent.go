@@ -124,6 +124,7 @@ func (a *Agent) runLoop(
 		response.Messages = append(response.Messages, assistantMsg)
 
 		response.Usage.Add(usage)
+		response.LastUsage = usage
 
 		if !yield(NewMessageEvent(assistantMsg), nil) {
 			return response, nil

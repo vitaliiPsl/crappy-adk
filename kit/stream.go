@@ -7,8 +7,11 @@ type Response struct {
 	// Messages are all new messages produced during this run.
 	Messages []Message
 
-	// Usage is the token consumption accumulated across all turns.
+	// Usage is the token consumption accumulated across all model calls.
 	Usage Usage
+
+	// LastUsage is the token consumption of the final model call.
+	LastUsage Usage
 }
 
 // LastMessage returns the final assistant message, or a zero Message if
