@@ -37,11 +37,11 @@ func (m *model) Generate(ctx context.Context, req kit.ModelRequest) (kit.ModelRe
 	return convertResponse(resp), nil
 }
 
-func (m *model) GenerateStream(ctx context.Context, req kit.ModelRequest) (*kit.ModelStream, error) {
+func (m *model) GenerateStream(ctx context.Context, req kit.ModelRequest) (*kit.Stream[kit.ModelChunk, kit.ModelResponse], error) {
 	params := buildParams(req, m.config.ID)
 	stream := m.client.Responses.NewStreaming(ctx, params)
 
-	return kit.NewModelStream(func(yield func(kit.ModelChunk, error) bool) kit.ModelResponse {
+	return kit.NewStream(func(yield func(kit.ModelChunk, error) bool) kit.ModelResponse {
 		defer func() { _ = stream.Close() }()
 
 		var response *responses.Response

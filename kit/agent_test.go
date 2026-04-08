@@ -503,7 +503,7 @@ func TestAgent_Run_Hooks(t *testing.T) {
 
 			return ctx, resp, nil
 		}),
-		kit.WithOnRunEnd(func(ctx context.Context, _ kit.Response, _ error) (context.Context, error) {
+		kit.WithOnRunEnd(func(ctx context.Context, _ kit.Result, _ error) (context.Context, error) {
 			hookOrder = append(hookOrder, "run_end")
 
 			return ctx, nil

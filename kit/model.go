@@ -2,7 +2,6 @@ package kit
 
 import (
 	"context"
-	"iter"
 	"time"
 )
 
@@ -29,7 +28,7 @@ type Model interface {
 	// GenerateStream sends a request to the model and streams the response as
 	// a sequence of chunks. The stream also exposes the final ModelResponse
 	// once iteration completes.
-	GenerateStream(ctx context.Context, req ModelRequest) (*ModelStream, error)
+	GenerateStream(ctx context.Context, req ModelRequest) (*Stream[ModelChunk, ModelResponse], error)
 }
 
 // ModelConfig holds static metadata for a model.
@@ -119,56 +118,6 @@ type ModelResponse struct {
 
 	// Usage reports token consumption for this call.
 	Usage Usage
-}
-
-// ModelStream is the result of a streaming generation call. Callers consume
-// delta chunks via Iter and retrieve the assembled result via Response.
-type ModelStream struct {
-	iter     iter.Seq2[ModelChunk, error]
-	response ModelResponse
-	err      error
-	done     bool
-}
-
-// NewModelStream constructs a ModelStream from fn. fn is invoked lazily on
-// first iteration; it should yield ModelChunk deltas and return the complete
-// ModelResponse when done.
-func NewModelStream(fn func(yield func(ModelChunk, error) bool) ModelResponse) *ModelStream {
-	s := &ModelStream{}
-	s.iter = func(yield func(ModelChunk, error) bool) {
-		s.response = fn(yield)
-	}
-
-	return s
-}
-
-// Iter returns an iterator over the incremental chunks of the stream.
-func (s *ModelStream) Iter() iter.Seq2[ModelChunk, error] {
-	return func(yield func(ModelChunk, error) bool) {
-		defer func() { s.done = true }()
-
-		for chunk, err := range s.iter {
-			if err != nil {
-				s.err = err
-			}
-
-			if !yield(chunk, err) {
-				return
-			}
-		}
-	}
-}
-
-// Response returns the complete ModelResponse and any error that occurred
-// during streaming. If the stream has not been fully consumed, it drains
-// the remaining chunks first.
-func (s *ModelStream) Response() (ModelResponse, error) {
-	if !s.done {
-		for range s.Iter() { //nolint:revive // drain remaining chunks
-		}
-	}
-
-	return s.response, s.err
 }
 
 // ChunkType indicates the kind of content carried by a ModelChunk.

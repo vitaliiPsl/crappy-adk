@@ -7,7 +7,7 @@ import "context"
 // Returning an error cancels the request.
 type OnModelRequest func(ctx context.Context, req ModelRequest) (context.Context, ModelRequest, error)
 
-// OnModelResponse is called after each model response.
+// OnModelResponse is called after each model result.
 // The returned context and [ModelResponse] replace the originals for the agent loop.
 // Returning an error stops the agent.
 type OnModelResponse func(ctx context.Context, resp ModelResponse) (context.Context, ModelResponse, error)
@@ -29,7 +29,7 @@ type OnRunStart func(ctx context.Context, messages []Message) (context.Context, 
 
 // OnRunEnd is called once after the ReAct loop completes.
 // err is non-nil if the run failed. Returning an error overrides the original run error.
-type OnRunEnd func(ctx context.Context, response Response, err error) (context.Context, error)
+type OnRunEnd func(ctx context.Context, result Result, err error) (context.Context, error)
 
 // OnTurnStart is called at the beginning of each ReAct loop iteration, before the model is called.
 // The returned context and messages replace the originals for this turn.
@@ -117,11 +117,11 @@ func (h *hooks) onRunStart(ctx context.Context, messages []Message) (context.Con
 	return ctx, messages, nil
 }
 
-func (h *hooks) onRunEnd(ctx context.Context, response Response, runErr error) (context.Context, error) {
+func (h *hooks) onRunEnd(ctx context.Context, result Result, runErr error) (context.Context, error) {
 	for _, fn := range h.runEnd {
 		var err error
 
-		ctx, err = fn(ctx, response, runErr)
+		ctx, err = fn(ctx, result, runErr)
 		if err != nil {
 			return ctx, err
 		}

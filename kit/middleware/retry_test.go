@@ -337,7 +337,7 @@ func TestRetry_GenerateStream_MixedImmediateAndPreChunkRetries(t *testing.T) {
 	model.AssertCallCount(t, 3)
 }
 
-func collectText(t *testing.T, stream *kit.ModelStream) string {
+func collectText(t *testing.T, stream *kit.Stream[kit.ModelChunk, kit.ModelResponse]) string {
 	t.Helper()
 
 	var text strings.Builder

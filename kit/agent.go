@@ -55,13 +55,13 @@ func NewAgent(model Model, options ...AgentOption) (*Agent, error) {
 	return agent, nil
 }
 
-// Run executes the ReAct loop and returns the accumulated [Response] once the
+// Run executes the ReAct loop and returns the accumulated [Result] once the
 // agent reaches a final answer. Use [Agent.Stream] instead to receive
 // incremental events as the agent works.
-func (a *Agent) Run(ctx context.Context, messages []Message) (Response, error) {
+func (a *Agent) Run(ctx context.Context, messages []Message) (Result, error) {
 	s, err := a.Stream(ctx, messages)
 	if err != nil {
-		return Response{}, err
+		return Result{}, err
 	}
 
 	return s.Result()
@@ -70,8 +70,8 @@ func (a *Agent) Run(ctx context.Context, messages []Message) (Response, error) {
 // Stream executes the ReAct loop and returns a [Stream] that emits incremental
 // [Event] values — text deltas, thinking deltas, tool calls, and tool results —
 // as the agent works. Call [Stream.Result] after iteration to retrieve the
-// accumulated [Response].
-func (a *Agent) Stream(ctx context.Context, msgs []Message) (*Stream, error) {
+// accumulated [Result].
+func (a *Agent) Stream(ctx context.Context, msgs []Message) (*Stream[Event, Result], error) {
 	instruction, err := ComposeInstructions(ctx, "\n\n", a.instructions...)
 	if err != nil {
 		return nil, err
@@ -82,7 +82,7 @@ func (a *Agent) Stream(ctx context.Context, msgs []Message) (*Stream, error) {
 		return nil, err
 	}
 
-	return NewStream(func(yield func(Event, error) bool) Response {
+	return NewStream(func(yield func(Event, error) bool) Result {
 		response, runErr := a.runLoop(ctx, instruction, msgs, yield)
 
 		if _, hookErr := a.hooks.onRunEnd(ctx, response, runErr); hookErr != nil {
@@ -104,7 +104,7 @@ func (a *Agent) runLoop(
 	instruction string,
 	msgs []Message,
 	yield func(Event, error) bool,
-) (response Response, err error) {
+) (response Result, err error) {
 	for {
 		if err := ctx.Err(); err != nil {
 			return response, err
@@ -208,7 +208,7 @@ func (a *Agent) callModel(
 		}
 	}
 
-	modelResp, streamErr := stream.Response()
+	modelResp, streamErr := stream.Result()
 	if streamErr != nil {
 		return Message{}, Usage{}, streamErr
 	}

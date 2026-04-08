@@ -105,7 +105,7 @@ func (model *Model) Generate(_ context.Context, req kit.ModelRequest) (kit.Model
 // GenerateStream returns a stream that yields the next turn's chunks, then
 // exposes the assembled response. When [Turn.Stream] is set, those chunk
 // results are yielded.
-func (model *Model) GenerateStream(_ context.Context, req kit.ModelRequest) (*kit.ModelStream, error) {
+func (model *Model) GenerateStream(_ context.Context, req kit.ModelRequest) (*kit.Stream[kit.ModelChunk, kit.ModelResponse], error) {
 	turn := model.next(req)
 	if turn.Error != nil {
 		return nil, turn.Error
@@ -116,7 +116,7 @@ func (model *Model) GenerateStream(_ context.Context, req kit.ModelRequest) (*ki
 	if turn.Stream != nil {
 		results := turn.Stream
 
-		return kit.NewModelStream(func(yield func(kit.ModelChunk, error) bool) kit.ModelResponse {
+		return kit.NewStream(func(yield func(kit.ModelChunk, error) bool) kit.ModelResponse {
 			for _, result := range results {
 				if !yield(result.Chunk, result.Err) {
 					break
@@ -129,7 +129,7 @@ func (model *Model) GenerateStream(_ context.Context, req kit.ModelRequest) (*ki
 
 	chunks := turn.chunks()
 
-	return kit.NewModelStream(func(yield func(kit.ModelChunk, error) bool) kit.ModelResponse {
+	return kit.NewStream(func(yield func(kit.ModelChunk, error) bool) kit.ModelResponse {
 		for _, chunk := range chunks {
 			if !yield(chunk, nil) {
 				break
