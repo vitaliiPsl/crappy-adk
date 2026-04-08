@@ -348,14 +348,14 @@ func (a *Agent) needsCompaction(lastUsage Usage) bool {
 		return false
 	}
 
-	contextWindow := a.model.Config().ContextWindow
-	if contextWindow <= 0 {
+	inputLimit := a.model.Config().InputLimit
+	if inputLimit <= 0 {
 		return false
 	}
 
 	used := int64(lastUsage.InputTokens) + int64(lastUsage.OutputTokens)
 
-	return used > int64(float64(contextWindow)*a.config.CompactionThreshold)
+	return used > int64(float64(inputLimit)*a.config.CompactionThreshold)
 }
 
 func (a *Agent) compact(
