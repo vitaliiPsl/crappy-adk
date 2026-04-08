@@ -4,20 +4,21 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"os"
+	// "os"
 
 	"github.com/vitaliiPsl/crappy-adk/kit"
 	"github.com/vitaliiPsl/crappy-adk/kit/middleware"
-	"github.com/vitaliiPsl/crappy-adk/providers/google"
+	"github.com/vitaliiPsl/crappy-adk/providers/custom"
+	// "github.com/vitaliiPsl/crappy-adk/providers/google"
 	filesystem "github.com/vitaliiPsl/crappy-adk/tools/fs"
 )
 
 func main() {
 	ctx := context.Background()
 
-	provider := google.New()
+	provider := custom.New("")
 
-	model, err := provider.Model(ctx, "gemini-2.5-flash", os.Getenv("GEMINI_API_KEY"))
+	model, err := provider.Model(ctx, "gemma4", "")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -54,7 +55,7 @@ func main() {
 		case kit.EventToolCall:
 			fmt.Printf("\n[tool call] %s\n", event.ToolCall.Name)
 		case kit.EventToolResult:
-			fmt.Printf("[tool result] %s\n\n", event.ToolResult.ToolCall.ID)
+			fmt.Printf("[tool result] %s\n\n", event.ToolResult.Content)
 		}
 	}
 
