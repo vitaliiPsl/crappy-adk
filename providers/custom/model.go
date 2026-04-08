@@ -149,7 +149,7 @@ func streamResponse(
 
 func (m *model) buildParams(req kit.ModelRequest) openaisdk.ChatCompletionNewParams {
 	params := openaisdk.ChatCompletionNewParams{
-		Model:    openaisdk.ChatModel(m.config.ID),
+		Model:    m.config.ID,
 		Messages: convertMessages(req.Instruction, req.Messages),
 		Tools:    convertTools(req.Tools),
 	}
@@ -283,7 +283,7 @@ func convertResponse(resp openaisdk.ChatCompletion) kit.ModelResponse {
 
 	return kit.ModelResponse{
 		Message:      kit.NewAssistantMessage(msg.Content, "", toolCalls),
-		FinishReason: convertFinishReason(string(choice.FinishReason)),
+		FinishReason: convertFinishReason((choice.FinishReason)),
 		Usage: kit.Usage{
 			InputTokens:  int32(resp.Usage.PromptTokens),
 			OutputTokens: int32(resp.Usage.CompletionTokens),

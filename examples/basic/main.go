@@ -41,7 +41,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	fmt.Println(resp.LastMessage().Text())
+	fmt.Println(resp.Output.Text)
 
 	// Append new messages produced this run, then ask a follow-up.
 	messages = append(messages, resp.Messages...)
@@ -52,5 +52,5 @@ func main() {
 		log.Fatal(err)
 	}
 
-	fmt.Println(resp.LastMessage().Text())
+	fmt.Println(resp.Output.Text)
 }

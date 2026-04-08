@@ -131,6 +131,10 @@ func (a *Agent) runLoop(
 		}
 
 		if len(assistantMsg.ToolCalls) == 0 {
+			if len(assistantMsg.Content) > 0 {
+				response.Output = assistantMsg.Content[0]
+			}
+
 			return response, nil
 		}
 

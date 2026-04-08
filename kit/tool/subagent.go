@@ -79,7 +79,7 @@ func WithSubAgents(subAgents ...SubAgent) kit.AgentOption {
 					return "", fmt.Errorf("subagent %q failed: %w", input.Agent, err)
 				}
 
-				return resp.LastMessage().Text(), nil
+				return resp.Output.Text, nil
 			},
 		)
 

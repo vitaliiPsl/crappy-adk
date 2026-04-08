@@ -26,7 +26,7 @@ func TestAgent_Run_TextOnly(t *testing.T) {
 		t.Fatalf("Run: %v", err)
 	}
 
-	if got := resp.LastMessage().Text(); got != "Hello there!" {
+	if got := resp.Output.Text; got != "Hello there!" {
 		t.Errorf("text = %q, want %q", got, "Hello there!")
 	}
 
@@ -57,7 +57,7 @@ func TestAgent_Run_ToolCall(t *testing.T) {
 		t.Fatalf("Run: %v", err)
 	}
 
-	if got := resp.LastMessage().Text(); got != "Crappy is not that crappy" {
+	if got := resp.Output.Text; got != "Crappy is not that crappy" {
 		t.Errorf("text = %q, want %q", got, "Crappy is not that crappy")
 	}
 
@@ -97,7 +97,7 @@ func TestAgent_Run_MultipleToolCalls(t *testing.T) {
 		t.Fatalf("Run: %v", err)
 	}
 
-	if got := resp.LastMessage().Text(); got != "Got both results." {
+	if got := resp.Output.Text; got != "Got both results." {
 		t.Errorf("text = %q, want %q", got, "Got both results.")
 	}
 
@@ -137,7 +137,7 @@ func TestAgent_Run_MultiTurn(t *testing.T) {
 		t.Fatalf("Run: %v", err)
 	}
 
-	if got := resp.LastMessage().Text(); got != "Done." {
+	if got := resp.Output.Text; got != "Done." {
 		t.Errorf("text = %q, want %q", got, "Done.")
 	}
 
@@ -169,7 +169,7 @@ func TestAgent_Run_ToolNotFound(t *testing.T) {
 	// Agent should still complete, tool error is fed back to model as a tool message
 	model.AssertCallCount(t, 2)
 
-	if got := resp.LastMessage().Text(); got != "Sorry, that tool is unavailable." {
+	if got := resp.Output.Text; got != "Sorry, that tool is unavailable." {
 		t.Errorf("text = %q, want %q", got, "Sorry, that tool is unavailable.")
 	}
 }
@@ -198,7 +198,7 @@ func TestAgent_Run_ToolError(t *testing.T) {
 		t.Fatalf("Run: %v", err)
 	}
 
-	if got := resp.LastMessage().Text(); got != "The tool failed." {
+	if got := resp.Output.Text; got != "The tool failed." {
 		t.Errorf("text = %q, want %q", got, "The tool failed.")
 	}
 

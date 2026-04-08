@@ -4,21 +4,21 @@ import (
 	"context"
 	"fmt"
 	"log"
-	// "os"
+
+	"os"
 
 	"github.com/vitaliiPsl/crappy-adk/kit"
 	"github.com/vitaliiPsl/crappy-adk/kit/middleware"
-	"github.com/vitaliiPsl/crappy-adk/providers/custom"
-	// "github.com/vitaliiPsl/crappy-adk/providers/google"
+	"github.com/vitaliiPsl/crappy-adk/providers/google"
 	filesystem "github.com/vitaliiPsl/crappy-adk/tools/fs"
 )
 
 func main() {
 	ctx := context.Background()
 
-	provider := custom.New("")
+	provider := google.New()
 
-	model, err := provider.Model(ctx, "gemma4", "")
+	model, err := provider.Model(ctx, "gemini-2.5-flash", os.Getenv("GEMINI_API_KEY"))
 	if err != nil {
 		log.Fatal(err)
 	}
