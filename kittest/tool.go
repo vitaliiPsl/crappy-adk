@@ -15,8 +15,8 @@ type ToolResponse struct {
 }
 
 // Tool is a programmable test double for [kit.Tool]. Callers describe a
-// sequence of [ToolResponse] values. Each Execute call pops the next one.
-// If more calls are made than responses provided, the last response is reused.
+// sequence of [ToolResponse] values. Each Execute call consumes one response.
+// If more calls are made than responses provided, the test fails immediately.
 type Tool struct {
 	t          *testing.T
 	definition kit.ToolDefinition
@@ -25,7 +25,6 @@ type Tool struct {
 }
 
 // NewTool creates a Tool that will play through the given responses in order.
-// If more calls are made than responses provided, the last response is reused.
 func NewTool(t *testing.T, name, description string, responses ...ToolResponse) *Tool {
 	return &Tool{
 		t: t,
@@ -44,7 +43,7 @@ func (tool *Tool) Definition() kit.ToolDefinition {
 
 // Execute records the call and returns the next queued response.
 func (tool *Tool) Execute(_ context.Context, args map[string]any) (string, error) {
-	tool.calls = append(tool.calls, args)
+	tool.calls = append(tool.calls, cloneMap(args))
 
 	resp := tool.response()
 
@@ -53,12 +52,12 @@ func (tool *Tool) Execute(_ context.Context, args map[string]any) (string, error
 
 func (tool *Tool) response() ToolResponse {
 	idx := len(tool.calls) - 1
-	if idx >= len(tool.responses) {
-		idx = len(tool.responses) - 1
-	}
-
 	if idx < 0 {
 		tool.t.Fatalf("kittest.Tool %q: no responses configured", tool.definition.Name)
+	}
+
+	if idx >= len(tool.responses) {
+		tool.t.Fatalf("kittest.Tool %q: unexpected call %d (configured %d response(s))", tool.definition.Name, idx+1, len(tool.responses))
 	}
 
 	return tool.responses[idx]
@@ -79,7 +78,7 @@ func (tool *Tool) CallAt(index int) map[string]any {
 		tool.t.Fatalf("kittest.Tool %q: call index %d out of range (got %d calls)", tool.definition.Name, index, len(tool.calls))
 	}
 
-	return tool.calls[index]
+	return cloneMap(tool.calls[index])
 }
 
 // AssertCallCount fails the test if the tool was not called exactly n times.

@@ -1,0 +1,132 @@
+package kittest
+
+import "github.com/vitaliiPsl/crappy-adk/kit"
+
+func cloneModelRequest(req kit.ModelRequest) kit.ModelRequest {
+	cloned := kit.ModelRequest{
+		Instruction: req.Instruction,
+		Config:      cloneGenerationConfig(req.Config),
+	}
+
+	if len(req.Messages) > 0 {
+		cloned.Messages = make([]kit.Message, len(req.Messages))
+		for i, msg := range req.Messages {
+			cloned.Messages[i] = cloneMessage(msg)
+		}
+	}
+
+	if len(req.Tools) > 0 {
+		cloned.Tools = make([]kit.ToolDefinition, len(req.Tools))
+		copy(cloned.Tools, req.Tools)
+	}
+
+	return cloned
+}
+
+func cloneMessage(msg kit.Message) kit.Message {
+	cloned := kit.Message{
+		Role:       msg.Role,
+		Thinking:   msg.Thinking,
+		ToolName:   msg.ToolName,
+		ToolCallID: msg.ToolCallID,
+		IsSummary:  msg.IsSummary,
+	}
+
+	if len(msg.Content) > 0 {
+		cloned.Content = make([]kit.ContentPart, len(msg.Content))
+		for i, part := range msg.Content {
+			cloned.Content[i] = cloneContentPart(part)
+		}
+	}
+
+	if len(msg.ToolCalls) > 0 {
+		cloned.ToolCalls = make([]kit.ToolCall, len(msg.ToolCalls))
+		for i, tc := range msg.ToolCalls {
+			cloned.ToolCalls[i] = cloneToolCall(tc)
+		}
+	}
+
+	return cloned
+}
+
+func cloneContentPart(part kit.ContentPart) kit.ContentPart {
+	cloned := part
+	if len(part.Data) > 0 {
+		cloned.Data = append([]byte(nil), part.Data...)
+	}
+
+	return cloned
+}
+
+func cloneToolCall(call kit.ToolCall) kit.ToolCall {
+	cloned := call
+	if call.Arguments != nil {
+		cloned.Arguments = cloneMap(call.Arguments)
+	}
+
+	if call.Metadata != nil {
+		cloned.Metadata = cloneMap(call.Metadata)
+	}
+
+	return cloned
+}
+
+func cloneGenerationConfig(cfg kit.GenerationConfig) kit.GenerationConfig {
+	cloned := cfg
+
+	if cfg.Temperature != nil {
+		v := *cfg.Temperature
+		cloned.Temperature = &v
+	}
+
+	if cfg.TopP != nil {
+		v := *cfg.TopP
+		cloned.TopP = &v
+	}
+
+	if cfg.MaxOutputTokens != nil {
+		v := *cfg.MaxOutputTokens
+		cloned.MaxOutputTokens = &v
+	}
+
+	return cloned
+}
+
+func cloneMap(src map[string]any) map[string]any {
+	if src == nil {
+		return nil
+	}
+
+	dst := make(map[string]any, len(src))
+	for k, v := range src {
+		dst[k] = cloneAny(v)
+	}
+
+	return dst
+}
+
+func cloneSlice(src []any) []any {
+	if src == nil {
+		return nil
+	}
+
+	dst := make([]any, len(src))
+	for i, v := range src {
+		dst[i] = cloneAny(v)
+	}
+
+	return dst
+}
+
+func cloneAny(v any) any {
+	switch x := v.(type) {
+	case map[string]any:
+		return cloneMap(x)
+	case []any:
+		return cloneSlice(x)
+	case []byte:
+		return append([]byte(nil), x...)
+	default:
+		return x
+	}
+}

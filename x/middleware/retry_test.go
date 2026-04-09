@@ -31,7 +31,7 @@ func fastRetryOpts() []middleware.RetryOption {
 
 func TestRetry_Generate_Success(t *testing.T) {
 	model := kittest.NewModel(t,
-		kittest.Turn{Text: "hello"},
+		kittest.ModelTurn{Text: "hello"},
 	)
 
 	wrapped := middleware.Retry(model, fastRetryOpts()...)
@@ -50,9 +50,9 @@ func TestRetry_Generate_Success(t *testing.T) {
 
 func TestRetry_Generate_RetryThenSuccess(t *testing.T) {
 	model := kittest.NewModel(t,
-		kittest.Turn{Error: retryableErr("attempt 1")},
-		kittest.Turn{Error: retryableErr("attempt 2")},
-		kittest.Turn{Text: "recovered"},
+		kittest.ModelTurn{Error: retryableErr("attempt 1")},
+		kittest.ModelTurn{Error: retryableErr("attempt 2")},
+		kittest.ModelTurn{Text: "recovered"},
 	)
 
 	wrapped := middleware.Retry(model, fastRetryOpts()...)
@@ -71,9 +71,9 @@ func TestRetry_Generate_RetryThenSuccess(t *testing.T) {
 
 func TestRetry_Generate_RetriesExhausted(t *testing.T) {
 	model := kittest.NewModel(t,
-		kittest.Turn{Error: retryableErr("fail 1")},
-		kittest.Turn{Error: retryableErr("fail 2")},
-		kittest.Turn{Error: retryableErr("fail 3")},
+		kittest.ModelTurn{Error: retryableErr("fail 1")},
+		kittest.ModelTurn{Error: retryableErr("fail 2")},
+		kittest.ModelTurn{Error: retryableErr("fail 3")},
 	)
 
 	wrapped := middleware.Retry(model,
@@ -94,7 +94,7 @@ func TestRetry_Generate_RetriesExhausted(t *testing.T) {
 
 func TestRetry_Generate_NonRetryable(t *testing.T) {
 	model := kittest.NewModel(t,
-		kittest.Turn{Error: nonRetryableErr("bad auth")},
+		kittest.ModelTurn{Error: nonRetryableErr("bad auth")},
 	)
 
 	wrapped := middleware.Retry(model, fastRetryOpts()...)
@@ -113,8 +113,8 @@ func TestRetry_Generate_NonRetryable(t *testing.T) {
 
 func TestRetry_Generate_ContextCancelled(t *testing.T) {
 	model := kittest.NewModel(t,
-		kittest.Turn{Error: retryableErr("fail")},
-		kittest.Turn{Text: "should not reach"},
+		kittest.ModelTurn{Error: retryableErr("fail")},
+		kittest.ModelTurn{Text: "should not reach"},
 	)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -133,7 +133,7 @@ func TestRetry_Generate_ContextCancelled(t *testing.T) {
 
 func TestRetry_GenerateStream_Success(t *testing.T) {
 	model := kittest.NewModel(t,
-		kittest.Turn{Text: "hello world"},
+		kittest.ModelTurn{Text: "hello world"},
 	)
 
 	wrapped := middleware.Retry(model, fastRetryOpts()...)
@@ -153,8 +153,8 @@ func TestRetry_GenerateStream_Success(t *testing.T) {
 
 func TestRetry_GenerateStream_ImmediateRetryThenSuccess(t *testing.T) {
 	model := kittest.NewModel(t,
-		kittest.Turn{Error: retryableErr("transient")},
-		kittest.Turn{Text: "recovered"},
+		kittest.ModelTurn{Error: retryableErr("transient")},
+		kittest.ModelTurn{Text: "recovered"},
 	)
 
 	wrapped := middleware.Retry(model, fastRetryOpts()...)
@@ -174,8 +174,8 @@ func TestRetry_GenerateStream_ImmediateRetryThenSuccess(t *testing.T) {
 
 func TestRetry_GenerateStream_ImmediateRetriesExhausted(t *testing.T) {
 	model := kittest.NewModel(t,
-		kittest.Turn{Error: retryableErr("fail 1")},
-		kittest.Turn{Error: retryableErr("fail 2")},
+		kittest.ModelTurn{Error: retryableErr("fail 1")},
+		kittest.ModelTurn{Error: retryableErr("fail 2")},
 	)
 
 	wrapped := middleware.Retry(model,
@@ -194,7 +194,7 @@ func TestRetry_GenerateStream_ImmediateRetriesExhausted(t *testing.T) {
 
 func TestRetry_GenerateStream_ImmediateNonRetryable(t *testing.T) {
 	model := kittest.NewModel(t,
-		kittest.Turn{Error: nonRetryableErr("bad auth")},
+		kittest.ModelTurn{Error: nonRetryableErr("bad auth")},
 	)
 
 	wrapped := middleware.Retry(model, fastRetryOpts()...)
@@ -213,10 +213,10 @@ func TestRetry_GenerateStream_ImmediateNonRetryable(t *testing.T) {
 
 func TestRetry_GenerateStream_PreChunkRetryThenSuccess(t *testing.T) {
 	model := kittest.NewModel(t,
-		kittest.Turn{Stream: []kittest.ChunkResult{
+		kittest.ModelTurn{Stream: []kittest.ChunkResult{
 			{Err: retryableErr("transient")},
 		}},
-		kittest.Turn{Text: "recovered"},
+		kittest.ModelTurn{Text: "recovered"},
 	)
 
 	wrapped := middleware.Retry(model, fastRetryOpts()...)
@@ -236,10 +236,10 @@ func TestRetry_GenerateStream_PreChunkRetryThenSuccess(t *testing.T) {
 
 func TestRetry_GenerateStream_PreChunkRetriesExhausted(t *testing.T) {
 	model := kittest.NewModel(t,
-		kittest.Turn{Stream: []kittest.ChunkResult{
+		kittest.ModelTurn{Stream: []kittest.ChunkResult{
 			{Err: retryableErr("fail 1")},
 		}},
-		kittest.Turn{Stream: []kittest.ChunkResult{
+		kittest.ModelTurn{Stream: []kittest.ChunkResult{
 			{Err: retryableErr("fail 2")},
 		}},
 	)
@@ -265,7 +265,7 @@ func TestRetry_GenerateStream_PreChunkRetriesExhausted(t *testing.T) {
 
 func TestRetry_GenerateStream_MidStreamPassesThrough(t *testing.T) {
 	model := kittest.NewModel(t,
-		kittest.Turn{Stream: []kittest.ChunkResult{
+		kittest.ModelTurn{Stream: []kittest.ChunkResult{
 			{Chunk: kit.NewTextChunk("partial")},
 			{Err: retryableErr("mid-stream failure")},
 		}},
@@ -313,13 +313,13 @@ func TestRetry_GenerateStream_MidStreamPassesThrough(t *testing.T) {
 func TestRetry_GenerateStream_MixedImmediateAndPreChunkRetries(t *testing.T) {
 	model := kittest.NewModel(t,
 		// attempt 0: immediate error
-		kittest.Turn{Error: retryableErr("immediate fail")},
+		kittest.ModelTurn{Error: retryableErr("immediate fail")},
 		// attempt 1: stream acquired, pre-chunk error
-		kittest.Turn{Stream: []kittest.ChunkResult{
+		kittest.ModelTurn{Stream: []kittest.ChunkResult{
 			{Err: retryableErr("pre-chunk fail")},
 		}},
 		// attempt 2: success
-		kittest.Turn{Text: "finally"},
+		kittest.ModelTurn{Text: "finally"},
 	)
 
 	wrapped := middleware.Retry(model, fastRetryOpts()...)

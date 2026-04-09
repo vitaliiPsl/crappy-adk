@@ -14,8 +14,8 @@ type ChunkResult struct {
 	Err   error
 }
 
-// Turn describes a single model response in terms the test cares about.
-type Turn struct {
+// ModelTurn describes a single model response in terms the test cares about.
+type ModelTurn struct {
 	Text      string
 	Thinking  string
 	ToolCalls []kit.ToolCall
@@ -27,7 +27,7 @@ type Turn struct {
 	Stream []ChunkResult
 }
 
-func (turn Turn) modelResponse() kit.ModelResponse {
+func (turn ModelTurn) modelResponse() kit.ModelResponse {
 	return kit.ModelResponse{
 		Message:      kit.NewAssistantMessage(turn.Text, turn.Thinking, turn.ToolCalls),
 		FinishReason: turn.finishReason(),
@@ -35,7 +35,7 @@ func (turn Turn) modelResponse() kit.ModelResponse {
 	}
 }
 
-func (turn Turn) chunks() []kit.ModelChunk {
+func (turn ModelTurn) chunks() []kit.ModelChunk {
 	var chunks []kit.ModelChunk
 
 	if turn.Thinking != "" {
@@ -53,7 +53,7 @@ func (turn Turn) chunks() []kit.ModelChunk {
 	return chunks
 }
 
-func (turn Turn) finishReason() kit.FinishReason {
+func (turn ModelTurn) finishReason() kit.FinishReason {
 	if len(turn.ToolCalls) > 0 {
 		return kit.FinishReasonToolCall
 	}
@@ -62,18 +62,18 @@ func (turn Turn) finishReason() kit.FinishReason {
 }
 
 // Model is a programmable test double for [kit.Model]. Callers describe a
-// sequence of [Turn] values. Each Generate or GenerateStream call pops the
+// sequence of [ModelTurn] values. Each Generate or GenerateStream call pops the
 // next one. If the queue is exhausted the test fails.
 type Model struct {
 	t      *testing.T
 	config kit.ModelConfig
-	turns  []Turn
+	turns  []ModelTurn
 	calls  []kit.ModelRequest
 	idx    int
 }
 
 // NewModel creates a [Model] that will play through the given turns in order.
-func NewModel(t *testing.T, turns ...Turn) *Model {
+func NewModel(t *testing.T, turns ...ModelTurn) *Model {
 	return &Model{
 		t:     t,
 		turns: turns,
@@ -140,17 +140,16 @@ func (model *Model) GenerateStream(_ context.Context, req kit.ModelRequest) (*ki
 	}), nil
 }
 
-func (model *Model) next(req kit.ModelRequest) Turn {
+func (model *Model) next(req kit.ModelRequest) ModelTurn {
 	model.t.Helper()
 
 	idx := model.idx
-	model.idx++
-
-	model.calls = append(model.calls, req)
-
 	if idx >= len(model.turns) {
 		model.t.Fatalf("kittest.Model: no more queued turns (call %d)", idx+1)
 	}
+
+	model.idx++
+	model.calls = append(model.calls, cloneModelRequest(req))
 
 	return model.turns[idx]
 }
@@ -170,7 +169,7 @@ func (model *Model) CallAt(index int) kit.ModelRequest {
 		model.t.Fatalf("kittest.Model: call index %d out of range (got %d calls)", index, len(model.calls))
 	}
 
-	return model.calls[index]
+	return cloneModelRequest(model.calls[index])
 }
 
 // AssertCallCount fails the test if the model was not called exactly n times.

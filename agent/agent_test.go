@@ -12,7 +12,7 @@ import (
 
 func TestAgent_Run_TextOnly(t *testing.T) {
 	model := kittest.NewModel(t,
-		kittest.Turn{Text: "Hello there!"},
+		kittest.ModelTurn{Text: "Hello there!"},
 	)
 
 	agent, err := agent.New(model)
@@ -40,10 +40,10 @@ func TestAgent_Run_ToolCall(t *testing.T) {
 	)
 
 	model := kittest.NewModel(t,
-		kittest.Turn{ToolCalls: []kit.ToolCall{
+		kittest.ModelTurn{ToolCalls: []kit.ToolCall{
 			{ID: "call_1", Name: "search", Arguments: map[string]any{"query": "Crappy"}},
 		}},
-		kittest.Turn{Text: "Crappy is not that crappy"},
+		kittest.ModelTurn{Text: "Crappy is not that crappy"},
 	)
 
 	agent, err := agent.New(model, agent.WithTools(searchTool))
@@ -76,11 +76,11 @@ func TestAgent_Run_MultipleToolCalls(t *testing.T) {
 	)
 
 	model := kittest.NewModel(t,
-		kittest.Turn{ToolCalls: []kit.ToolCall{
+		kittest.ModelTurn{ToolCalls: []kit.ToolCall{
 			{ID: "call_1", Name: "search", Arguments: map[string]any{"q": "A"}},
 			{ID: "call_2", Name: "search", Arguments: map[string]any{"q": "B"}},
 		}},
-		kittest.Turn{Text: "Got both results."},
+		kittest.ModelTurn{Text: "Got both results."},
 	)
 
 	agent, err := agent.New(model,
@@ -114,13 +114,13 @@ func TestAgent_Run_MultiTurn(t *testing.T) {
 	)
 
 	model := kittest.NewModel(t,
-		kittest.Turn{ToolCalls: []kit.ToolCall{
+		kittest.ModelTurn{ToolCalls: []kit.ToolCall{
 			{ID: "call_1", Name: "read", Arguments: map[string]any{"path": "main.go"}},
 		}},
-		kittest.Turn{ToolCalls: []kit.ToolCall{
+		kittest.ModelTurn{ToolCalls: []kit.ToolCall{
 			{ID: "call_2", Name: "write", Arguments: map[string]any{"path": "main.go", "content": "updated"}},
 		}},
-		kittest.Turn{Text: "Done."},
+		kittest.ModelTurn{Text: "Done."},
 	)
 
 	agent, err := agent.New(model,
@@ -149,10 +149,10 @@ func TestAgent_Run_MultiTurn(t *testing.T) {
 
 func TestAgent_Run_ToolNotFound(t *testing.T) {
 	model := kittest.NewModel(t,
-		kittest.Turn{ToolCalls: []kit.ToolCall{
+		kittest.ModelTurn{ToolCalls: []kit.ToolCall{
 			{ID: "call_1", Name: "missing_tool", Arguments: map[string]any{}},
 		}},
-		kittest.Turn{Text: "Sorry, that tool is unavailable."},
+		kittest.ModelTurn{Text: "Sorry, that tool is unavailable."},
 	)
 
 	agent, err := agent.New(model)
@@ -181,10 +181,10 @@ func TestAgent_Run_ToolError(t *testing.T) {
 	)
 
 	model := kittest.NewModel(t,
-		kittest.Turn{ToolCalls: []kit.ToolCall{
+		kittest.ModelTurn{ToolCalls: []kit.ToolCall{
 			{ID: "call_1", Name: "fail", Arguments: map[string]any{}},
 		}},
-		kittest.Turn{Text: "The tool failed."},
+		kittest.ModelTurn{Text: "The tool failed."},
 	)
 
 	agent, err := agent.New(model, agent.WithTools(failTool))
@@ -208,7 +208,7 @@ func TestAgent_Run_ToolError(t *testing.T) {
 
 func TestAgent_Run_ModelError(t *testing.T) {
 	model := kittest.NewModel(t,
-		kittest.Turn{Error: errors.New("model unavailable")},
+		kittest.ModelTurn{Error: errors.New("model unavailable")},
 	)
 
 	agent, err := agent.New(model)
@@ -253,7 +253,7 @@ func TestAgent_Run_ContextCancelled(t *testing.T) {
 
 func TestAgent_Run_Instruction(t *testing.T) {
 	model := kittest.NewModel(t,
-		kittest.Turn{Text: "I am a helpful bot."},
+		kittest.ModelTurn{Text: "I am a helpful bot."},
 	)
 
 	agent, err := agent.New(model, agent.WithInstruction("You are a helpful bot."))
@@ -276,11 +276,11 @@ func TestAgent_Run_Instruction(t *testing.T) {
 
 func TestAgent_Run_UsageAccumulated(t *testing.T) {
 	model := kittest.NewModel(t,
-		kittest.Turn{
+		kittest.ModelTurn{
 			ToolCalls: []kit.ToolCall{{ID: "call_1", Name: "noop", Arguments: map[string]any{}}},
 			Usage:     kit.Usage{InputTokens: 100, OutputTokens: 50},
 		},
-		kittest.Turn{
+		kittest.ModelTurn{
 			Text:  "Done.",
 			Usage: kit.Usage{InputTokens: 200, OutputTokens: 30},
 		},
@@ -313,7 +313,7 @@ func TestAgent_Run_UsageAccumulated(t *testing.T) {
 
 func TestAgent_Stream_Events(t *testing.T) {
 	model := kittest.NewModel(t,
-		kittest.Turn{
+		kittest.ModelTurn{
 			Text: "Hello world",
 			Stream: []kittest.ChunkResult{
 				{Chunk: kit.NewTextChunk("Hello ")},
@@ -364,14 +364,14 @@ func TestAgent_Stream_ToolCallEvents(t *testing.T) {
 	)
 
 	model := kittest.NewModel(t,
-		kittest.Turn{
+		kittest.ModelTurn{
 			ToolCalls: []kit.ToolCall{searchCall},
 			Stream: []kittest.ChunkResult{
 				{Chunk: kit.NewThinkingChunk("let me search")},
 				{Chunk: kit.NewToolCallChunk(searchCall)},
 			},
 		},
-		kittest.Turn{
+		kittest.ModelTurn{
 			Text: "Here you go.",
 			Stream: []kittest.ChunkResult{
 				{Chunk: kit.NewTextChunk("Here you go.")},
@@ -429,7 +429,7 @@ func TestAgent_Stream_ToolCallEvents(t *testing.T) {
 
 func TestAgent_Run_StreamError(t *testing.T) {
 	model := kittest.NewModel(t,
-		kittest.Turn{Stream: []kittest.ChunkResult{
+		kittest.ModelTurn{Stream: []kittest.ChunkResult{
 			{Err: errors.New("stream broke")},
 		}},
 	)
@@ -453,7 +453,7 @@ func TestAgent_Run_StreamError(t *testing.T) {
 
 func TestAgent_Run_MidStreamError(t *testing.T) {
 	model := kittest.NewModel(t,
-		kittest.Turn{Stream: []kittest.ChunkResult{
+		kittest.ModelTurn{Stream: []kittest.ChunkResult{
 			{Chunk: kit.NewTextChunk("partial ")},
 			{Err: errors.New("connection lost")},
 		}},
@@ -478,7 +478,7 @@ func TestAgent_Run_MidStreamError(t *testing.T) {
 
 func TestAgent_Run_Hooks(t *testing.T) {
 	model := kittest.NewModel(t,
-		kittest.Turn{Text: "Hello"},
+		kittest.ModelTurn{Text: "Hello"},
 	)
 
 	var hookOrder []string
