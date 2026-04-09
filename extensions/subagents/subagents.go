@@ -1,4 +1,4 @@
-package tool
+package subagents
 
 import (
 	"context"
@@ -7,6 +7,7 @@ import (
 
 	"github.com/vitaliiPsl/crappy-adk/agent"
 	"github.com/vitaliiPsl/crappy-adk/kit"
+	"github.com/vitaliiPsl/crappy-adk/x/tool"
 )
 
 const (
@@ -64,7 +65,7 @@ func WithSubAgents(subAgents ...SubAgent) agent.Option {
 		validNames := strings.Join(names, ", ")
 		description := fmt.Sprintf("%s\n\nAvailable subagents:\n%s", delegateToolDescription, strings.Join(descParts, "\n"))
 
-		t := MustFunction(
+		t := tool.MustFunction(
 			delegateToolName,
 			description,
 			func(ctx context.Context, input delegateInput) (string, error) {

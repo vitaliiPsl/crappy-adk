@@ -7,11 +7,11 @@ import (
 	"os"
 
 	"github.com/vitaliiPsl/crappy-adk/agent"
+	"github.com/vitaliiPsl/crappy-adk/extensions/subagents"
 	"github.com/vitaliiPsl/crappy-adk/kit"
-	"github.com/vitaliiPsl/crappy-adk/kit/instruction"
-	"github.com/vitaliiPsl/crappy-adk/kit/tool"
 	"github.com/vitaliiPsl/crappy-adk/providers/google"
 	filesystem "github.com/vitaliiPsl/crappy-adk/tools/fs"
+	"github.com/vitaliiPsl/crappy-adk/x/instructions"
 )
 
 /*
@@ -48,7 +48,7 @@ func main() {
 		agent.WithInstruction(`You are a code researcher.
 Explore the codebase using the tools available and answer questions with detailed, factual findings.
 Always cite specific files and line numbers when relevant.`),
-		agent.WithInstructions(instruction.Env(workdir)),
+		agent.WithInstructions(instructions.Env(workdir)),
 		agent.WithTools(
 			filesystem.NewListDirectory(),
 			filesystem.NewReadFile(),
@@ -70,13 +70,13 @@ Use markdown with headers, bullet points, and code blocks where appropriate.`),
 	orchestrator, err := agent.New(model,
 		agent.WithInstruction(`You are an orchestrator. You must always delegate — never answer directly.
 Always follow this sequence: first delegate research tasks to the researcher, then pass the findings to the writer to produce the final output.`),
-		tool.WithSubAgents(
-			tool.SubAgent{
+		subagents.WithSubAgents(
+			subagents.SubAgent{
 				Name:        "researcher",
 				Description: "Explores the codebase and answers factual questions about code structure, types, and logic.",
 				Agent:       researcher,
 			},
-			tool.SubAgent{
+			subagents.SubAgent{
 				Name:        "writer",
 				Description: "Takes raw findings or notes and turns them into well-structured markdown documentation.",
 				Agent:       writer,

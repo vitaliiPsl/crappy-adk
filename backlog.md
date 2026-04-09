@@ -1,4 +1,4 @@
-001. restructure. already extracted agent into the package of it's own, but kit package is still a mess
+001. ~~restructure. already extracted agent into the package of it's own, but kit package is still a mess~~
 002. rethink the dependency on the model config. at the moment it is used to decided when to perform auto compaction by comparing usage of the last model call with the model input limit.
 003. need a way to control the cost of agent run. thinking max number of turns, max usage, max tools and max cost (again, dependency on the model config).
 004. cluade code lately have been calling the same tool over and over again in a loop. need to add a kill switch that would detect this and stop execution. or signal this to model

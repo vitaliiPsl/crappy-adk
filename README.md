@@ -105,7 +105,7 @@ Tools are the actions the agent can take during the ReAct loop. Each tool has a 
 
 ### Custom tools
 
-`FunctionTool[T]` wraps a typed Go function as a tool. The JSON schema for arguments is generated automatically from `T` — no manual schema definition needed. Arguments are validated against the schema before the handler is called.
+`FunctionTool[T]` in the `x/tool` package wraps a typed Go function as a tool. The JSON schema for arguments is generated automatically from `T` — no manual schema definition needed. Arguments are validated against the schema before the handler is called.
 
 ```go
 type GetTimeInput struct {
@@ -231,9 +231,9 @@ a, err := agent.New(model,
 ```go
 orchestrator, err := agent.New(model,
     agent.WithInstruction("You are an orchestrator. Always delegate — never answer directly."),
-    tool.WithSubAgents(
-        tool.SubAgent{Name: "researcher", Description: "...", Agent: researcher},
-        tool.SubAgent{Name: "writer",     Description: "...", Agent: writer},
+    subagents.WithSubAgents(
+        subagents.SubAgent{Name: "researcher", Description: "...", Agent: researcher},
+        subagents.SubAgent{Name: "writer",     Description: "...", Agent: writer},
     ),
 )
 ```
@@ -243,7 +243,7 @@ orchestrator, err := agent.New(model,
 Everything is an interface. If something doesn't fit, replace it.
 
 - **Model** — `kit.Model`. Point at any inference backend via a provider package or implement your own.
-- **Tool** — `kit.Tool`, or use `tool.NewFunction[T]` for auto-schema from a Go struct.
+- **Tool** — `kit.Tool`, or use `tool.NewFunction[T]` from `x/tool` for auto-schema from a Go struct.
 - **Middleware** — `func(Model) Model`. Wrap the model for retry, caching, rate limiting, tracing.
 - **Instruction** — `func(ctx) (string, error)`. Evaluated fresh each run, so it can read live state.
 - **Compactor** — `kit.Compactor`. Replace the built-in summarizer with any history strategy.

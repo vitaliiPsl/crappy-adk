@@ -7,7 +7,7 @@ import (
 
 	"github.com/vitaliiPsl/crappy-adk/agent"
 	"github.com/vitaliiPsl/crappy-adk/kit"
-	"github.com/vitaliiPsl/crappy-adk/kit/kittest"
+	"github.com/vitaliiPsl/crappy-adk/kittest"
 )
 
 func TestAgent_Run_TextOnly(t *testing.T) {

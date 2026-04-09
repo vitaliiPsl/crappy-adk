@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"github.com/vitaliiPsl/crappy-adk/kit"
-	"github.com/vitaliiPsl/crappy-adk/kit/kittest"
-	"github.com/vitaliiPsl/crappy-adk/kit/middleware"
+	"github.com/vitaliiPsl/crappy-adk/kittest"
+	"github.com/vitaliiPsl/crappy-adk/x/middleware"
 )
 
 func retryableErr(msg string) *kit.LLMError {

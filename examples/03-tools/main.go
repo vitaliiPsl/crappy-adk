@@ -9,8 +9,8 @@ import (
 
 	"github.com/vitaliiPsl/crappy-adk/agent"
 	"github.com/vitaliiPsl/crappy-adk/kit"
-	"github.com/vitaliiPsl/crappy-adk/kit/tool"
 	"github.com/vitaliiPsl/crappy-adk/providers/google"
+	"github.com/vitaliiPsl/crappy-adk/x/tool"
 )
 
 /*

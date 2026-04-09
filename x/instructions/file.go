@@ -1,4 +1,4 @@
-package instruction
+package instructions
 
 import (
 	"context"
