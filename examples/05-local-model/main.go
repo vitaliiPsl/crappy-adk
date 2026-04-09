@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 
+	"github.com/vitaliiPsl/crappy-adk/agent"
 	"github.com/vitaliiPsl/crappy-adk/kit"
 	"github.com/vitaliiPsl/crappy-adk/providers/openaicompat"
 	filesystem "github.com/vitaliiPsl/crappy-adk/tools/fs"
@@ -34,9 +35,9 @@ func main() {
 		ID: "gemma4",
 	})
 
-	agent, err := kit.NewAgent(model,
-		kit.WithInstruction("You are a helpful coding assistant with access to the filesystem."),
-		kit.WithTools(
+	a, err := agent.New(model,
+		agent.WithInstruction("You are a helpful coding assistant with access to the filesystem."),
+		agent.WithTools(
 			filesystem.NewReadFile(),
 			filesystem.NewListDirectory(),
 		),
@@ -45,7 +46,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	result, err := agent.Run(ctx, []kit.Message{
+	result, err := a.Run(ctx, []kit.Message{
 		kit.NewUserMessage(kit.NewTextPart("List the files in the current directory and summarize what this project does.")),
 	})
 	if err != nil {

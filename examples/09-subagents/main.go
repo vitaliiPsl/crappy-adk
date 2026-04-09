@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 
+	"github.com/vitaliiPsl/crappy-adk/agent"
 	"github.com/vitaliiPsl/crappy-adk/kit"
 	"github.com/vitaliiPsl/crappy-adk/kit/instruction"
 	"github.com/vitaliiPsl/crappy-adk/kit/tool"
@@ -43,12 +44,12 @@ func main() {
 		log.Fatal(err)
 	}
 
-	researcher, err := kit.NewAgent(model,
-		kit.WithInstruction(`You are a code researcher.
+	researcher, err := agent.New(model,
+		agent.WithInstruction(`You are a code researcher.
 Explore the codebase using the tools available and answer questions with detailed, factual findings.
 Always cite specific files and line numbers when relevant.`),
-		kit.WithInstructions(instruction.Env(workdir)),
-		kit.WithTools(
+		agent.WithInstructions(instruction.Env(workdir)),
+		agent.WithTools(
 			filesystem.NewListDirectory(),
 			filesystem.NewReadFile(),
 		),
@@ -57,8 +58,8 @@ Always cite specific files and line numbers when relevant.`),
 		log.Fatal(err)
 	}
 
-	writer, err := kit.NewAgent(model,
-		kit.WithInstruction(`You are a technical writer.
+	writer, err := agent.New(model,
+		agent.WithInstruction(`You are a technical writer.
 Given raw findings or notes, produce clear and well-structured documentation.
 Use markdown with headers, bullet points, and code blocks where appropriate.`),
 	)
@@ -66,8 +67,8 @@ Use markdown with headers, bullet points, and code blocks where appropriate.`),
 		log.Fatal(err)
 	}
 
-	orchestrator, err := kit.NewAgent(model,
-		kit.WithInstruction(`You are an orchestrator. You must always delegate — never answer directly.
+	orchestrator, err := agent.New(model,
+		agent.WithInstruction(`You are an orchestrator. You must always delegate — never answer directly.
 Always follow this sequence: first delegate research tasks to the researcher, then pass the findings to the writer to produce the final output.`),
 		tool.WithSubAgents(
 			tool.SubAgent{

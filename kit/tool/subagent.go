@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/vitaliiPsl/crappy-adk/agent"
 	"github.com/vitaliiPsl/crappy-adk/kit"
 )
 
@@ -21,7 +22,7 @@ type SubAgent struct {
 	// to decide which subagent to delegate to.
 	Description string
 	// Agent is the underlying agent that runs when this subagent is selected.
-	Agent *kit.Agent
+	Agent *agent.Agent
 }
 
 type delegateInput struct {
@@ -32,8 +33,8 @@ type delegateInput struct {
 // WithSubAgents registers a set of subagents on the parent agent as a single
 // "delegate" tool. The parent calls delegate with an agent name and task;
 // the selected subagent runs its own full loop and returns result.
-func WithSubAgents(subAgents ...SubAgent) kit.AgentOption {
-	return func(a *kit.Agent) error {
+func WithSubAgents(subAgents ...SubAgent) agent.Option {
+	return func(a *agent.Agent) error {
 		if len(subAgents) == 0 {
 			return fmt.Errorf("WithSubAgents: at least one subagent is required")
 		}
@@ -83,6 +84,6 @@ func WithSubAgents(subAgents ...SubAgent) kit.AgentOption {
 			},
 		)
 
-		return kit.WithTools(t)(a)
+		return agent.WithTools(t)(a)
 	}
 }

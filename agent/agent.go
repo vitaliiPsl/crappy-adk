@@ -1,18 +1,20 @@
-package kit
+package agent
 
 import (
 	"context"
 	"fmt"
+
+	"github.com/vitaliiPsl/crappy-adk/kit"
 )
 
 const (
 	defaultCompactionThreshold = 0.8
 )
 
-// AgentConfig holds configuration for an [Agent].
-type AgentConfig struct {
+// Config holds configuration for an [Agent].
+type Config struct {
 	// Generation controls generation parameters used on every model request.
-	Generation GenerationConfig
+	Generation kit.GenerationConfig
 
 	// ToolExecution controls whether tool calls run in parallel or sequentially.
 	// Defaults to ToolExecutionParallel.
@@ -26,22 +28,22 @@ type AgentConfig struct {
 // Agent runs a ReAct loop: it calls the model, executes any requested tool
 // calls, and feeds the results back until the model returns a final response.
 type Agent struct {
-	config       AgentConfig
-	instructions []Instruction
+	config       Config
+	instructions []kit.Instruction
 
-	model Model
-	tools map[string]Tool
+	model kit.Model
+	tools map[string]kit.Tool
 
-	compactor Compactor
+	compactor kit.Compactor
 	hooks     hooks
 }
 
-// NewAgent creates an agent backed by the given model. Options are applied in order.
-func NewAgent(model Model, options ...AgentOption) (*Agent, error) {
+// New creates an agent backed by the given model. Options are applied in order.
+func New(model kit.Model, options ...Option) (*Agent, error) {
 	agent := &Agent{
 		model: model,
-		tools: make(map[string]Tool),
-		config: AgentConfig{
+		tools: make(map[string]kit.Tool),
+		config: Config{
 			CompactionThreshold: defaultCompactionThreshold,
 		},
 	}
@@ -55,24 +57,24 @@ func NewAgent(model Model, options ...AgentOption) (*Agent, error) {
 	return agent, nil
 }
 
-// Run executes the ReAct loop and returns the accumulated [Result] once the
+// Run executes the ReAct loop and returns the accumulated [kit.Result] once the
 // agent reaches a final answer. Use [Agent.Stream] instead to receive
 // incremental events as the agent works.
-func (a *Agent) Run(ctx context.Context, messages []Message) (Result, error) {
+func (a *Agent) Run(ctx context.Context, messages []kit.Message) (kit.Result, error) {
 	s, err := a.Stream(ctx, messages)
 	if err != nil {
-		return Result{}, err
+		return kit.Result{}, err
 	}
 
 	return s.Result()
 }
 
-// Stream executes the ReAct loop and returns a [Stream] that emits incremental
-// [Event] values — text deltas, thinking deltas, tool calls, and tool results —
-// as the agent works. Call [Stream.Result] after iteration to retrieve the
-// accumulated [Result].
-func (a *Agent) Stream(ctx context.Context, msgs []Message) (*Stream[Event, Result], error) {
-	instruction, err := ComposeInstructions(ctx, "\n\n", a.instructions...)
+// Stream executes the ReAct loop and returns a [kit.Stream] that emits
+// incremental [kit.Event] values — text deltas, thinking deltas, tool calls,
+// and tool results — as the agent works. Call [kit.Stream.Result] after
+// iteration to retrieve the accumulated [kit.Result].
+func (a *Agent) Stream(ctx context.Context, msgs []kit.Message) (*kit.Stream[kit.Event, kit.Result], error) {
+	instruction, err := kit.ComposeInstructions(ctx, "\n\n", a.instructions...)
 	if err != nil {
 		return nil, err
 	}
@@ -82,17 +84,17 @@ func (a *Agent) Stream(ctx context.Context, msgs []Message) (*Stream[Event, Resu
 		return nil, err
 	}
 
-	return NewStream(func(yield func(Event, error) bool) Result {
+	return kit.NewStream(func(yield func(kit.Event, error) bool) kit.Result {
 		response, runErr := a.runLoop(ctx, instruction, msgs, yield)
 
 		if _, hookErr := a.hooks.onRunEnd(ctx, response, runErr); hookErr != nil {
-			yield(Event{}, hookErr)
+			yield(kit.Event{}, hookErr)
 
 			return response
 		}
 
 		if runErr != nil {
-			yield(Event{}, runErr)
+			yield(kit.Event{}, runErr)
 		}
 
 		return response
@@ -102,9 +104,9 @@ func (a *Agent) Stream(ctx context.Context, msgs []Message) (*Stream[Event, Resu
 func (a *Agent) runLoop(
 	ctx context.Context,
 	instruction string,
-	msgs []Message,
-	yield func(Event, error) bool,
-) (response Result, err error) {
+	msgs []kit.Message,
+	yield func(kit.Event, error) bool,
+) (response kit.Result, err error) {
 	for {
 		if err := ctx.Err(); err != nil {
 			return response, err
@@ -126,7 +128,7 @@ func (a *Agent) runLoop(
 		response.Usage.Add(usage)
 		response.LastUsage = usage
 
-		if !yield(NewMessageEvent(assistantMsg), nil) {
+		if !yield(kit.NewMessageEvent(assistantMsg), nil) {
 			return response, nil
 		}
 
@@ -169,10 +171,10 @@ func (a *Agent) runLoop(
 func (a *Agent) callModel(
 	ctx context.Context,
 	instruction string,
-	msgs []Message,
-	yield func(Event, error) bool,
-) (Message, Usage, error) {
-	req := ModelRequest{
+	msgs []kit.Message,
+	yield func(kit.Event, error) bool,
+) (kit.Message, kit.Usage, error) {
+	req := kit.ModelRequest{
 		Instruction: instruction,
 		Messages:    msgs,
 		Tools:       a.toolDefinitions(),
@@ -181,28 +183,28 @@ func (a *Agent) callModel(
 
 	ctx, req, err := a.hooks.onModelRequest(ctx, req)
 	if err != nil {
-		return Message{}, Usage{}, fmt.Errorf("model request hook failed: %w", err)
+		return kit.Message{}, kit.Usage{}, fmt.Errorf("model request hook failed: %w", err)
 	}
 
 	stream, err := a.model.GenerateStream(ctx, req)
 	if err != nil {
-		return Message{}, Usage{}, err
+		return kit.Message{}, kit.Usage{}, err
 	}
 
 	for chunk, err := range stream.Iter() {
 		if err != nil {
-			return Message{}, Usage{}, err
+			return kit.Message{}, kit.Usage{}, err
 		}
 
-		var event Event
+		var event kit.Event
 
 		switch chunk.Type {
-		case ChunkTypeThinking:
-			event = NewThinkingDeltaEvent(chunk.Thinking)
-		case ChunkTypeText:
-			event = NewTextDeltaEvent(chunk.Text)
-		case ChunkTypeToolCall:
-			event = NewToolCallEvent(*chunk.ToolCall)
+		case kit.ChunkTypeThinking:
+			event = kit.NewThinkingDeltaEvent(chunk.Thinking)
+		case kit.ChunkTypeText:
+			event = kit.NewTextDeltaEvent(chunk.Text)
+		case kit.ChunkTypeToolCall:
+			event = kit.NewToolCallEvent(*chunk.ToolCall)
 		default:
 			continue
 		}
@@ -214,19 +216,19 @@ func (a *Agent) callModel(
 
 	modelResp, streamErr := stream.Result()
 	if streamErr != nil {
-		return Message{}, Usage{}, streamErr
+		return kit.Message{}, kit.Usage{}, streamErr
 	}
 
 	_, resp, err := a.hooks.onModelResponse(ctx, modelResp)
 	if err != nil {
-		return Message{}, Usage{}, fmt.Errorf("model response hook failed: %w", err)
+		return kit.Message{}, kit.Usage{}, fmt.Errorf("model response hook failed: %w", err)
 	}
 
 	return resp.Message, resp.Usage, nil
 }
 
-func (a *Agent) toolDefinitions() []ToolDefinition {
-	defs := make([]ToolDefinition, 0, len(a.tools))
+func (a *Agent) toolDefinitions() []kit.ToolDefinition {
+	defs := make([]kit.ToolDefinition, 0, len(a.tools))
 	for _, tool := range a.tools {
 		defs = append(defs, tool.Definition())
 	}
@@ -236,9 +238,9 @@ func (a *Agent) toolDefinitions() []ToolDefinition {
 
 func (a *Agent) callTools(
 	ctx context.Context,
-	toolCalls []ToolCall,
-	yield func(Event, error) bool,
-) ([]Message, bool) {
+	toolCalls []kit.ToolCall,
+	yield func(kit.Event, error) bool,
+) ([]kit.Message, bool) {
 	if a.config.ToolExecution == ToolExecutionSequential {
 		return a.callToolsSequential(ctx, toolCalls, yield)
 	}
@@ -248,21 +250,21 @@ func (a *Agent) callTools(
 
 func (a *Agent) callToolsSequential(
 	ctx context.Context,
-	toolCalls []ToolCall,
-	yield func(Event, error) bool,
-) ([]Message, bool) {
-	msgs := make([]Message, 0, len(toolCalls))
+	toolCalls []kit.ToolCall,
+	yield func(kit.Event, error) bool,
+) ([]kit.Message, bool) {
+	msgs := make([]kit.Message, 0, len(toolCalls))
 
 	for _, toolCall := range toolCalls {
 		result := a.callTool(ctx, toolCall)
 
-		if !yield(NewToolResultEvent(result), nil) {
+		if !yield(kit.NewToolResultEvent(result), nil) {
 			return msgs, false
 		}
 
-		toolMsg := NewToolMessage(result.Content, result.Call)
+		toolMsg := kit.NewToolMessage(result.Content, result.Call)
 
-		if !yield(NewMessageEvent(toolMsg), nil) {
+		if !yield(kit.NewMessageEvent(toolMsg), nil) {
 			return msgs, false
 		}
 
@@ -274,15 +276,15 @@ func (a *Agent) callToolsSequential(
 
 func (a *Agent) callToolsParallel(
 	ctx context.Context,
-	toolCalls []ToolCall,
-	yield func(Event, error) bool,
-) ([]Message, bool) {
+	toolCalls []kit.ToolCall,
+	yield func(kit.Event, error) bool,
+) ([]kit.Message, bool) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	msgs := make([]Message, 0, len(toolCalls))
+	msgs := make([]kit.Message, 0, len(toolCalls))
 
-	results := make(chan ToolResult, len(toolCalls))
+	results := make(chan kit.ToolResult, len(toolCalls))
 
 	for _, toolCall := range toolCalls {
 		go func() {
@@ -291,7 +293,7 @@ func (a *Agent) callToolsParallel(
 	}
 
 	for range len(toolCalls) {
-		var result ToolResult
+		var result kit.ToolResult
 
 		select {
 		case result = <-results:
@@ -299,13 +301,13 @@ func (a *Agent) callToolsParallel(
 			return msgs, false
 		}
 
-		if !yield(NewToolResultEvent(result), nil) {
+		if !yield(kit.NewToolResultEvent(result), nil) {
 			return msgs, false
 		}
 
-		toolMsg := NewToolMessage(result.Content, result.Call)
+		toolMsg := kit.NewToolMessage(result.Content, result.Call)
 
-		if !yield(NewMessageEvent(toolMsg), nil) {
+		if !yield(kit.NewMessageEvent(toolMsg), nil) {
 			return msgs, false
 		}
 
@@ -315,39 +317,39 @@ func (a *Agent) callToolsParallel(
 	return msgs, true
 }
 
-func (a *Agent) callTool(ctx context.Context, toolCall ToolCall) (result ToolResult) {
+func (a *Agent) callTool(ctx context.Context, toolCall kit.ToolCall) (result kit.ToolResult) {
 	defer func() {
 		if recovered := recover(); recovered != nil {
-			result = NewErrorToolResult(toolCall, fmt.Errorf("recovered: %v", recovered))
+			result = kit.NewErrorToolResult(toolCall, fmt.Errorf("recovered: %v", recovered))
 		}
 	}()
 
 	ctx, toolCall, err := a.hooks.onToolCall(ctx, toolCall)
 	if err != nil {
-		return NewErrorToolResult(toolCall, err)
+		return kit.NewErrorToolResult(toolCall, err)
 	}
 
 	tool, ok := a.tools[toolCall.Name]
 	if !ok {
-		return NewErrorToolResult(toolCall, fmt.Errorf("tool not found: %s", toolCall.Name))
+		return kit.NewErrorToolResult(toolCall, fmt.Errorf("tool not found: %s", toolCall.Name))
 	}
 
 	content, err := tool.Execute(ctx, toolCall.Arguments)
 	if err != nil {
-		return NewErrorToolResult(toolCall, err)
+		return kit.NewErrorToolResult(toolCall, err)
 	}
 
-	result = ToolResult{Call: toolCall, Content: content}
+	result = kit.ToolResult{Call: toolCall, Content: content}
 
 	_, result, err = a.hooks.onToolResult(ctx, result)
 	if err != nil {
-		return NewErrorToolResult(toolCall, err)
+		return kit.NewErrorToolResult(toolCall, err)
 	}
 
 	return result
 }
 
-func (a *Agent) needsCompaction(lastUsage Usage) bool {
+func (a *Agent) needsCompaction(lastUsage kit.Usage) bool {
 	if a.compactor == nil {
 		return false
 	}
@@ -364,12 +366,12 @@ func (a *Agent) needsCompaction(lastUsage Usage) bool {
 
 func (a *Agent) compact(
 	ctx context.Context,
-	msgs []Message,
-	yield func(Event, error) bool,
-) ([]Message, *Message, bool) {
+	msgs []kit.Message,
+	yield func(kit.Event, error) bool,
+) ([]kit.Message, *kit.Message, bool) {
 	compacted, summary, err := a.compactor.Compact(ctx, msgs)
 	if err != nil {
-		yield(Event{}, fmt.Errorf("compactor failed: %w", err))
+		yield(kit.Event{}, fmt.Errorf("compactor failed: %w", err))
 
 		return msgs, nil, false
 	}
@@ -378,13 +380,13 @@ func (a *Agent) compact(
 		return msgs, nil, true
 	}
 
-	summaryMsg := NewSummaryMessage(summary)
+	summaryMsg := kit.NewSummaryMessage(summary)
 
-	if !yield(NewContextSummaryEvent(summary), nil) {
+	if !yield(kit.NewContextSummaryEvent(summary), nil) {
 		return msgs, nil, false
 	}
 
-	if !yield(NewMessageEvent(summaryMsg), nil) {
+	if !yield(kit.NewMessageEvent(summaryMsg), nil) {
 		return msgs, nil, false
 	}
 

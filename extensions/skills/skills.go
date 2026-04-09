@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/vitaliiPsl/crappy-adk/kit"
+	"github.com/vitaliiPsl/crappy-adk/agent"
 	"github.com/vitaliiPsl/crappy-adk/kit/tool"
 )
 
@@ -56,11 +56,11 @@ type RefArgs struct {
 	Reference string `json:"reference" jsonschema:"Name of the reference document"`
 }
 
-// WithSkills returns a set of [kit.AgentOption] values that give the agent access to a skill catalog.
+// WithSkills returns a set of [agent.Option] values that give the agent access to a skill catalog.
 // It registers two tools — read_skill and read_skill_reference — and injects a system prompt
 // listing all available skills so the agent knows when to use them.
-// Use with [kit.WithExtension] to apply all options at once.
-func WithSkills(store Store) []kit.AgentOption {
+// Use with [agent.WithExtension] to apply all options at once.
+func WithSkills(store Store) []agent.Option {
 	readSkill := tool.MustFunction(
 		readName,
 		readDescription,
@@ -82,9 +82,9 @@ func WithSkills(store Store) []kit.AgentOption {
 		},
 	)
 
-	return []kit.AgentOption{
-		kit.WithTools(readSkill, readRef),
-		kit.WithInstructions(func(ctx context.Context) (string, error) {
+	return []agent.Option{
+		agent.WithTools(readSkill, readRef),
+		agent.WithInstructions(func(ctx context.Context) (string, error) {
 			skills, err := store.List(ctx)
 			if err != nil {
 				return "", err

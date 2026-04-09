@@ -47,15 +47,15 @@ if err != nil {
     log.Fatal(err)
 }
 
-agent, err := kit.NewAgent(model,
-    kit.WithInstruction("You are a helpful assistant."),
-    kit.WithTools(filesystem.NewReadFile(), filesystem.NewListDirectory()),
+a, err := agent.New(model,
+    agent.WithInstruction("You are a helpful assistant."),
+    agent.WithTools(filesystem.NewReadFile(), filesystem.NewListDirectory()),
 )
 if err != nil {
     log.Fatal(err)
 }
 
-result, err := agent.Run(ctx, []kit.Message{
+result, err := a.Run(ctx, []kit.Message{
     kit.NewUserMessage(kit.NewTextPart("What does this project do?")),
 })
 ```
@@ -130,7 +130,7 @@ getTime, err := tool.NewFunction(
 `Stream` returns a lazy `iter.Seq2` iterator that yields events as they arrive.
 
 ```go
-stream, err := agent.Stream(ctx, messages)
+stream, err := a.Stream(ctx, messages)
 
 for event, err := range stream.Iter() {
     if err != nil {
@@ -154,13 +154,13 @@ for event, err := range stream.Iter() {
 The agent is stateless between runs. To continue a conversation, pass the messages from the previous result back on the next call.
 
 ```go
-result, err := agent.Run(ctx, messages)
+result, err := a.Run(ctx, messages)
 
 // Continue the conversation
 messages = append(messages, result.Messages...)
 messages = append(messages, kit.NewUserMessage(kit.NewTextPart("follow-up question")))
 
-result, err = agent.Run(ctx, messages)
+result, err = a.Run(ctx, messages)
 ```
 
 ## Hooks
@@ -212,8 +212,8 @@ func(ctx context.Context, result kit.ToolResult) (context.Context, kit.ToolResul
 Middleware wraps the model and intercepts every `Generate` and `GenerateStream` call. Multiple middlewares can be chained.
 
 ```go
-agent, err := kit.NewAgent(model,
-    kit.WithModelMiddleware(middleware.NewRetry(
+a, err := agent.New(model,
+    agent.WithModelMiddleware(middleware.NewRetry(
         middleware.WithMaxAttempts(5),
         middleware.WithBaseDelay(300*time.Millisecond),
         middleware.WithMaxDelay(15*time.Second),
@@ -226,8 +226,8 @@ agent, err := kit.NewAgent(model,
 `WithSubAgents` registers a `delegate` tool on the parent agent. When called, it runs the target subagent's full ReAct loop and returns its output.
 
 ```go
-orchestrator, err := kit.NewAgent(model,
-    kit.WithInstruction("You are an orchestrator. Always delegate — never answer directly."),
+orchestrator, err := agent.New(model,
+    agent.WithInstruction("You are an orchestrator. Always delegate — never answer directly."),
     tool.WithSubAgents(
         tool.SubAgent{Name: "researcher", Description: "...", Agent: researcher},
         tool.SubAgent{Name: "writer",     Description: "...", Agent: writer},
@@ -244,7 +244,7 @@ Everything is an interface. If something doesn't fit, replace it.
 - **Middleware** — `func(Model) Model`. Wrap the model for retry, caching, rate limiting, tracing.
 - **Instruction** — `func(ctx) (string, error)`. Evaluated fresh each run, so it can read live state.
 - **Compactor** — `kit.Compactor`. Replace the built-in summarizer with any history strategy.
-- **Extension** — `kit.WithExtension([]AgentOption)` bundles options into a reusable capability.
+- **Extension** — `agent.WithExtension([]Option)` bundles options into a reusable capability.
 
 ## Examples
 

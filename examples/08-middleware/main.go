@@ -7,6 +7,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/vitaliiPsl/crappy-adk/agent"
 	"github.com/vitaliiPsl/crappy-adk/kit"
 	"github.com/vitaliiPsl/crappy-adk/kit/middleware"
 	"github.com/vitaliiPsl/crappy-adk/providers/google"
@@ -41,13 +42,13 @@ func main() {
 		log.Fatal(err)
 	}
 
-	agent, err := kit.NewAgent(model,
-		kit.WithInstruction("You are a helpful coding assistant with access to the filesystem."),
-		kit.WithTools(
+	a, err := agent.New(model,
+		agent.WithInstruction("You are a helpful coding assistant with access to the filesystem."),
+		agent.WithTools(
 			filesystem.NewReadFile(),
 			filesystem.NewListDirectory(),
 		),
-		kit.WithModelMiddleware(middleware.NewRetry(
+		agent.WithModelMiddleware(middleware.NewRetry(
 			middleware.WithMaxAttempts(5),
 			middleware.WithBaseDelay(300*time.Millisecond),
 			middleware.WithMaxDelay(15*time.Second),
@@ -57,7 +58,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	result, err := agent.Run(ctx, []kit.Message{
+	result, err := a.Run(ctx, []kit.Message{
 		kit.NewUserMessage(kit.NewTextPart("List the files in the current directory and summarize what this project does.")),
 	})
 	if err != nil {

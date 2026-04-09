@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 
+	"github.com/vitaliiPsl/crappy-adk/agent"
 	"github.com/vitaliiPsl/crappy-adk/kit"
 	"github.com/vitaliiPsl/crappy-adk/providers/google"
 	"github.com/vitaliiPsl/crappy-adk/tools/bash"
@@ -36,9 +37,9 @@ func main() {
 		log.Fatal(err)
 	}
 
-	agent, err := kit.NewAgent(model,
-		kit.WithInstruction("You are a helpful coding assistant with access to the filesystem and shell."),
-		kit.WithTools(
+	a, err := agent.New(model,
+		agent.WithInstruction("You are a helpful coding assistant with access to the filesystem and shell."),
+		agent.WithTools(
 			bash.NewBash(),
 			filesystem.NewReadFile(),
 			filesystem.NewListDirectory(),
@@ -48,7 +49,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	stream, err := agent.Stream(ctx, []kit.Message{
+	stream, err := a.Stream(ctx, []kit.Message{
 		kit.NewUserMessage(kit.NewTextPart("List the files in the current directory and tell me what this project does.")),
 	})
 	if err != nil {

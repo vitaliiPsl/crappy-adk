@@ -7,6 +7,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/vitaliiPsl/crappy-adk/agent"
 	"github.com/vitaliiPsl/crappy-adk/kit"
 	"github.com/vitaliiPsl/crappy-adk/kit/tool"
 	"github.com/vitaliiPsl/crappy-adk/providers/google"
@@ -54,15 +55,15 @@ func main() {
 		log.Fatal(err)
 	}
 
-	agent, err := kit.NewAgent(model,
-		kit.WithInstruction("You are a helpful assistant. Use tools when needed."),
-		kit.WithTools(getTime),
+	a, err := agent.New(model,
+		agent.WithInstruction("You are a helpful assistant. Use tools when needed."),
+		agent.WithTools(getTime),
 	)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	result, err := agent.Run(ctx, []kit.Message{
+	result, err := a.Run(ctx, []kit.Message{
 		kit.NewUserMessage(kit.NewTextPart("What time is it right now in Tokyo, London, and New York?")),
 	})
 	if err != nil {

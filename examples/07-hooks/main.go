@@ -7,6 +7,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/vitaliiPsl/crappy-adk/agent"
 	"github.com/vitaliiPsl/crappy-adk/kit"
 	"github.com/vitaliiPsl/crappy-adk/providers/google"
 	filesystem "github.com/vitaliiPsl/crappy-adk/tools/fs"
@@ -39,25 +40,28 @@ func main() {
 
 	toolStartTimes := map[string]time.Time{}
 
-	agent, err := kit.NewAgent(model,
-		kit.WithInstruction("You are a helpful coding assistant with access to the filesystem."),
-		kit.WithTools(
+	a, err := agent.New(model,
+		agent.WithInstruction("You are a helpful coding assistant with access to the filesystem."),
+		agent.WithTools(
 			filesystem.NewReadFile(),
 			filesystem.NewListDirectory(),
 		),
-		kit.WithOnModelResponse(func(ctx context.Context, resp kit.ModelResponse) (context.Context, kit.ModelResponse, error) {
+		agent.WithOnModelResponse(func(ctx context.Context, resp kit.ModelResponse) (context.Context, kit.ModelResponse, error) {
 			fmt.Printf("[tokens] input=%d output=%d\n", resp.Usage.InputTokens, resp.Usage.OutputTokens)
+
 			return ctx, resp, nil
 		}),
-		kit.WithOnToolCall(func(ctx context.Context, call kit.ToolCall) (context.Context, kit.ToolCall, error) {
+		agent.WithOnToolCall(func(ctx context.Context, call kit.ToolCall) (context.Context, kit.ToolCall, error) {
 			toolStartTimes[call.ID] = time.Now()
+
 			return ctx, call, nil
 		}),
-		kit.WithOnToolResult(func(ctx context.Context, result kit.ToolResult) (context.Context, kit.ToolResult, error) {
+		agent.WithOnToolResult(func(ctx context.Context, result kit.ToolResult) (context.Context, kit.ToolResult, error) {
 			if start, ok := toolStartTimes[result.Call.ID]; ok {
 				fmt.Printf("[tool]   %s took %dms\n", result.Call.Name, time.Since(start).Milliseconds())
 				delete(toolStartTimes, result.Call.ID)
 			}
+
 			return ctx, result, nil
 		}),
 	)
@@ -65,7 +69,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	result, err := agent.Run(ctx, []kit.Message{
+	result, err := a.Run(ctx, []kit.Message{
 		kit.NewUserMessage(kit.NewTextPart("List the files in the current directory and summarize what this project does.")),
 	})
 	if err != nil {

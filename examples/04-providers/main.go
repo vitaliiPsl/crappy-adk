@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 
+	"github.com/vitaliiPsl/crappy-adk/agent"
 	"github.com/vitaliiPsl/crappy-adk/kit"
 	"github.com/vitaliiPsl/crappy-adk/providers/anthropic"
 	"github.com/vitaliiPsl/crappy-adk/providers/google"
@@ -57,16 +58,17 @@ func main() {
 }
 
 func run(ctx context.Context, label string, model kit.Model, prompt string) {
-	agent, err := kit.NewAgent(model, kit.WithInstruction("You are a helpful assistant."))
+	a, err := agent.New(model, agent.WithInstruction("You are a helpful assistant."))
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	result, err := agent.Run(ctx, []kit.Message{
+	result, err := a.Run(ctx, []kit.Message{
 		kit.NewUserMessage(kit.NewTextPart(prompt)),
 	})
 	if err != nil {
 		log.Printf("[%s] error: %v", label, err)
+
 		return
 	}
 

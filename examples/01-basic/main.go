@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 
+	"github.com/vitaliiPsl/crappy-adk/agent"
 	"github.com/vitaliiPsl/crappy-adk/kit"
 	"github.com/vitaliiPsl/crappy-adk/providers/google"
 )
@@ -31,14 +32,14 @@ func main() {
 		log.Fatal(err)
 	}
 
-	agent, err := kit.NewAgent(model,
-		kit.WithInstruction("You are a concise assistant. Answer in one or two sentences."),
+	a, err := agent.New(model,
+		agent.WithInstruction("You are a concise assistant. Answer in one or two sentences."),
 	)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	result, err := agent.Run(ctx, []kit.Message{
+	result, err := a.Run(ctx, []kit.Message{
 		kit.NewUserMessage(kit.NewTextPart("What is the ReAct pattern in LLM agents?")),
 	})
 	if err != nil {

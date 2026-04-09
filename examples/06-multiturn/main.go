@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 
+	"github.com/vitaliiPsl/crappy-adk/agent"
 	"github.com/vitaliiPsl/crappy-adk/kit"
 	"github.com/vitaliiPsl/crappy-adk/providers/google"
 	filesystem "github.com/vitaliiPsl/crappy-adk/tools/fs"
@@ -36,9 +37,9 @@ func main() {
 		log.Fatal(err)
 	}
 
-	agent, err := kit.NewAgent(model,
-		kit.WithInstruction("You are a helpful coding assistant with access to the filesystem."),
-		kit.WithTools(
+	a, err := agent.New(model,
+		agent.WithInstruction("You are a helpful coding assistant with access to the filesystem."),
+		agent.WithTools(
 			filesystem.NewReadFile(),
 			filesystem.NewListDirectory(),
 		),
@@ -59,7 +60,7 @@ func main() {
 
 		fmt.Printf("User: %s\n\n", prompt)
 
-		result, err := agent.Run(ctx, messages)
+		result, err := a.Run(ctx, messages)
 		if err != nil {
 			log.Fatal(err)
 		}

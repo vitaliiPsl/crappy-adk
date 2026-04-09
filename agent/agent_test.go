@@ -1,10 +1,11 @@
-package kit_test
+package agent_test
 
 import (
 	"context"
 	"errors"
 	"testing"
 
+	"github.com/vitaliiPsl/crappy-adk/agent"
 	"github.com/vitaliiPsl/crappy-adk/kit"
 	"github.com/vitaliiPsl/crappy-adk/kit/kittest"
 )
@@ -14,7 +15,7 @@ func TestAgent_Run_TextOnly(t *testing.T) {
 		kittest.Turn{Text: "Hello there!"},
 	)
 
-	agent, err := kit.NewAgent(model)
+	agent, err := agent.New(model)
 	if err != nil {
 		t.Fatalf("NewAgent: %v", err)
 	}
@@ -45,7 +46,7 @@ func TestAgent_Run_ToolCall(t *testing.T) {
 		kittest.Turn{Text: "Crappy is not that crappy"},
 	)
 
-	agent, err := kit.NewAgent(model, kit.WithTools(searchTool))
+	agent, err := agent.New(model, agent.WithTools(searchTool))
 	if err != nil {
 		t.Fatalf("NewAgent: %v", err)
 	}
@@ -82,9 +83,9 @@ func TestAgent_Run_MultipleToolCalls(t *testing.T) {
 		kittest.Turn{Text: "Got both results."},
 	)
 
-	agent, err := kit.NewAgent(model,
-		kit.WithTools(searchTool),
-		kit.WithSequentialToolExecution(),
+	agent, err := agent.New(model,
+		agent.WithTools(searchTool),
+		agent.WithSequentialToolExecution(),
 	)
 	if err != nil {
 		t.Fatalf("NewAgent: %v", err)
@@ -122,9 +123,9 @@ func TestAgent_Run_MultiTurn(t *testing.T) {
 		kittest.Turn{Text: "Done."},
 	)
 
-	agent, err := kit.NewAgent(model,
-		kit.WithTools(readTool, writeTool),
-		kit.WithSequentialToolExecution(),
+	agent, err := agent.New(model,
+		agent.WithTools(readTool, writeTool),
+		agent.WithSequentialToolExecution(),
 	)
 	if err != nil {
 		t.Fatalf("NewAgent: %v", err)
@@ -154,7 +155,7 @@ func TestAgent_Run_ToolNotFound(t *testing.T) {
 		kittest.Turn{Text: "Sorry, that tool is unavailable."},
 	)
 
-	agent, err := kit.NewAgent(model)
+	agent, err := agent.New(model)
 	if err != nil {
 		t.Fatalf("NewAgent: %v", err)
 	}
@@ -186,7 +187,7 @@ func TestAgent_Run_ToolError(t *testing.T) {
 		kittest.Turn{Text: "The tool failed."},
 	)
 
-	agent, err := kit.NewAgent(model, kit.WithTools(failTool))
+	agent, err := agent.New(model, agent.WithTools(failTool))
 	if err != nil {
 		t.Fatalf("NewAgent: %v", err)
 	}
@@ -210,7 +211,7 @@ func TestAgent_Run_ModelError(t *testing.T) {
 		kittest.Turn{Error: errors.New("model unavailable")},
 	)
 
-	agent, err := kit.NewAgent(model)
+	agent, err := agent.New(model)
 	if err != nil {
 		t.Fatalf("NewAgent: %v", err)
 	}
@@ -233,7 +234,7 @@ func TestAgent_Run_ContextCancelled(t *testing.T) {
 
 	model := kittest.NewModel(t)
 
-	agent, err := kit.NewAgent(model)
+	agent, err := agent.New(model)
 	if err != nil {
 		t.Fatalf("NewAgent: %v", err)
 	}
@@ -255,7 +256,7 @@ func TestAgent_Run_Instruction(t *testing.T) {
 		kittest.Turn{Text: "I am a helpful bot."},
 	)
 
-	agent, err := kit.NewAgent(model, kit.WithInstruction("You are a helpful bot."))
+	agent, err := agent.New(model, agent.WithInstruction("You are a helpful bot."))
 	if err != nil {
 		t.Fatalf("NewAgent: %v", err)
 	}
@@ -289,7 +290,7 @@ func TestAgent_Run_UsageAccumulated(t *testing.T) {
 		kittest.ToolResponse{Result: "ok"},
 	)
 
-	agent, err := kit.NewAgent(model, kit.WithTools(noopTool))
+	agent, err := agent.New(model, agent.WithTools(noopTool))
 	if err != nil {
 		t.Fatalf("NewAgent: %v", err)
 	}
@@ -321,7 +322,7 @@ func TestAgent_Stream_Events(t *testing.T) {
 		},
 	)
 
-	agent, err := kit.NewAgent(model)
+	agent, err := agent.New(model)
 	if err != nil {
 		t.Fatalf("NewAgent: %v", err)
 	}
@@ -378,9 +379,9 @@ func TestAgent_Stream_ToolCallEvents(t *testing.T) {
 		},
 	)
 
-	agent, err := kit.NewAgent(model,
-		kit.WithTools(tool),
-		kit.WithSequentialToolExecution(),
+	agent, err := agent.New(model,
+		agent.WithTools(tool),
+		agent.WithSequentialToolExecution(),
 	)
 	if err != nil {
 		t.Fatalf("NewAgent: %v", err)
@@ -433,7 +434,7 @@ func TestAgent_Run_StreamError(t *testing.T) {
 		}},
 	)
 
-	agent, err := kit.NewAgent(model)
+	agent, err := agent.New(model)
 	if err != nil {
 		t.Fatalf("NewAgent: %v", err)
 	}
@@ -458,7 +459,7 @@ func TestAgent_Run_MidStreamError(t *testing.T) {
 		}},
 	)
 
-	agent, err := kit.NewAgent(model)
+	agent, err := agent.New(model)
 	if err != nil {
 		t.Fatalf("NewAgent: %v", err)
 	}
@@ -482,28 +483,28 @@ func TestAgent_Run_Hooks(t *testing.T) {
 
 	var hookOrder []string
 
-	agent, err := kit.NewAgent(model,
-		kit.WithOnRunStart(func(ctx context.Context, msgs []kit.Message) (context.Context, []kit.Message, error) {
+	agent, err := agent.New(model,
+		agent.WithOnRunStart(func(ctx context.Context, msgs []kit.Message) (context.Context, []kit.Message, error) {
 			hookOrder = append(hookOrder, "run_start")
 
 			return ctx, msgs, nil
 		}),
-		kit.WithOnTurnStart(func(ctx context.Context, msgs []kit.Message) (context.Context, []kit.Message, error) {
+		agent.WithOnTurnStart(func(ctx context.Context, msgs []kit.Message) (context.Context, []kit.Message, error) {
 			hookOrder = append(hookOrder, "turn_start")
 
 			return ctx, msgs, nil
 		}),
-		kit.WithOnModelRequest(func(ctx context.Context, req kit.ModelRequest) (context.Context, kit.ModelRequest, error) {
+		agent.WithOnModelRequest(func(ctx context.Context, req kit.ModelRequest) (context.Context, kit.ModelRequest, error) {
 			hookOrder = append(hookOrder, "model_request")
 
 			return ctx, req, nil
 		}),
-		kit.WithOnModelResponse(func(ctx context.Context, resp kit.ModelResponse) (context.Context, kit.ModelResponse, error) {
+		agent.WithOnModelResponse(func(ctx context.Context, resp kit.ModelResponse) (context.Context, kit.ModelResponse, error) {
 			hookOrder = append(hookOrder, "model_response")
 
 			return ctx, resp, nil
 		}),
-		kit.WithOnRunEnd(func(ctx context.Context, _ kit.Result, _ error) (context.Context, error) {
+		agent.WithOnRunEnd(func(ctx context.Context, _ kit.Result, _ error) (context.Context, error) {
 			hookOrder = append(hookOrder, "run_end")
 
 			return ctx, nil

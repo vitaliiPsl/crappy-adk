@@ -1,6 +1,10 @@
-package kit
+package agent
 
-import "context"
+import (
+	"context"
+
+	"github.com/vitaliiPsl/crappy-adk/kit"
+)
 
 // ToolExecutionMode controls how multiple tool calls in a single turn are executed.
 type ToolExecutionMode string
@@ -12,19 +16,19 @@ const (
 	ToolExecutionSequential ToolExecutionMode = "sequential"
 )
 
-// AgentOption is a functional option for configuring an [Agent].
-type AgentOption func(*Agent) error
+// Option is a functional option for configuring an [Agent].
+type Option func(*Agent) error
 
 // WithInstruction adds a static string to the agent's system prompt.
-func WithInstruction(text string) AgentOption {
+func WithInstruction(text string) Option {
 	return WithInstructions(func(_ context.Context) (string, error) {
 		return text, nil
 	})
 }
 
-// WithInstructions appends one or more [Instruction] values to the
+// WithInstructions appends one or more [kit.Instruction] values to the
 // agent's system prompt. Sources are evaluated in order on each [Agent.Run].
-func WithInstructions(sources ...Instruction) AgentOption {
+func WithInstructions(sources ...kit.Instruction) Option {
 	return func(a *Agent) error {
 		a.instructions = append(a.instructions, sources...)
 
@@ -33,7 +37,7 @@ func WithInstructions(sources ...Instruction) AgentOption {
 }
 
 // WithParallelToolExecution sets tool execution to the parallel mode.
-func WithParallelToolExecution() AgentOption {
+func WithParallelToolExecution() Option {
 	return func(a *Agent) error {
 		a.config.ToolExecution = ToolExecutionParallel
 
@@ -42,7 +46,7 @@ func WithParallelToolExecution() AgentOption {
 }
 
 // WithSequentialToolExecution sets tool execution to the sequential mode.
-func WithSequentialToolExecution() AgentOption {
+func WithSequentialToolExecution() Option {
 	return func(a *Agent) error {
 		a.config.ToolExecution = ToolExecutionSequential
 
@@ -51,7 +55,7 @@ func WithSequentialToolExecution() AgentOption {
 }
 
 // WithGenerationConfig sets the generation parameters used on every model request.
-func WithGenerationConfig(config GenerationConfig) AgentOption {
+func WithGenerationConfig(config kit.GenerationConfig) Option {
 	return func(a *Agent) error {
 		a.config.Generation = config
 
@@ -60,7 +64,7 @@ func WithGenerationConfig(config GenerationConfig) AgentOption {
 }
 
 // WithTool registers a single tool with the agent.
-func WithTool(tool Tool) AgentOption {
+func WithTool(tool kit.Tool) Option {
 	return func(a *Agent) error {
 		a.tools[tool.Definition().Name] = tool
 
@@ -69,7 +73,7 @@ func WithTool(tool Tool) AgentOption {
 }
 
 // WithTools registers multiple tools with the agent.
-func WithTools(tools ...Tool) AgentOption {
+func WithTools(tools ...kit.Tool) Option {
 	return func(a *Agent) error {
 		for _, tool := range tools {
 			a.tools[tool.Definition().Name] = tool
@@ -79,8 +83,8 @@ func WithTools(tools ...Tool) AgentOption {
 	}
 }
 
-// WithCompactor sets the [Compactor] and optional compaction threshold.
-func WithCompactor(c Compactor, threshold ...float64) AgentOption {
+// WithCompactor sets the [kit.Compactor] and optional compaction threshold.
+func WithCompactor(c kit.Compactor, threshold ...float64) Option {
 	return func(a *Agent) error {
 		a.compactor = c
 
@@ -93,7 +97,7 @@ func WithCompactor(c Compactor, threshold ...float64) AgentOption {
 }
 
 // WithOnRunStart registers a hook called once before the ReAct loop begins.
-func WithOnRunStart(fn OnRunStart) AgentOption {
+func WithOnRunStart(fn kit.OnRunStart) Option {
 	return func(a *Agent) error {
 		a.hooks.runStart = append(a.hooks.runStart, fn)
 
@@ -102,7 +106,7 @@ func WithOnRunStart(fn OnRunStart) AgentOption {
 }
 
 // WithOnRunEnd registers a hook called once after the ReAct loop completes.
-func WithOnRunEnd(fn OnRunEnd) AgentOption {
+func WithOnRunEnd(fn kit.OnRunEnd) Option {
 	return func(a *Agent) error {
 		a.hooks.runEnd = append(a.hooks.runEnd, fn)
 
@@ -111,7 +115,7 @@ func WithOnRunEnd(fn OnRunEnd) AgentOption {
 }
 
 // WithOnModelRequest registers a hook called before each model request.
-func WithOnModelRequest(fn OnModelRequest) AgentOption {
+func WithOnModelRequest(fn kit.OnModelRequest) Option {
 	return func(a *Agent) error {
 		a.hooks.modelRequest = append(a.hooks.modelRequest, fn)
 
@@ -120,7 +124,7 @@ func WithOnModelRequest(fn OnModelRequest) AgentOption {
 }
 
 // WithOnModelResponse registers a hook called after each model response.
-func WithOnModelResponse(fn OnModelResponse) AgentOption {
+func WithOnModelResponse(fn kit.OnModelResponse) Option {
 	return func(a *Agent) error {
 		a.hooks.modelResponse = append(a.hooks.modelResponse, fn)
 
@@ -129,7 +133,7 @@ func WithOnModelResponse(fn OnModelResponse) AgentOption {
 }
 
 // WithOnToolCall registers a hook called before each tool execution.
-func WithOnToolCall(fn OnToolCall) AgentOption {
+func WithOnToolCall(fn kit.OnToolCall) Option {
 	return func(a *Agent) error {
 		a.hooks.toolCall = append(a.hooks.toolCall, fn)
 
@@ -138,7 +142,7 @@ func WithOnToolCall(fn OnToolCall) AgentOption {
 }
 
 // WithOnToolResult registers a hook called after each tool finishes executing.
-func WithOnToolResult(fn OnToolResult) AgentOption {
+func WithOnToolResult(fn kit.OnToolResult) Option {
 	return func(a *Agent) error {
 		a.hooks.toolResult = append(a.hooks.toolResult, fn)
 
@@ -147,7 +151,7 @@ func WithOnToolResult(fn OnToolResult) AgentOption {
 }
 
 // WithOnTurnStart registers a hook called at the start of each ReAct loop iteration.
-func WithOnTurnStart(fn OnTurnStart) AgentOption {
+func WithOnTurnStart(fn kit.OnTurnStart) Option {
 	return func(a *Agent) error {
 		a.hooks.turnStart = append(a.hooks.turnStart, fn)
 
@@ -156,7 +160,7 @@ func WithOnTurnStart(fn OnTurnStart) AgentOption {
 }
 
 // WithOnTurnEnd registers a hook called at the end of each ReAct loop iteration.
-func WithOnTurnEnd(fn OnTurnEnd) AgentOption {
+func WithOnTurnEnd(fn kit.OnTurnEnd) Option {
 	return func(a *Agent) error {
 		a.hooks.turnEnd = append(a.hooks.turnEnd, fn)
 
@@ -167,7 +171,7 @@ func WithOnTurnEnd(fn OnTurnEnd) AgentOption {
 // WithModelMiddleware wraps the agent's model with one or more middleware
 // functions. Middlewares are applied in order, so the first middleware is the
 // outermost wrapper (it intercepts calls first).
-func WithModelMiddleware(middlewares ...ModelMiddleware) AgentOption {
+func WithModelMiddleware(middlewares ...kit.ModelMiddleware) Option {
 	return func(a *Agent) error {
 		for i := len(middlewares) - 1; i >= 0; i-- {
 			a.model = middlewares[i](a.model)
@@ -178,7 +182,7 @@ func WithModelMiddleware(middlewares ...ModelMiddleware) AgentOption {
 }
 
 // WithExtension applies all options from extension to the agent.
-func WithExtension(extension []AgentOption) AgentOption {
+func WithExtension(extension []Option) Option {
 	return func(a *Agent) error {
 		for _, opt := range extension {
 			if err := opt(a); err != nil {
