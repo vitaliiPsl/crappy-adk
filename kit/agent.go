@@ -260,7 +260,7 @@ func (a *Agent) callToolsSequential(
 			return msgs, false
 		}
 
-		toolMsg := NewToolMessage(result.Content, result.ToolCall)
+		toolMsg := NewToolMessage(result.Content, result.Call)
 
 		if !yield(NewMessageEvent(toolMsg), nil) {
 			return msgs, false
@@ -303,7 +303,7 @@ func (a *Agent) callToolsParallel(
 			return msgs, false
 		}
 
-		toolMsg := NewToolMessage(result.Content, result.ToolCall)
+		toolMsg := NewToolMessage(result.Content, result.Call)
 
 		if !yield(NewMessageEvent(toolMsg), nil) {
 			return msgs, false
@@ -337,7 +337,7 @@ func (a *Agent) callTool(ctx context.Context, toolCall ToolCall) (result ToolRes
 		return NewErrorToolResult(toolCall, err)
 	}
 
-	result = ToolResult{ToolCall: toolCall, Content: content}
+	result = ToolResult{Call: toolCall, Content: content}
 
 	_, result, err = a.hooks.onToolResult(ctx, result)
 	if err != nil {

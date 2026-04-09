@@ -7,20 +7,29 @@ import (
 	"os"
 
 	"github.com/vitaliiPsl/crappy-adk/kit"
+	"github.com/vitaliiPsl/crappy-adk/kit/instruction"
 	"github.com/vitaliiPsl/crappy-adk/kit/tool"
 	"github.com/vitaliiPsl/crappy-adk/providers/google"
 	filesystem "github.com/vitaliiPsl/crappy-adk/tools/fs"
 )
 
-// This example shows a parent orchestrator agent that delegates tasks to two
-// specialized subagents:
-//
-//   - researcher: explores the codebase and gathers information
-//   - writer:     produces a structured summary from provided content
-//
-// The orchestrator decides which subagent to call and in what order based on
-// the user's request. It uses the "delegate" tool registered by WithSubAgents.
+/*
+Example 09 — Subagents
 
+WithSubAgents registers a delegate tool on the parent agent. When called,
+it runs the target subagent's full ReAct loop and returns its output.
+
+Each subagent has its own instruction set and tool access. The orchestrator
+decides which subagent to call and in what order based on the task.
+
+Run:
+
+	go run ./examples/09-subagents
+
+Prerequisites:
+
+	GEMINI_API_KEY must be set.
+*/
 func main() {
 	ctx := context.Background()
 
@@ -31,11 +40,16 @@ func main() {
 		log.Fatal(err)
 	}
 
-	// Researcher: has filesystem access, no writing capability.
+	workdir, err := os.Getwd()
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	researcher, err := kit.NewAgent(model,
 		kit.WithInstruction(`You are a code researcher.
-Explore the codebase using the tools available to you and answer questions with detailed, factual findings.
+Explore the codebase using the tools available and answer questions with detailed, factual findings.
 Always cite specific files and line numbers when relevant.`),
+		kit.WithInstructions(instruction.Env(workdir)),
 		kit.WithTools(
 			filesystem.NewListDirectory(),
 			filesystem.NewReadFile(),
@@ -45,7 +59,6 @@ Always cite specific files and line numbers when relevant.`),
 		log.Fatal(err)
 	}
 
-	// Writer: no filesystem access, focuses on structuring content.
 	writer, err := kit.NewAgent(model,
 		kit.WithInstruction(`You are a technical writer.
 Given raw findings or notes, produce clear and well-structured documentation.
@@ -55,9 +68,9 @@ Use markdown with headers, bullet points, and code blocks where appropriate.`),
 		log.Fatal(err)
 	}
 
-	// Orchestrator: delegates to researcher and writer via the delegate tool.
 	orchestrator, err := kit.NewAgent(model,
-		kit.WithInstruction(`You are an orchestrator. Use the delegate tool to assign tasks to the appropriate subagent.`),
+		kit.WithInstruction(`You are an orchestrator. You must always delegate — never answer directly.
+Always follow this sequence: first delegate research tasks to the researcher, then pass the findings to the writer to produce the final output.`),
 		tool.WithSubAgents(
 			tool.SubAgent{
 				Name:        "researcher",

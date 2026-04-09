@@ -27,18 +27,18 @@ type ToolDefinition struct {
 
 // ToolResult carries the output of a tool execution.
 type ToolResult struct {
-	ToolCall ToolCall `json:"tool_call"`
-	Content  string   `json:"content,omitempty"`
-	Error    string   `json:"error,omitempty"`
+	Call    ToolCall `json:"tool_call"`
+	Content string   `json:"content,omitempty"`
+	Error   string   `json:"error,omitempty"`
 }
 
 // NewErrorToolResult creates a [ToolResult] that reports an execution error.
-func NewErrorToolResult(toolCall ToolCall, err error) ToolResult {
+func NewErrorToolResult(call ToolCall, err error) ToolResult {
 	msg := fmt.Sprintf("%v", err)
 
 	return ToolResult{
-		ToolCall: toolCall,
-		Error:    msg,
-		Content:  msg,
+		Call:    call,
+		Error:   msg,
+		Content: msg,
 	}
 }

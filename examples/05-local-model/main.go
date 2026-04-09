@@ -4,19 +4,33 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"os"
 
 	"github.com/vitaliiPsl/crappy-adk/kit"
-	"github.com/vitaliiPsl/crappy-adk/providers/google"
+	"github.com/vitaliiPsl/crappy-adk/providers/custom"
 	filesystem "github.com/vitaliiPsl/crappy-adk/tools/fs"
 )
 
+/*
+Example 05 — Local model
+
+The custom provider wraps any OpenAI-compatible inference server.
+Pass a base URL to target a specific server, or leave it empty to
+default to Ollama at localhost:11434.
+
+Run:
+
+	go run ./examples/05-local-model
+
+Prerequisites:
+
+	Ollama must be running locally with gemma4 pulled:
+	  ollama pull gemma4
+*/
 func main() {
 	ctx := context.Background()
 
-	provider := google.New()
-
-	model, err := provider.Model(ctx, "gemini-2.5-flash", os.Getenv("GEMINI_API_KEY"))
+	// Could also be a remote server e.g. "https://your-remote-server.space/v1".
+	model, err := custom.New("http://localhost:11434/v1").Model(ctx, "gemma4", "")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -32,25 +46,12 @@ func main() {
 		log.Fatal(err)
 	}
 
-	messages := []kit.Message{
+	result, err := agent.Run(ctx, []kit.Message{
 		kit.NewUserMessage(kit.NewTextPart("List the files in the current directory and summarize what this project does.")),
-	}
-
-	resp, err := agent.Run(ctx, messages)
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	fmt.Println(resp.Output.Text)
-
-	// Append new messages produced this run, then ask a follow-up.
-	messages = append(messages, resp.Messages...)
-	messages = append(messages, kit.NewUserMessage(kit.NewTextPart("Which file is the entry point?")))
-
-	resp, err = agent.Run(ctx, messages)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	fmt.Println(resp.Output.Text)
+	fmt.Println(result.Output.Text)
 }

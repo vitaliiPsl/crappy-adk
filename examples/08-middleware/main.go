@@ -1,0 +1,70 @@
+package main
+
+import (
+	"context"
+	"fmt"
+	"log"
+	"os"
+	"time"
+
+	"github.com/vitaliiPsl/crappy-adk/kit"
+	"github.com/vitaliiPsl/crappy-adk/kit/middleware"
+	"github.com/vitaliiPsl/crappy-adk/providers/google"
+	filesystem "github.com/vitaliiPsl/crappy-adk/tools/fs"
+)
+
+/*
+Example 08 — Middleware
+
+Middleware wraps the model and intercepts every Generate and GenerateStream
+call. It is transparent to the agent: no changes to Run or Stream.
+
+Use middleware to add cross-cutting behaviour like retry, caching, rate
+limiting, or observability at the model layer. Multiple middlewares can be
+chained — they apply in the order they are passed to WithModelMiddleware.
+
+This example uses the built-in retry middleware with custom backoff settings.
+
+Run:
+
+	go run ./examples/08-middleware
+
+Prerequisites:
+
+	GEMINI_API_KEY must be set.
+*/
+func main() {
+	ctx := context.Background()
+
+	provider := google.New()
+
+	model, err := provider.Model(ctx, "gemini-2.5-flash", os.Getenv("GEMINI_API_KEY"))
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	agent, err := kit.NewAgent(model,
+		kit.WithInstruction("You are a helpful coding assistant with access to the filesystem."),
+		kit.WithTools(
+			filesystem.NewReadFile(),
+			filesystem.NewListDirectory(),
+		),
+		kit.WithModelMiddleware(middleware.NewRetry(
+			middleware.WithMaxAttempts(5),
+			middleware.WithBaseDelay(300*time.Millisecond),
+			middleware.WithMaxDelay(15*time.Second),
+		)),
+	)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	result, err := agent.Run(ctx, []kit.Message{
+		kit.NewUserMessage(kit.NewTextPart("List the files in the current directory and summarize what this project does.")),
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	fmt.Println(result.Output.Text)
+}
