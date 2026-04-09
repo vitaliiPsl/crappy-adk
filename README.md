@@ -105,7 +105,7 @@ Tools are the actions the agent can take during the ReAct loop. Each tool has a 
 
 ### Custom tools
 
-`FunctionTool[T]` in the `x/tool` package wraps a typed Go function as a tool. The JSON schema for arguments is generated automatically from `T` — no manual schema definition needed. Arguments are validated against the schema before the handler is called.
+`FunctionTool[T]` in `x/tool` wraps a typed Go function as a tool. The JSON schema for arguments is generated automatically from `T` — no manual schema definition needed. Arguments are validated against the schema before the handler is called.
 
 ```go
 type GetTimeInput struct {
@@ -212,7 +212,7 @@ func(ctx context.Context, result kit.ToolResult) (context.Context, kit.ToolResul
 
 ## Middleware
 
-Middleware wraps the model and intercepts every `Generate` and `GenerateStream` call. Multiple middlewares can be chained.
+Middleware in `x/middleware` wraps the model and intercepts every `Generate` and `GenerateStream` call. Multiple middlewares can be chained.
 
 ```go
 a, err := agent.New(model,
@@ -226,7 +226,7 @@ a, err := agent.New(model,
 
 ## Subagents
 
-`WithSubAgents` registers a `delegate` tool on the parent agent. When called, it runs the target subagent's full ReAct loop and returns its output.
+`WithSubAgents` in `extensions/subagents` registers a `delegate` tool on the parent agent. When called, it runs the target subagent's full ReAct loop and returns its output.
 
 ```go
 orchestrator, err := agent.New(model,
@@ -244,9 +244,9 @@ Everything is an interface. If something doesn't fit, replace it.
 
 - **Model** — `kit.Model`. Point at any inference backend via a provider package or implement your own.
 - **Tool** — `kit.Tool`, or use `tool.NewFunction[T]` from `x/tool` for auto-schema from a Go struct.
-- **Middleware** — `func(Model) Model`. Wrap the model for retry, caching, rate limiting, tracing.
-- **Instruction** — `func(ctx) (string, error)`. Evaluated fresh each run, so it can read live state.
-- **Compactor** — `kit.Compactor`. Replace the built-in summarizer with any history strategy.
+- **Middleware** — `func(Model) Model`. Built-in middleware lives in `x/middleware`.
+- **Instruction** — `func(ctx) (string, error)`. Evaluated fresh each run; built-in instruction sources live in `x/instructions`.
+- **Compactor** — `kit.Compactor`. Built-in compactor implementations live in `x/compactors`.
 - **Extension** — `agent.WithExtension([]Option)` bundles options into a reusable capability.
 
 ## Examples
