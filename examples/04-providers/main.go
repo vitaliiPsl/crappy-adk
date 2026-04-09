@@ -34,21 +34,21 @@ func main() {
 
 	prompt := "In one sentence, what is a transformer in machine learning?"
 
-	anthropicModel, err := anthropic.New().Model(ctx, "claude-haiku-4-5", os.Getenv("ANTHROPIC_API_KEY"))
+	anthropicModel, err := anthropic.New(os.Getenv("ANTHROPIC_API_KEY"), "claude-haiku-4-5")
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	run(ctx, "anthropic / claude-haiku-4-5", anthropicModel, prompt)
 
-	geminiModel, err := google.New().Model(ctx, "gemini-2.5-flash", os.Getenv("GEMINI_API_KEY"))
+	geminiModel, err := google.New(os.Getenv("GEMINI_API_KEY"), "gemini-2.5-flash")
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	run(ctx, "google / gemini-2.5-flash", geminiModel, prompt)
 
-	openaiModel, err := openai.New().Model(ctx, "gpt-5.4-nano", os.Getenv("OPENAI_API_KEY"))
+	openaiModel, err := openai.New(os.Getenv("OPENAI_API_KEY"), "gpt-5.4-nano")
 	if err != nil {
 		log.Fatal(err)
 	}

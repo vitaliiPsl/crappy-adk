@@ -1,4 +1,4 @@
-package custom
+package openaicompat
 
 import (
 	"context"
@@ -45,6 +45,30 @@ func (m *model) GenerateStream(ctx context.Context, req kit.ModelRequest) (*kit.
 	return kit.NewStream(func(yield func(kit.ModelChunk, error) bool) kit.ModelResponse {
 		return streamResponse(stream, yield)
 	}), nil
+}
+
+func (m *model) buildParams(req kit.ModelRequest) openaisdk.ChatCompletionNewParams {
+	params := openaisdk.ChatCompletionNewParams{
+		Model:    m.config.ID,
+		Messages: convertMessages(req.Instruction, req.Messages),
+		Tools:    convertTools(req.Tools),
+	}
+
+	gc := req.Config
+
+	if gc.Temperature != nil {
+		params.Temperature = openaisdk.Float(float64(*gc.Temperature))
+	}
+
+	if gc.TopP != nil {
+		params.TopP = openaisdk.Float(float64(*gc.TopP))
+	}
+
+	if gc.MaxOutputTokens != nil {
+		params.MaxCompletionTokens = openaisdk.Int(int64(*gc.MaxOutputTokens))
+	}
+
+	return params
 }
 
 func streamResponse(
@@ -145,30 +169,6 @@ func streamResponse(
 			OutputTokens: int32(usage.CompletionTokens),
 		},
 	}
-}
-
-func (m *model) buildParams(req kit.ModelRequest) openaisdk.ChatCompletionNewParams {
-	params := openaisdk.ChatCompletionNewParams{
-		Model:    m.config.ID,
-		Messages: convertMessages(req.Instruction, req.Messages),
-		Tools:    convertTools(req.Tools),
-	}
-
-	gc := req.Config
-
-	if gc.Temperature != nil {
-		params.Temperature = openaisdk.Float(float64(*gc.Temperature))
-	}
-
-	if gc.TopP != nil {
-		params.TopP = openaisdk.Float(float64(*gc.TopP))
-	}
-
-	if gc.MaxOutputTokens != nil {
-		params.MaxCompletionTokens = openaisdk.Int(int64(*gc.MaxOutputTokens))
-	}
-
-	return params
 }
 
 func convertMessages(instruction string, msgs []kit.Message) []openaisdk.ChatCompletionMessageParamUnion {
@@ -283,7 +283,7 @@ func convertResponse(resp openaisdk.ChatCompletion) kit.ModelResponse {
 
 	return kit.ModelResponse{
 		Message:      kit.NewAssistantMessage(msg.Content, "", toolCalls),
-		FinishReason: convertFinishReason((choice.FinishReason)),
+		FinishReason: convertFinishReason(string(choice.FinishReason)),
 		Usage: kit.Usage{
 			InputTokens:  int32(resp.Usage.PromptTokens),
 			OutputTokens: int32(resp.Usage.CompletionTokens),
@@ -296,7 +296,7 @@ func assembleToolCall(id, name, argsJSON string) (kit.ToolCall, error) {
 
 	if argsJSON != "" {
 		if err := json.Unmarshal([]byte(argsJSON), &args); err != nil {
-			return kit.ToolCall{}, fmt.Errorf("custom: unmarshal tool args for %q: %w", name, err)
+			return kit.ToolCall{}, fmt.Errorf("openaicompat: unmarshal tool args for %q: %w", name, err)
 		}
 	}
 

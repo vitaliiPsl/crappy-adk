@@ -42,11 +42,9 @@ Requires Go 1.23+.
 ```go
 ctx := context.Background()
 
-provider := google.New()
-
-model, err := provider.Model(ctx, "gemini-2.5-flash", os.Getenv("GEMINI_API_KEY"))
+model, err := google.New(os.Getenv("GEMINI_API_KEY"), "gemini-2.5-flash")
 if err != nil {
-	log.Fatal(err)
+    log.Fatal(err)
 }
 
 agent, err := kit.NewAgent(model,
@@ -64,16 +62,32 @@ result, err := agent.Run(ctx, []kit.Message{
 
 ## Providers
 
-A provider wraps an LLM API and returns a `kit.Model`. The model handles both blocking (`Generate`) and streaming (`GenerateStream`) calls. The agent doesn't know or care which provider is behind the model.
+Each provider package exposes a `New(apiKey, modelID string) (kit.Model, error)` constructor and a `Models() []kit.ModelConfig` function listing known models. The returned `kit.Model` handles both blocking (`Generate`) and streaming (`GenerateStream`) calls — the agent doesn't know or care which provider is behind it.
 
 | Provider | Package | Models |
 |---|---|---|
 | Anthropic | `providers/anthropic` | claude-opus-4-6, claude-sonnet-4-6, claude-haiku-4-5, ... |
-| OpenAI | `providers/openai` | gpt-5, gpt-4.1, gpt-4.1-nano, ... |
-| Google Gemini | `providers/google` | gemini-2.5-flash, gemini-2.5-pro, ... |
-| Custom (OpenAI-compatible) | `providers/custom` | any model served via Ollama, vLLM, LM Studio, etc. |
+| OpenAI | `providers/openai` | gpt-5.4, gpt-5.4-pro, gpt-5.4-mini, ... |
+| Google Gemini | `providers/google` | gemini-2.5-pro, gemini-2.5-flash, ... |
+| OpenAI-compatible | `providers/openaicompat` | any model via Ollama, vLLM, LM Studio, Groq, Together, etc. |
 
-All providers support extended thinking where the underlying model offers it. The `custom` provider accepts any base URL, so it works with local and self-hosted inference servers alike.
+All first-party providers support extended thinking where the underlying model offers it.
+
+`openaicompat` targets the Chat Completions API and works with any OpenAI-compatible inference server. Pass a base URL to point at a local or self-hosted model:
+
+```go
+// Minimal — just an ID
+model := openaicompat.New("http://localhost:11434/v1", "", kit.ModelConfig{
+    ID: "llama3.2",
+})
+
+// With metadata — enables compaction, cost tracking, capability checks
+model := openaicompat.New("https://api.groq.com/openai/v1", apiKey, kit.ModelConfig{
+    ID:         "llama-3.3-70b-versatile",
+    InputLimit: 128_000,
+    Capabilities: kit.ModelCapabilities{Text: true, Tools: true, Streaming: true},
+})
+```
 
 ## Tools
 
@@ -225,7 +239,7 @@ orchestrator, err := kit.NewAgent(model,
 
 Everything is an interface. If something doesn't fit, replace it.
 
-- **Provider / Model** — `kit.Provider` + `kit.Model`. Point at any inference backend.
+- **Model** — `kit.Model`. Point at any inference backend via a provider package or implement your own.
 - **Tool** — `kit.Tool`, or use `tool.NewFunction[T]` for auto-schema from a Go struct.
 - **Middleware** — `func(Model) Model`. Wrap the model for retry, caching, rate limiting, tracing.
 - **Instruction** — `func(ctx) (string, error)`. Evaluated fresh each run, so it can read live state.
@@ -240,7 +254,7 @@ Everything is an interface. If something doesn't fit, replace it.
 | `examples/02-stream` | `Stream()`, events in real time |
 | `examples/03-tools` | `FunctionTool[T]` with a custom typed tool |
 | `examples/04-providers` | Anthropic, OpenAI, and Google side by side |
-| `examples/05-local-model` | Custom provider with a local model via Ollama |
+| `examples/05-local-model` | `openaicompat` with a local model via Ollama |
 | `examples/06-multiturn` | Stateless multi-turn conversation pattern |
 | `examples/07-hooks` | Token logging and tool timing |
 | `examples/08-middleware` | Retry middleware with custom backoff |

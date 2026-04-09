@@ -12,21 +12,11 @@ import (
 // ProviderID uniquely identifies the Google provider.
 const ProviderID = "google"
 
-var _ kit.Provider = (*Provider)(nil)
-
-// Provider implements [kit.Provider] for the Google Gemini API.
-type Provider struct{}
-
-// New creates a Google provider.
-func New() *Provider {
-	return &Provider{}
-}
-
-// Model returns an authenticated model for the given ID and API key.
-func (p *Provider) Model(ctx context.Context, id string, apiKey string) (kit.Model, error) {
+// New returns an authenticated model for the given modelID and apiKey.
+func New(apiKey, modelID string) (kit.Model, error) {
 	for _, cfg := range knownModels {
-		if cfg.ID == id {
-			client, err := genai.NewClient(ctx, &genai.ClientConfig{
+		if cfg.ID == modelID {
+			client, err := genai.NewClient(context.Background(), &genai.ClientConfig{
 				APIKey:  apiKey,
 				Backend: genai.BackendGeminiAPI,
 			})
@@ -38,10 +28,10 @@ func (p *Provider) Model(ctx context.Context, id string, apiKey string) (kit.Mod
 		}
 	}
 
-	return nil, fmt.Errorf("google: unknown model %q", id)
+	return nil, fmt.Errorf("google: unknown model %q", modelID)
 }
 
 // Models returns the list of supported models.
-func (p *Provider) Models() []kit.ModelConfig {
+func Models() []kit.ModelConfig {
 	return knownModels
 }

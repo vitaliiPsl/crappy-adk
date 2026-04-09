@@ -8,15 +8,6 @@ import (
 // ModelMiddleware wraps a [Model] to intercept and modify its behaviour.
 type ModelMiddleware func(Model) Model
 
-// Provider is a factory for creating models from a specific AI provider.
-type Provider interface {
-	// Model returns an authenticated model for the given ID and API key.
-	Model(ctx context.Context, id string, apiKey string) (Model, error)
-
-	// Models returns all models supported by this provider.
-	Models() []ModelConfig
-}
-
 // Model is a single AI model capable of generating responses.
 type Model interface {
 	// Config returns the static configuration for this model.

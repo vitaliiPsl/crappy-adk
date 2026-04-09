@@ -6,7 +6,7 @@ import (
 	"log"
 
 	"github.com/vitaliiPsl/crappy-adk/kit"
-	"github.com/vitaliiPsl/crappy-adk/providers/custom"
+	"github.com/vitaliiPsl/crappy-adk/providers/openaicompat"
 	filesystem "github.com/vitaliiPsl/crappy-adk/tools/fs"
 )
 
@@ -30,10 +30,9 @@ func main() {
 	ctx := context.Background()
 
 	// Could also be a remote server e.g. "https://your-remote-server.space/v1".
-	model, err := custom.New("http://localhost:11434/v1").Model(ctx, "gemma4", "")
-	if err != nil {
-		log.Fatal(err)
-	}
+	model := openaicompat.New("http://localhost:11434/v1", "", kit.ModelConfig{
+		ID: "gemma4",
+	})
 
 	agent, err := kit.NewAgent(model,
 		kit.WithInstruction("You are a helpful coding assistant with access to the filesystem."),

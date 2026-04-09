@@ -29,9 +29,7 @@ Prerequisites:
 func main() {
 	ctx := context.Background()
 
-	provider := google.New()
-
-	model, err := provider.Model(ctx, "gemini-2.5-flash", os.Getenv("GEMINI_API_KEY"))
+	model, err := google.New(os.Getenv("GEMINI_API_KEY"), "gemini-2.5-flash")
 	if err != nil {
 		log.Fatal(err)
 	}
