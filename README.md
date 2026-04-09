@@ -3,7 +3,7 @@
 <div align="center">
   <img src="icon.png" alt="crappy-adk" width="260" /><br/><br/>
 
-  [![Go](https://img.shields.io/badge/Go-1.23+-00ADD8?style=flat&logo=go&logoColor=white)](https://golang.org)
+  [![Go](https://img.shields.io/badge/Go-1.25.6-00ADD8?style=flat&logo=go&logoColor=white)](https://golang.org)
   [![GoDoc](https://pkg.go.dev/badge/github.com/vitaliiPsl/crappy-adk.svg)](https://pkg.go.dev/github.com/vitaliiPsl/crappy-adk)
   [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 </div>
@@ -35,7 +35,7 @@ Felt bored while on vacation, so decided to learn more about AI agents and build
 go get github.com/vitaliiPsl/crappy-adk
 ```
 
-Requires Go 1.23+.
+Requires Go 1.25.6.
 
 ## Quick start
 
@@ -101,7 +101,7 @@ Tools are the actions the agent can take during the ReAct loop. Each tool has a 
 | `read_file` | `tools/fs` | Read a file with optional line range |
 | `write_file` | `tools/fs` | Write or overwrite a file |
 | `edit_file` | `tools/fs` | Replace an exact string within a file |
-| `list_directory` | `tools/fs` | List directory contents with a configurable limit |
+| `list` | `tools/fs` | List directory contents with a configurable limit |
 
 ### Custom tools
 
@@ -127,7 +127,10 @@ getTime, err := tool.NewFunction(
 
 ## Streaming
 
-`Stream` returns a lazy `iter.Seq2` iterator that yields events as they arrive.
+`Stream` returns a lazy single-consumption iterator that yields events as they arrive.
+Consume it once with `range stream.Iter()`. If you call `stream.Result()` before
+iteration starts, it drains the stream for you. If you stop iterating early,
+`stream.Result()` returns the partial result accumulated so far and does not resume.
 
 ```go
 stream, err := a.Stream(ctx, messages)

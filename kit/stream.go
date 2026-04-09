@@ -2,9 +2,11 @@ package kit
 
 import "iter"
 
-// Stream is a lazy iterator that yields incremental events of type E and
-// accumulates a final result of type R. Execution begins when the caller
-// first ranges over [Stream.Iter].
+// Stream is a lazy, single-consumption iterator that yields events of type E
+// and accumulates a final result of type R.
+//
+// If iteration stops early, [Stream.Result] returns the partial result seen so
+// far; it does not resume iteration.
 type Stream[E, R any] struct {
 	iter   iter.Seq2[E, error]
 	result R
@@ -12,8 +14,7 @@ type Stream[E, R any] struct {
 	done   bool
 }
 
-// NewStream constructs a Stream from fn. fn is invoked lazily on first
-// iteration; it should yield events and return the accumulated result.
+// NewStream constructs a Stream from fn, invoked lazily on first consumption.
 func NewStream[E, R any](fn func(yield func(E, error) bool) R) *Stream[E, R] {
 	s := &Stream[E, R]{}
 	s.iter = func(yield func(E, error) bool) {
@@ -23,7 +24,7 @@ func NewStream[E, R any](fn func(yield func(E, error) bool) R) *Stream[E, R] {
 	return s
 }
 
-// Iter returns an iterator over the events produced by the stream.
+// Iter returns the stream iterator. Range over it at most once.
 func (s *Stream[E, R]) Iter() iter.Seq2[E, error] {
 	return func(yield func(E, error) bool) {
 		defer func() { s.done = true }()
@@ -40,8 +41,8 @@ func (s *Stream[E, R]) Iter() iter.Seq2[E, error] {
 	}
 }
 
-// Result returns the accumulated result and any error that occurred during
-// the run. If Iter has not been exhausted, it drains the remaining events first.
+// Result returns the accumulated result and any stream error.
+// If iteration has not started yet, it drains the stream first.
 func (s *Stream[E, R]) Result() (R, error) {
 	if !s.done {
 		for range s.Iter() {
