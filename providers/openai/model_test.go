@@ -2,7 +2,10 @@ package openai
 
 import (
 	"encoding/base64"
+	"encoding/json"
 	"testing"
+
+	"github.com/openai/openai-go/v3/responses"
 
 	"github.com/vitaliiPsl/crappy-adk/kit"
 )
@@ -35,6 +38,21 @@ func TestConvertContentPart_ImageData(t *testing.T) {
 	want := "data:image/png;base64," + base64.StdEncoding.EncodeToString([]byte("png-bytes"))
 	if got := part.OfInputImage.ImageURL.Value; got != want {
 		t.Fatalf("image_url = %q, want %q", got, want)
+	}
+}
+
+func TestConvertContentPart_ImageURL(t *testing.T) {
+	part, ok := convertContentPart(kit.NewImageURLPart("https://example.com/image.png"))
+	if !ok {
+		t.Fatal("convertContentPart returned ok=false")
+	}
+
+	if part.OfInputImage == nil {
+		t.Fatal("expected input_image payload")
+	}
+
+	if got := part.OfInputImage.ImageURL.Value; got != "https://example.com/image.png" {
+		t.Fatalf("image_url = %q, want %q", got, "https://example.com/image.png")
 	}
 }
 
@@ -89,5 +107,129 @@ func TestConvertContentPart_DocumentURLWithQuery_UsesPathFilename(t *testing.T) 
 
 	if got := part.OfInputFile.Filename.Value; got != "spec.pdf" {
 		t.Fatalf("filename = %q, want %q", got, "spec.pdf")
+	}
+}
+
+func TestConvertInputItems_AssistantPreservesTextAndToolCalls(t *testing.T) {
+	items := convertInputItems(kit.Message{
+		Role:    kit.MessageRoleAssistant,
+		Content: []kit.ContentPart{kit.NewTextPart("done")},
+		ToolCalls: []kit.ToolCall{{
+			ID:        "call_1",
+			Name:      "search",
+			Arguments: map[string]any{"query": "crappy"},
+		}},
+	})
+
+	if got := len(items); got != 2 {
+		t.Fatalf("len(items) = %d, want 2", got)
+	}
+
+	if items[0].OfMessage == nil || items[0].OfMessage.Role != responses.EasyInputMessageRoleAssistant {
+		t.Fatal("expected first item to be assistant message")
+	}
+
+	if items[1].OfFunctionCall == nil {
+		t.Fatal("expected second item to be function call")
+	}
+
+	if items[1].OfFunctionCall.Name != "search" {
+		t.Fatalf("tool name = %q, want %q", items[1].OfFunctionCall.Name, "search")
+	}
+}
+
+func TestConvertResponse_PreservesThinkingToolCallsAndUsage(t *testing.T) {
+	raw := []byte(`{
+		"status":"completed",
+		"output":[
+			{
+				"type":"reasoning",
+				"id":"rs_123",
+				"summary":[{"type":"summary_text","text":"chain"}]
+			},
+			{
+				"type":"message",
+				"id":"msg_123",
+				"role":"assistant",
+				"content":[{"type":"output_text","text":"final"}]
+			},
+			{
+				"type":"function_call",
+				"id":"fc_123",
+				"call_id":"call_1",
+				"name":"read_file",
+				"arguments":"{\"path\":\"README.md\"}"
+			}
+		],
+		"usage":{
+			"input_tokens":9,
+			"output_tokens":4,
+			"input_tokens_details":{"cached_tokens":2},
+			"output_tokens_details":{"reasoning_tokens":6}
+		}
+	}`)
+
+	var resp responses.Response
+	if err := json.Unmarshal(raw, &resp); err != nil {
+		t.Fatalf("Unmarshal: %v", err)
+	}
+
+	got := convertResponse(&resp)
+
+	if got.Message.Text() != "final" {
+		t.Fatalf("text = %q, want %q", got.Message.Text(), "final")
+	}
+
+	if got.Message.Thinking != "chain" {
+		t.Fatalf("thinking = %q, want %q", got.Message.Thinking, "chain")
+	}
+
+	if got.FinishReason != kit.FinishReasonToolCall {
+		t.Fatalf("finish reason = %q, want %q", got.FinishReason, kit.FinishReasonToolCall)
+	}
+
+	if len(got.Message.ToolCalls) != 1 {
+		t.Fatalf("len(tool_calls) = %d, want 1", len(got.Message.ToolCalls))
+	}
+
+	if got.Message.ToolCalls[0].Name != "read_file" {
+		t.Fatalf("tool name = %q, want %q", got.Message.ToolCalls[0].Name, "read_file")
+	}
+
+	if got.Usage.InputTokens != 9 || got.Usage.OutputTokens != 4 || got.Usage.CacheReadTokens != 2 || got.Usage.ReasoningTokens != 6 {
+		t.Fatalf("usage = %+v", got.Usage)
+	}
+}
+
+func TestConvertStatus_IncompleteSafety(t *testing.T) {
+	got := convertStatus(&responses.Response{
+		Status: responses.ResponseStatusIncomplete,
+		IncompleteDetails: responses.ResponseIncompleteDetails{
+			Reason: "content_filter",
+		},
+	})
+
+	if got != kit.FinishReasonSafety {
+		t.Fatalf("finish reason = %q, want %q", got, kit.FinishReasonSafety)
+	}
+}
+
+func TestConvertFunctionCall_InvalidArguments(t *testing.T) {
+	var item responses.ResponseOutputItemUnion
+
+	err := json.Unmarshal([]byte(`{
+		"type":"function_call",
+		"id":"fc_123",
+		"call_id":"call_1",
+		"name":"broken_tool",
+		"arguments":"{"
+	}`), &item)
+	if err != nil {
+		t.Fatalf("Unmarshal: %v", err)
+	}
+
+	_, err = convertFunctionCall(item)
+	if err == nil {
+		t.Fatal("expected error")
 	}
 }

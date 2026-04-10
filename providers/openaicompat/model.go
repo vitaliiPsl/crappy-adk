@@ -258,6 +258,7 @@ func convertContentPart(part kit.ContentPart) (openaisdk.ChatCompletionContentPa
 		if len(part.Data) > 0 {
 			imageURL = "data:" + part.MediaType + ";base64," + base64.StdEncoding.EncodeToString(part.Data)
 		}
+
 		if imageURL == "" {
 			return openaisdk.ChatCompletionContentPartUnionParam{}, false
 		}
