@@ -5,6 +5,8 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"net/url"
+	"path"
 	"strings"
 
 	openaisdk "github.com/openai/openai-go/v3"
@@ -239,9 +241,44 @@ func convertContentPart(p kit.ContentPart) (responses.ResponseInputContentUnionP
 		}
 
 		return responses.ResponseInputContentUnionParam{OfInputImage: img}, true
+	case kit.ContentTypeDocument:
+		file := &responses.ResponseInputFileParam{Detail: responses.ResponseInputFileDetailHigh}
+		if p.URL != "" {
+			file.FileURL = openaisdk.String(p.URL)
+			file.Filename = openaisdk.String(filenameFromURL(p.URL))
+		} else if len(p.Data) > 0 {
+			file.FileData = openaisdk.String(base64.StdEncoding.EncodeToString(p.Data))
+			file.Filename = openaisdk.String(defaultFilename(p.MediaType))
+		} else {
+			return responses.ResponseInputContentUnionParam{}, false
+		}
+
+		return responses.ResponseInputContentUnionParam{OfInputFile: file}, true
 	}
 
 	return responses.ResponseInputContentUnionParam{}, false
+}
+
+func filenameFromURL(rawURL string) string {
+	if parsed, err := url.Parse(rawURL); err == nil && parsed.Path != "" {
+		rawURL = parsed.Path
+	}
+
+	name := path.Base(rawURL)
+	if name == "." || name == "/" || name == "" {
+		return "document"
+	}
+
+	return name
+}
+
+func defaultFilename(mediaType string) string {
+	switch mediaType {
+	case "application/pdf":
+		return "document.pdf"
+	default:
+		return "document"
+	}
 }
 
 func convertTools(tools []kit.ToolDefinition) []responses.ToolUnionParam {

@@ -2,8 +2,11 @@ package openaicompat
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"net/url"
+	"path"
 	"strings"
 
 	openaisdk "github.com/openai/openai-go/v3"
@@ -189,7 +192,7 @@ func convertMessage(msg kit.Message) []openaisdk.ChatCompletionMessageParamUnion
 	switch msg.Role {
 	case kit.MessageRoleUser:
 		return []openaisdk.ChatCompletionMessageParamUnion{
-			openaisdk.UserMessage(msg.Text()),
+			openaisdk.UserMessage(convertUserContent(msg.Content)),
 		}
 
 	case kit.MessageRoleAssistant:
@@ -227,6 +230,90 @@ func convertMessage(msg kit.Message) []openaisdk.ChatCompletionMessageParamUnion
 		return []openaisdk.ChatCompletionMessageParamUnion{
 			openaisdk.UserMessage(msg.Text()),
 		}
+	}
+}
+
+func convertUserContent(parts []kit.ContentPart) []openaisdk.ChatCompletionContentPartUnionParam {
+	if len(parts) == 0 {
+		return nil
+	}
+
+	out := make([]openaisdk.ChatCompletionContentPartUnionParam, 0, len(parts))
+	for _, part := range parts {
+		if converted, ok := convertContentPart(part); ok {
+			out = append(out, converted)
+		}
+	}
+
+	return out
+}
+
+func convertContentPart(part kit.ContentPart) (openaisdk.ChatCompletionContentPartUnionParam, bool) {
+	switch part.Type {
+	case kit.ContentTypeText:
+		return openaisdk.TextContentPart(part.Text), true
+
+	case kit.ContentTypeImage:
+		imageURL := part.URL
+		if len(part.Data) > 0 {
+			imageURL = "data:" + part.MediaType + ";base64," + base64.StdEncoding.EncodeToString(part.Data)
+		}
+		if imageURL == "" {
+			return openaisdk.ChatCompletionContentPartUnionParam{}, false
+		}
+
+		return openaisdk.ImageContentPart(openaisdk.ChatCompletionContentPartImageImageURLParam{
+			URL: imageURL,
+		}), true
+
+	case kit.ContentTypeDocument:
+		fileData, ok := documentFileData(part)
+		if !ok {
+			return openaisdk.ChatCompletionContentPartUnionParam{}, false
+		}
+
+		return openaisdk.FileContentPart(openaisdk.ChatCompletionContentPartFileFileParam{
+			FileData: openaisdk.String(fileData),
+			Filename: openaisdk.String(documentFilename(part)),
+		}), true
+	}
+
+	return openaisdk.ChatCompletionContentPartUnionParam{}, false
+}
+
+func documentFileData(part kit.ContentPart) (string, bool) {
+	if len(part.Data) > 0 {
+		return base64.StdEncoding.EncodeToString(part.Data), true
+	}
+
+	if strings.HasPrefix(part.URL, "data:") {
+		_, data, ok := strings.Cut(part.URL, ",")
+		if ok {
+			return data, true
+		}
+	}
+
+	return "", false
+}
+
+func documentFilename(part kit.ContentPart) string {
+	if part.URL != "" && !strings.HasPrefix(part.URL, "data:") {
+		rawPath := part.URL
+		if parsed, err := url.Parse(part.URL); err == nil && parsed.Path != "" {
+			rawPath = parsed.Path
+		}
+
+		name := path.Base(rawPath)
+		if name != "" && name != "." && name != "/" {
+			return name
+		}
+	}
+
+	switch part.MediaType {
+	case "application/pdf":
+		return "document.pdf"
+	default:
+		return "document"
 	}
 }
 
