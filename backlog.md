@@ -4,3 +4,4 @@
 004. cluade code lately have been calling the same tool over and over again in a loop. need to add a kill switch that would detect this and stop execution. or signal this to model
 005. consider making agent stateful and extractint flow/runner
 006. anthropic just released a new feature called advisor strategy https://x.com/i/status/2042308622181339453 that turns more powerful model into an advisor for low cost models bringing cost per task down. So when low cost model can't make a decision it calls powerful model which reads the shared context and offers and advice / plan. Prob need to look in a direction of multi model / agent collaboration in general. claude code has support for this through teams and tasks
+007. convert html response to markdow in web fetch tool

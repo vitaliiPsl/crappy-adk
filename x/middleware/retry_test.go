@@ -27,8 +27,6 @@ func fastRetryOpts() []middleware.RetryOption {
 	}
 }
 
-// --- Generate tests ---
-
 func TestRetry_Generate_Success(t *testing.T) {
 	model := kittest.NewModel(t,
 		kittest.ModelTurn{Text: "hello"},
