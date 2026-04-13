@@ -17,9 +17,9 @@ import (
 Example 02 — Streaming
 
 Stream lets you print text as it arrives and observe tool calls in real time.
-Events are yielded per token (text_delta), per thinking token (thinking_delta)
-for models that support extended thinking, per tool invocation (tool_call),
-and per tool result (tool_result).
+Events are yielded for lifecycle boundaries such as thinking/content start and done,
+for delta chunks while text is streaming, for tool call start/done, and for the
+assembled message and tool result objects.
 
 Run:
 
@@ -62,16 +62,37 @@ func main() {
 		}
 
 		switch event.Type {
+		case kit.EventThinkingStarted:
+			fmt.Print("[thinking] ")
 		case kit.EventThinkingDelta:
 			fmt.Print(event.Text)
+		case kit.EventThinkingDone:
+			fmt.Print("\n")
+		case kit.EventContentPartStarted:
+			if event.ContentPartType == kit.ContentTypeText {
+				fmt.Print("[assistant] ")
+			}
 		case kit.EventContentPartDelta:
 			fmt.Print(event.Text)
+		case kit.EventContentPartDone:
+			fmt.Print("\n")
+		case kit.EventToolCallStarted:
+			fmt.Printf("[tool %s] starting\n", event.ToolCall.Name)
 		case kit.EventToolCallDone:
-			fmt.Printf("\n[%s]\n", event.ToolCall.Name)
+			fmt.Printf("[tool %s] requested\n", event.ToolCall.Name)
 		case kit.EventToolResult:
-			fmt.Printf("[%s done]\n\n", event.ToolResult.Call.Name)
+			fmt.Printf("[tool %s] done\n", event.ToolResult.Call.Name)
+		case kit.EventMessage:
+			fmt.Printf("[message %s complete]\n", event.Message.Role)
 		}
 	}
 
+	result, err := stream.Result()
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	fmt.Println()
+	fmt.Printf("final text: %s\n", result.Output.Text)
+	fmt.Printf("messages produced: %d\n", len(result.Messages))
 }

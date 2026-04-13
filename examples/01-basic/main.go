@@ -47,4 +47,6 @@ func main() {
 	}
 
 	fmt.Println(result.Output.Text)
+	fmt.Printf("\nmessages produced: %d\n", len(result.Messages))
+	fmt.Printf("tokens used: in=%d out=%d\n", result.Usage.InputTokens, result.Usage.OutputTokens)
 }

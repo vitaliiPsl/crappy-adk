@@ -100,12 +100,26 @@ Always follow this sequence: first delegate research tasks to the researcher, th
 		}
 
 		switch event.Type {
+		case kit.EventContentPartStarted:
+			if event.ContentPartType == kit.ContentTypeText {
+				fmt.Print("[assistant] ")
+			}
 		case kit.EventContentPartDelta:
 			fmt.Print(event.Text)
+		case kit.EventContentPartDone:
+			fmt.Print("\n")
+		case kit.EventToolCallStarted:
+			if event.ToolCall.Name == "delegate" {
+				fmt.Printf("[delegate → %s]\n", event.ToolCall.Arguments["agent"])
+			}
 		case kit.EventToolCallDone:
-			fmt.Printf("\n[delegate → %s]\n", event.ToolCall.Arguments["agent"])
+			if event.ToolCall.Name == "delegate" {
+				fmt.Printf("[delegate requested]\n")
+			}
 		case kit.EventToolResult:
-			fmt.Printf("[delegate ← done]\n\n")
+			if event.ToolResult.Call.Name == "delegate" {
+				fmt.Printf("[delegate ← done]\n")
+			}
 		}
 	}
 

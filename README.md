@@ -37,6 +37,8 @@ go get github.com/vitaliiPsl/crappy-adk
 
 Requires Go 1.25.6.
 
+API documentation: https://pkg.go.dev/github.com/vitaliiPsl/crappy-adk
+
 ## Quick start
 
 ```go
@@ -58,6 +60,13 @@ if err != nil {
 result, err := a.Run(ctx, []kit.Message{
     kit.NewUserMessage(kit.NewTextPart("What does this project do?")),
 })
+if err != nil {
+    log.Fatal(err)
+}
+
+fmt.Println(result.Output.Text)
+fmt.Printf("messages produced: %d\n", len(result.Messages))
+fmt.Printf("tokens used: in=%d out=%d\n", result.Usage.InputTokens, result.Usage.OutputTokens)
 ```
 
 ## Providers
@@ -127,29 +136,56 @@ getTime, err := tool.NewFunction(
 
 ## Streaming
 
-`Stream` returns a lazy single-consumption iterator that yields events as they arrive.
+`Stream` returns a lazy single-consumption iterator that yields fine-grained events as they arrive.
 Consume it once with `range stream.Iter()`. If you call `stream.Result()` before
 iteration starts, it drains the stream for you. If you stop iterating early,
 `stream.Result()` returns the partial result accumulated so far and does not resume.
 
+The stream includes lifecycle events for thinking, content parts, and tool calls,
+plus higher-level `message`, `tool_result`, and `compaction_done` events once those
+items are fully assembled.
+
 ```go
 stream, err := a.Stream(ctx, messages)
+if err != nil {
+    log.Fatal(err)
+}
 
 for event, err := range stream.Iter() {
     if err != nil {
         log.Fatal(err)
     }
     switch event.Type {
+    case kit.EventThinkingStarted:
+        fmt.Print("[thinking] ")
     case kit.EventThinkingDelta:
         fmt.Print(event.Text)
+    case kit.EventThinkingDone:
+        fmt.Print("\n")
+    case kit.EventContentPartStarted:
+        fmt.Print("[assistant] ")
     case kit.EventContentPartDelta:
         fmt.Print(event.Text)
+    case kit.EventContentPartDone:
+        fmt.Print("\n")
+    case kit.EventToolCallStarted:
+        fmt.Printf("[tool %s] starting\n", event.ToolCall.Name)
     case kit.EventToolCallDone:
-        fmt.Printf("\n[%s]\n", event.ToolCall.Name)
+        fmt.Printf("[tool %s] requested\n", event.ToolCall.Name)
     case kit.EventToolResult:
-        fmt.Printf("[done]\n\n")
+        fmt.Printf("[tool %s] done\n", event.ToolResult.Call.Name)
+    case kit.EventMessage:
+        fmt.Printf("[message %s complete]\n", event.Message.Role)
     }
 }
+
+result, err := stream.Result()
+if err != nil {
+    log.Fatal(err)
+}
+
+fmt.Printf("final text: %s\n", result.Output.Text)
+fmt.Printf("messages produced: %d\n", len(result.Messages))
 ```
 
 ## Multi-turn conversations
