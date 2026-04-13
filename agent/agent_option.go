@@ -66,7 +66,7 @@ func WithGenerationConfig(config kit.GenerationConfig) Option {
 // WithTool registers a single tool with the agent.
 func WithTool(tool kit.Tool) Option {
 	return func(a *Agent) error {
-		a.tools[tool.Definition().Name] = tool
+		registerTool(a, tool)
 
 		return nil
 	}
@@ -76,11 +76,26 @@ func WithTool(tool kit.Tool) Option {
 func WithTools(tools ...kit.Tool) Option {
 	return func(a *Agent) error {
 		for _, tool := range tools {
-			a.tools[tool.Definition().Name] = tool
+			registerTool(a, tool)
 		}
 
 		return nil
 	}
+}
+
+func registerTool(a *Agent, tool kit.Tool) {
+	def := tool.Definition()
+	a.tools[def.Name] = tool
+
+	for i, existing := range a.toolDefinitions {
+		if existing.Name == def.Name {
+			a.toolDefinitions[i] = def
+
+			return
+		}
+	}
+
+	a.toolDefinitions = append(a.toolDefinitions, def)
 }
 
 // WithCompactor sets the [kit.Compactor] and optional compaction threshold.

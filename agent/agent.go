@@ -32,7 +32,9 @@ type Agent struct {
 	instructions []kit.Instruction
 
 	model kit.Model
-	tools map[string]kit.Tool
+
+	tools           map[string]kit.Tool
+	toolDefinitions []kit.ToolDefinition
 
 	compactor kit.Compactor
 	hooks     hooks
@@ -117,7 +119,9 @@ func (a *Agent) runLoop(
 			return response, err
 		}
 
-		assistantMsg, usage, err := a.callModel(ctx, instruction, msgs, yield)
+		modelRunner := a.modelRunner()
+
+		assistantMsg, usage, err := modelRunner.run(ctx, instruction, msgs, yield)
 		if err != nil {
 			return response, err
 		}
@@ -140,7 +144,9 @@ func (a *Agent) runLoop(
 			return response, nil
 		}
 
-		toolMsgs, ok := a.callTools(ctx, assistantMsg.ToolCalls, yield)
+		toolRunner := a.toolRunner()
+
+		toolMsgs, ok := toolRunner.run(ctx, assistantMsg.ToolCalls, yield)
 		if !ok {
 			return response, nil
 		}
@@ -168,223 +174,21 @@ func (a *Agent) runLoop(
 	}
 }
 
-func (a *Agent) callModel(
-	ctx context.Context,
-	instruction string,
-	msgs []kit.Message,
-	yield func(kit.Event, error) bool,
-) (kit.Message, kit.Usage, error) {
-	req := kit.ModelRequest{
-		Instruction: instruction,
-		Messages:    msgs,
-		Tools:       a.toolDefinitions(),
-		Config:      a.config.Generation,
-	}
-
-	ctx, req, err := a.hooks.onModelRequest(ctx, req)
-	if err != nil {
-		return kit.Message{}, kit.Usage{}, fmt.Errorf("model request hook failed: %w", err)
-	}
-
-	stream, err := a.model.GenerateStream(ctx, req)
-	if err != nil {
-		return kit.Message{}, kit.Usage{}, err
-	}
-
-	if err := a.forwardModelEvents(stream, yield); err != nil {
-		return kit.Message{}, kit.Usage{}, err
-	}
-
-	modelResp, streamErr := stream.Result()
-	if streamErr != nil {
-		return kit.Message{}, kit.Usage{}, streamErr
-	}
-
-	_, resp, err := a.hooks.onModelResponse(ctx, modelResp)
-	if err != nil {
-		return kit.Message{}, kit.Usage{}, fmt.Errorf("model response hook failed: %w", err)
-	}
-
-	return resp.Message, resp.Usage, nil
-}
-
-func (a *Agent) forwardModelEvents(
-	stream *kit.Stream[kit.ModelEvent, kit.ModelResponse],
-	yield func(kit.Event, error) bool,
-) error {
-	for ev, err := range stream.Iter() {
-		if err != nil {
-			return err
-		}
-
-		event, ok := modelEventToAgentEvent(ev)
-		if !ok {
-			continue
-		}
-
-		if !yield(event, nil) {
-			return nil
-		}
-	}
-
-	return nil
-}
-
-func modelEventToAgentEvent(ev kit.ModelEvent) (kit.Event, bool) {
-	switch ev.Type {
-	case kit.ModelEventThinkingStarted:
-		return kit.NewThinkingStartedEvent(), true
-	case kit.ModelEventThinkingDelta:
-		return kit.NewThinkingDeltaEvent(ev.Text), true
-	case kit.ModelEventThinkingDone:
-		return kit.NewThinkingDoneEvent(ev.Thinking), true
-	case kit.ModelEventContentPartStarted:
-		return kit.NewContentPartStartedEvent(ev.ContentPartType), true
-	case kit.ModelEventContentPartDelta:
-		return kit.NewContentPartDeltaEvent(ev.ContentPartType, ev.Text), true
-	case kit.ModelEventContentPartDone:
-		if ev.ContentPart == nil {
-			return kit.Event{}, false
-		}
-
-		return kit.NewContentPartDoneEvent(*ev.ContentPart), true
-	case kit.ModelEventToolCallStarted:
-		if ev.ToolCall == nil {
-			return kit.Event{}, false
-		}
-
-		return kit.NewToolCallStartedEvent(*ev.ToolCall), true
-	case kit.ModelEventToolCallDone:
-		if ev.ToolCall == nil {
-			return kit.Event{}, false
-		}
-
-		return kit.NewToolCallDoneEvent(*ev.ToolCall), true
-	default:
-		return kit.Event{}, false
+func (a *Agent) modelRunner() modelRunner {
+	return modelRunner{
+		model:           a.model,
+		toolDefinitions: a.toolDefinitions,
+		hooks:           &a.hooks,
+		config:          &a.config,
 	}
 }
 
-func (a *Agent) toolDefinitions() []kit.ToolDefinition {
-	defs := make([]kit.ToolDefinition, 0, len(a.tools))
-	for _, tool := range a.tools {
-		defs = append(defs, tool.Definition())
+func (a *Agent) toolRunner() toolRunner {
+	return toolRunner{
+		tools:  a.tools,
+		hooks:  &a.hooks,
+		config: &a.config,
 	}
-
-	return defs
-}
-
-func (a *Agent) callTools(
-	ctx context.Context,
-	toolCalls []kit.ToolCall,
-	yield func(kit.Event, error) bool,
-) ([]kit.Message, bool) {
-	if a.config.ToolExecution == ToolExecutionSequential {
-		return a.callToolsSequential(ctx, toolCalls, yield)
-	}
-
-	return a.callToolsParallel(ctx, toolCalls, yield)
-}
-
-func (a *Agent) callToolsSequential(
-	ctx context.Context,
-	toolCalls []kit.ToolCall,
-	yield func(kit.Event, error) bool,
-) ([]kit.Message, bool) {
-	msgs := make([]kit.Message, 0, len(toolCalls))
-
-	for _, toolCall := range toolCalls {
-		result := a.callTool(ctx, toolCall)
-
-		if !yield(kit.NewToolResultEvent(result), nil) {
-			return msgs, false
-		}
-
-		toolMsg := kit.NewToolMessage(result.Content, result.Call)
-
-		if !yield(kit.NewMessageEvent(toolMsg), nil) {
-			return msgs, false
-		}
-
-		msgs = append(msgs, toolMsg)
-	}
-
-	return msgs, true
-}
-
-func (a *Agent) callToolsParallel(
-	ctx context.Context,
-	toolCalls []kit.ToolCall,
-	yield func(kit.Event, error) bool,
-) ([]kit.Message, bool) {
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-
-	msgs := make([]kit.Message, 0, len(toolCalls))
-
-	results := make(chan kit.ToolResult, len(toolCalls))
-
-	for _, toolCall := range toolCalls {
-		go func() {
-			results <- a.callTool(ctx, toolCall)
-		}()
-	}
-
-	for range len(toolCalls) {
-		var result kit.ToolResult
-
-		select {
-		case result = <-results:
-		case <-ctx.Done():
-			return msgs, false
-		}
-
-		if !yield(kit.NewToolResultEvent(result), nil) {
-			return msgs, false
-		}
-
-		toolMsg := kit.NewToolMessage(result.Content, result.Call)
-
-		if !yield(kit.NewMessageEvent(toolMsg), nil) {
-			return msgs, false
-		}
-
-		msgs = append(msgs, toolMsg)
-	}
-
-	return msgs, true
-}
-
-func (a *Agent) callTool(ctx context.Context, toolCall kit.ToolCall) (result kit.ToolResult) {
-	defer func() {
-		if recovered := recover(); recovered != nil {
-			result = kit.NewErrorToolResult(toolCall, fmt.Errorf("recovered: %v", recovered))
-		}
-	}()
-
-	ctx, toolCall, err := a.hooks.onToolCall(ctx, toolCall)
-	if err != nil {
-		return kit.NewErrorToolResult(toolCall, err)
-	}
-
-	tool, ok := a.tools[toolCall.Name]
-	if !ok {
-		return kit.NewErrorToolResult(toolCall, fmt.Errorf("tool not found: %s", toolCall.Name))
-	}
-
-	content, err := tool.Execute(ctx, toolCall.Arguments)
-	if err != nil {
-		return kit.NewErrorToolResult(toolCall, err)
-	}
-
-	result = kit.ToolResult{Call: toolCall, Content: content}
-
-	_, result, err = a.hooks.onToolResult(ctx, result)
-	if err != nil {
-		return kit.NewErrorToolResult(toolCall, err)
-	}
-
-	return result
 }
 
 func (a *Agent) needsCompaction(lastUsage kit.Usage) bool {
