@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/vitaliiPsl/crappy-adk/kit"
@@ -71,6 +72,23 @@ func New(model kit.Model, options ...Option) (*Agent, error) {
 	return agent, nil
 }
 
+func (a *Agent) modelRunner() modelRunner {
+	return modelRunner{
+		model:           a.model,
+		toolDefinitions: a.toolDefinitions,
+		hooks:           &a.hooks,
+		config:          &a.config,
+	}
+}
+
+func (a *Agent) toolRunner() toolRunner {
+	return toolRunner{
+		tools:  a.tools,
+		hooks:  &a.hooks,
+		config: &a.config,
+	}
+}
+
 // Run executes the ReAct loop and returns the accumulated [kit.Result] once the
 // agent reaches a final answer. Use [Agent.Stream] instead to receive
 // incremental events as the agent works.
@@ -136,6 +154,15 @@ func (a *Agent) runLoop(
 
 		assistantMsg, usage, ok, err := a.runAssistantTurn(ctx, instruction, msgs, &response, yield)
 		if err != nil {
+			if errors.Is(err, kit.ErrContextLength) && a.compactor != nil {
+				var compacted bool
+
+				msgs, compacted = a.compact(ctx, msgs, &response, yield)
+				if compacted {
+					continue
+				}
+			}
+
 			return response, err
 		}
 
@@ -235,33 +262,7 @@ func (a *Agent) runCompactionTurn(
 		return msgs, true
 	}
 
-	compacted, summaryMsg, ok := a.compact(ctx, msgs, yield)
-	if !ok {
-		return msgs, false
-	}
-
-	if summaryMsg != nil {
-		response.Messages = append(response.Messages, *summaryMsg)
-	}
-
-	return compacted, true
-}
-
-func (a *Agent) modelRunner() modelRunner {
-	return modelRunner{
-		model:           a.model,
-		toolDefinitions: a.toolDefinitions,
-		hooks:           &a.hooks,
-		config:          &a.config,
-	}
-}
-
-func (a *Agent) toolRunner() toolRunner {
-	return toolRunner{
-		tools:  a.tools,
-		hooks:  &a.hooks,
-		config: &a.config,
-	}
+	return a.compact(ctx, msgs, response, yield)
 }
 
 func (a *Agent) needsCompaction(lastUsage kit.Usage) bool {
@@ -282,28 +283,31 @@ func (a *Agent) needsCompaction(lastUsage kit.Usage) bool {
 func (a *Agent) compact(
 	ctx context.Context,
 	msgs []kit.Message,
+	response *kit.Result,
 	yield func(kit.Event, error) bool,
-) ([]kit.Message, *kit.Message, bool) {
+) ([]kit.Message, bool) {
 	compacted, summary, err := a.compactor.Compact(ctx, msgs)
 	if err != nil {
 		yield(kit.Event{}, fmt.Errorf("compactor failed: %w", err))
 
-		return msgs, nil, false
+		return msgs, false
 	}
 
 	if summary == "" {
-		return msgs, nil, true
+		return msgs, true
 	}
 
 	summaryMsg := kit.NewSummaryMessage(summary)
 
 	if !yield(kit.NewCompactionDoneEvent(summary), nil) {
-		return msgs, nil, false
+		return msgs, false
 	}
 
 	if !yield(kit.NewMessageEvent(summaryMsg), nil) {
-		return msgs, nil, false
+		return msgs, false
 	}
 
-	return compacted, &summaryMsg, true
+	response.Messages = append(response.Messages, summaryMsg)
+
+	return compacted, true
 }

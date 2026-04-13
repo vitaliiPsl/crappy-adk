@@ -282,6 +282,52 @@ func TestAgent_Run_ModelError(t *testing.T) {
 	}
 }
 
+func TestAgent_Run_ContextLengthErrorCompactsAndRetries(t *testing.T) {
+	model := kittest.NewModel(t,
+		kittest.ModelTurn{Error: kit.ErrContextLength},
+		kittest.ModelTurn{Text: "Recovered after compaction."},
+	)
+
+	compactor := &stubCompactor{
+		compacted: []kit.Message{
+			kit.NewSummaryMessage("summary"),
+			kit.NewUserMessage(kit.NewTextPart("Hi")),
+		},
+		summary: "summary",
+	}
+
+	agent, err := agent.New(model, agent.WithCompactor(compactor))
+	if err != nil {
+		t.Fatalf("NewAgent: %v", err)
+	}
+
+	resp, err := agent.Run(context.Background(), []kit.Message{
+		kit.NewUserMessage(kit.NewTextPart("Hi")),
+	})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	if got := resp.Output.Text; got != "Recovered after compaction." {
+		t.Fatalf("text = %q, want %q", got, "Recovered after compaction.")
+	}
+
+	model.AssertCallCount(t, 2)
+
+	if compactor.calls != 1 {
+		t.Fatalf("compactor calls = %d, want %d", compactor.calls, 1)
+	}
+
+	req := model.CallAt(1)
+	if len(req.Messages) != 2 {
+		t.Fatalf("len(messages) = %d, want %d", len(req.Messages), 2)
+	}
+
+	if !req.Messages[0].IsSummary {
+		t.Fatal("expected compacted history to start with summary message")
+	}
+}
+
 func TestAgent_Run_ContextCancelled(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -303,6 +349,19 @@ func TestAgent_Run_ContextCancelled(t *testing.T) {
 	if !errors.Is(err, context.Canceled) {
 		t.Errorf("error = %v, want context.Canceled", err)
 	}
+}
+
+type stubCompactor struct {
+	calls     int
+	compacted []kit.Message
+	summary   string
+	err       error
+}
+
+func (c *stubCompactor) Compact(_ context.Context, _ []kit.Message) ([]kit.Message, string, error) {
+	c.calls++
+
+	return c.compacted, c.summary, c.err
 }
 
 func TestAgent_Run_Instruction(t *testing.T) {
