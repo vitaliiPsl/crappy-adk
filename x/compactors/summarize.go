@@ -77,10 +77,10 @@ func (s *Summarizer) Compact(ctx context.Context, messages []kit.Message) ([]kit
 		return nil, "", fmt.Errorf("summarization failed: %w", err)
 	}
 
-	summaryMsg := kit.NewSummaryMessage(
-		"[Summary of previous conversation]\n\n" + summary +
-			"\n\n[End of summary — the conversation continues below]",
-	)
+	summary = "[Summary of previous conversation]\n\n" + summary +
+		"\n\n[End of summary — the conversation continues below]"
+
+	summaryMsg := kit.NewSummaryMessage(summary)
 
 	result := make([]kit.Message, 0, 1+len(toKeep))
 	result = append(result, summaryMsg)
