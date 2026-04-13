@@ -264,7 +264,8 @@ func TestRetry_GenerateStream_PreChunkRetriesExhausted(t *testing.T) {
 func TestRetry_GenerateStream_MidStreamPassesThrough(t *testing.T) {
 	model := kittest.NewModel(t,
 		kittest.ModelTurn{Stream: []kittest.ChunkResult{
-			{Chunk: kit.NewTextChunk("partial")},
+			{Event: kit.NewModelContentPartStartedEvent(kit.ContentTypeText)},
+			{Event: kit.NewModelContentPartDeltaEvent(kit.ContentTypeText, "partial")},
 			{Err: retryableErr("mid-stream failure")},
 		}},
 	)
@@ -281,7 +282,7 @@ func TestRetry_GenerateStream_MidStreamPassesThrough(t *testing.T) {
 		sawError bool
 	)
 
-	for chunk, iterErr := range stream.Iter() {
+	for event, iterErr := range stream.Iter() {
 		if iterErr != nil {
 			sawError = true
 
@@ -292,7 +293,7 @@ func TestRetry_GenerateStream_MidStreamPassesThrough(t *testing.T) {
 			break
 		}
 
-		if chunk.Type == kit.ChunkTypeText {
+		if event.Type == kit.ModelEventContentPartDelta && event.ContentPartType == kit.ContentTypeText {
 			sawText = true
 		}
 	}
@@ -335,18 +336,18 @@ func TestRetry_GenerateStream_MixedImmediateAndPreChunkRetries(t *testing.T) {
 	model.AssertCallCount(t, 3)
 }
 
-func collectText(t *testing.T, stream *kit.Stream[kit.ModelChunk, kit.ModelResponse]) string {
+func collectText(t *testing.T, stream *kit.Stream[kit.ModelEvent, kit.ModelResponse]) string {
 	t.Helper()
 
 	var text strings.Builder
 
-	for chunk, err := range stream.Iter() {
+	for event, err := range stream.Iter() {
 		if err != nil {
 			t.Fatalf("unexpected stream error: %v", err)
 		}
 
-		if chunk.Type == kit.ChunkTypeText {
-			text.WriteString(chunk.Text)
+		if event.Type == kit.ModelEventContentPartDelta && event.ContentPartType == kit.ContentTypeText {
+			text.WriteString(event.Text)
 		}
 	}
 

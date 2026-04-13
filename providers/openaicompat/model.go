@@ -37,7 +37,7 @@ func (m *model) Generate(ctx context.Context, req kit.ModelRequest) (kit.ModelRe
 	return convertResponse(*resp), nil
 }
 
-func (m *model) GenerateStream(ctx context.Context, req kit.ModelRequest) (*kit.Stream[kit.ModelChunk, kit.ModelResponse], error) {
+func (m *model) GenerateStream(ctx context.Context, req kit.ModelRequest) (*kit.Stream[kit.ModelEvent, kit.ModelResponse], error) {
 	params := m.buildParams(req)
 	params.StreamOptions = openaisdk.ChatCompletionStreamOptionsParam{
 		IncludeUsage: openaisdk.Bool(true),
@@ -45,7 +45,7 @@ func (m *model) GenerateStream(ctx context.Context, req kit.ModelRequest) (*kit.
 
 	stream := m.client.Chat.Completions.NewStreaming(ctx, params)
 
-	return kit.NewStream(func(yield func(kit.ModelChunk, error) bool) kit.ModelResponse {
+	return kit.NewStream(func(yield func(kit.ModelEvent, error) bool) kit.ModelResponse {
 		return streamResponse(stream, yield)
 	}), nil
 }
@@ -76,7 +76,7 @@ func (m *model) buildParams(req kit.ModelRequest) openaisdk.ChatCompletionNewPar
 
 func streamResponse(
 	stream *ssestream.Stream[openaisdk.ChatCompletionChunk],
-	yield func(kit.ModelChunk, error) bool,
+	yield func(kit.ModelEvent, error) bool,
 ) kit.ModelResponse {
 	defer func() { _ = stream.Close() }()
 
@@ -89,8 +89,9 @@ func streamResponse(
 	partials := map[int64]*partialToolCall{}
 
 	var (
-		content strings.Builder
-		usage   openaisdk.CompletionUsage
+		content            strings.Builder
+		usage              openaisdk.CompletionUsage
+		contentPartStarted bool
 	)
 
 	for stream.Next() {
@@ -106,7 +107,15 @@ func streamResponse(
 			if delta.Content != "" {
 				content.WriteString(delta.Content)
 
-				if !yield(kit.NewTextChunk(delta.Content), nil) {
+				if !contentPartStarted {
+					contentPartStarted = true
+
+					if !yield(kit.NewModelContentPartStartedEvent(kit.ContentTypeText), nil) {
+						return kit.ModelResponse{}
+					}
+				}
+
+				if !yield(kit.NewModelContentPartDeltaEvent(kit.ContentTypeText, delta.Content), nil) {
 					return kit.ModelResponse{}
 				}
 			}
@@ -132,7 +141,7 @@ func streamResponse(
 	}
 
 	if err := stream.Err(); err != nil {
-		yield(kit.ModelChunk{}, convertError(err))
+		yield(kit.ModelEvent{}, convertError(err))
 
 		return kit.ModelResponse{}
 	}
@@ -147,12 +156,16 @@ func streamResponse(
 
 		tc, err := assembleToolCall(p.id, p.name, p.arguments.String())
 		if err != nil {
-			yield(kit.ModelChunk{}, err)
+			yield(kit.ModelEvent{}, err)
 
 			return kit.ModelResponse{}
 		}
 
-		if !yield(kit.NewToolCallChunk(tc), nil) {
+		if !yield(kit.NewModelToolCallStartedEvent(tc), nil) {
+			return kit.ModelResponse{}
+		}
+
+		if !yield(kit.NewModelToolCallDoneEvent(tc), nil) {
 			return kit.ModelResponse{}
 		}
 
@@ -164,7 +177,7 @@ func streamResponse(
 		finishReason = kit.FinishReasonToolCall
 	}
 
-	return kit.ModelResponse{
+	resp := kit.ModelResponse{
 		Message:      kit.NewAssistantMessage(content.String(), "", toolCalls),
 		FinishReason: finishReason,
 		Usage: kit.Usage{
@@ -172,6 +185,14 @@ func streamResponse(
 			OutputTokens: int32(usage.CompletionTokens),
 		},
 	}
+
+	for _, part := range resp.Message.Content {
+		if !yield(kit.NewModelContentPartDoneEvent(part), nil) {
+			return resp
+		}
+	}
+
+	return resp
 }
 
 func convertMessages(instruction string, msgs []kit.Message) []openaisdk.ChatCompletionMessageParamUnion {

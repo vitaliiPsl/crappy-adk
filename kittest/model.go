@@ -10,7 +10,7 @@ import (
 // ChunkResult represents a single yield from a model stream: either a
 // successful chunk or an error.
 type ChunkResult struct {
-	Chunk kit.ModelChunk
+	Event kit.ModelEvent
 	Err   error
 }
 
@@ -35,22 +35,34 @@ func (turn ModelTurn) modelResponse() kit.ModelResponse {
 	}
 }
 
-func (turn ModelTurn) chunks() []kit.ModelChunk {
-	var chunks []kit.ModelChunk
+func (turn ModelTurn) events() []kit.ModelEvent {
+	var events []kit.ModelEvent
 
 	if turn.Thinking != "" {
-		chunks = append(chunks, kit.NewThinkingChunk(turn.Thinking))
+		events = append(events,
+			kit.NewModelThinkingStartedEvent(),
+			kit.NewModelThinkingDeltaEvent(turn.Thinking),
+			kit.NewModelThinkingDoneEvent(turn.Thinking),
+		)
 	}
 
 	if turn.Text != "" {
-		chunks = append(chunks, kit.NewTextChunk(turn.Text))
+		part := kit.NewTextPart(turn.Text)
+		events = append(events,
+			kit.NewModelContentPartStartedEvent(kit.ContentTypeText),
+			kit.NewModelContentPartDeltaEvent(kit.ContentTypeText, turn.Text),
+			kit.NewModelContentPartDoneEvent(part),
+		)
 	}
 
 	for _, toolCall := range turn.ToolCalls {
-		chunks = append(chunks, kit.NewToolCallChunk(toolCall))
+		events = append(events,
+			kit.NewModelToolCallStartedEvent(toolCall),
+			kit.NewModelToolCallDoneEvent(toolCall),
+		)
 	}
 
-	return chunks
+	return events
 }
 
 func (turn ModelTurn) finishReason() kit.FinishReason {
@@ -105,7 +117,7 @@ func (model *Model) Generate(_ context.Context, req kit.ModelRequest) (kit.Model
 // GenerateStream returns a stream that yields the next turn's chunks, then
 // exposes the assembled response. When [Turn.Stream] is set, those chunk
 // results are yielded.
-func (model *Model) GenerateStream(_ context.Context, req kit.ModelRequest) (*kit.Stream[kit.ModelChunk, kit.ModelResponse], error) {
+func (model *Model) GenerateStream(_ context.Context, req kit.ModelRequest) (*kit.Stream[kit.ModelEvent, kit.ModelResponse], error) {
 	turn := model.next(req)
 	if turn.Error != nil {
 		return nil, turn.Error
@@ -116,9 +128,9 @@ func (model *Model) GenerateStream(_ context.Context, req kit.ModelRequest) (*ki
 	if turn.Stream != nil {
 		results := turn.Stream
 
-		return kit.NewStream(func(yield func(kit.ModelChunk, error) bool) kit.ModelResponse {
+		return kit.NewStream(func(yield func(kit.ModelEvent, error) bool) kit.ModelResponse {
 			for _, result := range results {
-				if !yield(result.Chunk, result.Err) {
+				if !yield(result.Event, result.Err) {
 					break
 				}
 			}
@@ -127,11 +139,11 @@ func (model *Model) GenerateStream(_ context.Context, req kit.ModelRequest) (*ki
 		}), nil
 	}
 
-	chunks := turn.chunks()
+	events := turn.events()
 
-	return kit.NewStream(func(yield func(kit.ModelChunk, error) bool) kit.ModelResponse {
-		for _, chunk := range chunks {
-			if !yield(chunk, nil) {
+	return kit.NewStream(func(yield func(kit.ModelEvent, error) bool) kit.ModelResponse {
+		for _, event := range events {
+			if !yield(event, nil) {
 				break
 			}
 		}

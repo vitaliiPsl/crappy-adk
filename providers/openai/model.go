@@ -39,26 +39,46 @@ func (m *model) Generate(ctx context.Context, req kit.ModelRequest) (kit.ModelRe
 	return convertResponse(resp), nil
 }
 
-func (m *model) GenerateStream(ctx context.Context, req kit.ModelRequest) (*kit.Stream[kit.ModelChunk, kit.ModelResponse], error) {
+func (m *model) GenerateStream(ctx context.Context, req kit.ModelRequest) (*kit.Stream[kit.ModelEvent, kit.ModelResponse], error) {
 	params := buildParams(req, m.config.ID)
 	stream := m.client.Responses.NewStreaming(ctx, params)
 
-	return kit.NewStream(func(yield func(kit.ModelChunk, error) bool) kit.ModelResponse {
+	return kit.NewStream(func(yield func(kit.ModelEvent, error) bool) kit.ModelResponse {
 		defer func() { _ = stream.Close() }()
 
-		var response *responses.Response
+		var (
+			response           *responses.Response
+			thinkingStarted    bool
+			contentPartStarted bool
+		)
 
 		for stream.Next() {
 			event := stream.Current()
 
 			switch e := event.AsAny().(type) {
 			case responses.ResponseTextDeltaEvent:
-				if !yield(kit.NewTextChunk(e.Delta), nil) {
+				if !contentPartStarted {
+					contentPartStarted = true
+
+					if !yield(kit.NewModelContentPartStartedEvent(kit.ContentTypeText), nil) {
+						return kit.ModelResponse{}
+					}
+				}
+
+				if !yield(kit.NewModelContentPartDeltaEvent(kit.ContentTypeText, e.Delta), nil) {
 					return kit.ModelResponse{}
 				}
 
 			case responses.ResponseReasoningTextDeltaEvent:
-				if !yield(kit.NewThinkingChunk(e.Delta), nil) {
+				if !thinkingStarted {
+					thinkingStarted = true
+
+					if !yield(kit.NewModelThinkingStartedEvent(), nil) {
+						return kit.ModelResponse{}
+					}
+				}
+
+				if !yield(kit.NewModelThinkingDeltaEvent(e.Delta), nil) {
 					return kit.ModelResponse{}
 				}
 
@@ -69,12 +89,16 @@ func (m *model) GenerateStream(ctx context.Context, req kit.ModelRequest) (*kit.
 
 				tc, err := convertFunctionCall(e.Item)
 				if err != nil {
-					yield(kit.ModelChunk{}, err)
+					yield(kit.ModelEvent{}, err)
 
 					return kit.ModelResponse{}
 				}
 
-				if !yield(kit.NewToolCallChunk(tc), nil) {
+				if !yield(kit.NewModelToolCallStartedEvent(tc), nil) {
+					return kit.ModelResponse{}
+				}
+
+				if !yield(kit.NewModelToolCallDoneEvent(tc), nil) {
 					return kit.ModelResponse{}
 				}
 
@@ -84,7 +108,7 @@ func (m *model) GenerateStream(ctx context.Context, req kit.ModelRequest) (*kit.
 		}
 
 		if err := stream.Err(); err != nil {
-			yield(kit.ModelChunk{}, convertError(err))
+			yield(kit.ModelEvent{}, convertError(err))
 
 			return kit.ModelResponse{}
 		}
@@ -93,7 +117,21 @@ func (m *model) GenerateStream(ctx context.Context, req kit.ModelRequest) (*kit.
 			return kit.ModelResponse{}
 		}
 
-		return convertResponse(response)
+		resp := convertResponse(response)
+
+		if resp.Message.Thinking != "" {
+			if !yield(kit.NewModelThinkingDoneEvent(resp.Message.Thinking), nil) {
+				return resp
+			}
+		}
+
+		for _, part := range resp.Message.Content {
+			if !yield(kit.NewModelContentPartDoneEvent(part), nil) {
+				return resp
+			}
+		}
+
+		return resp
 	}), nil
 }
 

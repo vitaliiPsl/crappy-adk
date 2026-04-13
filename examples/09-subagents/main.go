@@ -100,9 +100,9 @@ Always follow this sequence: first delegate research tasks to the researcher, th
 		}
 
 		switch event.Type {
-		case kit.EventTextDelta:
+		case kit.EventContentPartDelta:
 			fmt.Print(event.Text)
-		case kit.EventToolCall:
+		case kit.EventToolCallDone:
 			fmt.Printf("\n[delegate → %s]\n", event.ToolCall.Arguments["agent"])
 		case kit.EventToolResult:
 			fmt.Printf("[delegate ← done]\n\n")

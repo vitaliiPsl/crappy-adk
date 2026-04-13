@@ -19,7 +19,7 @@ type Model interface {
 	// GenerateStream sends a request to the model and streams the response as
 	// a sequence of chunks. The stream also exposes the final ModelResponse
 	// once iteration completes.
-	GenerateStream(ctx context.Context, req ModelRequest) (*Stream[ModelChunk, ModelResponse], error)
+	GenerateStream(ctx context.Context, req ModelRequest) (*Stream[ModelEvent, ModelResponse], error)
 }
 
 // ModelConfig holds static metadata for a model.
@@ -111,40 +111,72 @@ type ModelResponse struct {
 	Usage Usage
 }
 
-// ChunkType indicates the kind of content carried by a ModelChunk.
-type ChunkType string
+type ModelEventType string
 
 const (
-	// ChunkTypeText is an incremental piece of the model's text response.
-	ChunkTypeText ChunkType = "text"
-	// ChunkTypeThinking is an incremental piece of the model's reasoning.
-	ChunkTypeThinking ChunkType = "thinking"
-	// ChunkTypeToolCall is a completed tool call requested by the model.
-	ChunkTypeToolCall ChunkType = "tool_call"
+	ModelEventThinkingStarted    ModelEventType = "thinking_started"
+	ModelEventThinkingDelta      ModelEventType = "thinking_delta"
+	ModelEventThinkingDone       ModelEventType = "thinking_done"
+	ModelEventContentPartStarted ModelEventType = "content_part_started"
+	ModelEventContentPartDelta   ModelEventType = "content_part_delta"
+	ModelEventContentPartDone    ModelEventType = "content_part_done"
+	ModelEventToolCallStarted    ModelEventType = "tool_call_started"
+	ModelEventToolCallDone       ModelEventType = "tool_call_done"
 )
 
-// ModelChunk is a single incremental piece of a streamed model response.
-type ModelChunk struct {
-	// Type indicates what kind of content this chunk carries.
-	Type     ChunkType
-	Text     string
+type ModelEvent struct {
+	Type ModelEventType
+
 	Thinking string
+
+	ContentPartType ContentType
+	ContentPart     *ContentPart
+	Text            string
+
 	ToolCall *ToolCall
 }
 
-// NewTextChunk creates a ModelChunk carrying an incremental text delta.
-func NewTextChunk(text string) ModelChunk {
-	return ModelChunk{Type: ChunkTypeText, Text: text}
+func NewModelThinkingStartedEvent() ModelEvent {
+	return ModelEvent{Type: ModelEventThinkingStarted}
 }
 
-// NewThinkingChunk creates a ModelChunk carrying an incremental thinking delta.
-func NewThinkingChunk(thinking string) ModelChunk {
-	return ModelChunk{Type: ChunkTypeThinking, Thinking: thinking}
+func NewModelThinkingDeltaEvent(text string) ModelEvent {
+	return ModelEvent{Type: ModelEventThinkingDelta, Text: text}
 }
 
-// NewToolCallChunk creates a ModelChunk carrying a completed tool call.
-func NewToolCallChunk(tc ToolCall) ModelChunk {
-	return ModelChunk{Type: ChunkTypeToolCall, ToolCall: &tc}
+func NewModelThinkingDoneEvent(thinking string) ModelEvent {
+	return ModelEvent{Type: ModelEventThinkingDone, Thinking: thinking}
+}
+
+func NewModelContentPartStartedEvent(partType ContentType) ModelEvent {
+	return ModelEvent{
+		Type:            ModelEventContentPartStarted,
+		ContentPartType: partType,
+	}
+}
+
+func NewModelContentPartDeltaEvent(partType ContentType, text string) ModelEvent {
+	return ModelEvent{
+		Type:            ModelEventContentPartDelta,
+		ContentPartType: partType,
+		Text:            text,
+	}
+}
+
+func NewModelContentPartDoneEvent(part ContentPart) ModelEvent {
+	return ModelEvent{
+		Type:            ModelEventContentPartDone,
+		ContentPartType: part.Type,
+		ContentPart:     &part,
+	}
+}
+
+func NewModelToolCallStartedEvent(tc ToolCall) ModelEvent {
+	return ModelEvent{Type: ModelEventToolCallStarted, ToolCall: &tc}
+}
+
+func NewModelToolCallDoneEvent(tc ToolCall) ModelEvent {
+	return ModelEvent{Type: ModelEventToolCallDone, ToolCall: &tc}
 }
 
 // GenerationConfig controls how the model generates its response.

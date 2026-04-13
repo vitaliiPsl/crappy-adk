@@ -187,51 +187,86 @@ type Result struct {
 type EventType string
 
 const (
-	EventThinkingDelta  EventType = "thinking_delta"
-	EventTextDelta      EventType = "text_delta"
-	EventToolCall       EventType = "tool_call"
-	EventToolResult     EventType = "tool_result"
-	EventContextSummary EventType = "context_summary"
-	EventMessage        EventType = "message"
+	EventThinkingStarted    EventType = "thinking_started"
+	EventThinkingDelta      EventType = "thinking_delta"
+	EventThinkingDone       EventType = "thinking_done"
+	EventContentPartStarted EventType = "content_part_started"
+	EventContentPartDelta   EventType = "content_part_delta"
+	EventContentPartDone    EventType = "content_part_done"
+	EventToolCallStarted    EventType = "tool_call_started"
+	EventToolCallDone       EventType = "tool_call_done"
+	EventToolResult         EventType = "tool_result"
+	EventCompactionDone     EventType = "compaction_done"
+	EventMessage            EventType = "message"
 )
 
 // Event is a single item emitted by [Stream.Iter].
 type Event struct {
-	Type       EventType
-	Text       string
+	Type EventType
+
+	Thinking string
+
+	ContentPartType ContentType
+	ContentPart     *ContentPart
+	Text            string
+
 	ToolCall   ToolCall
 	ToolResult ToolResult
 	Summary    string
 	Message    Message
 }
 
-// NewTextDeltaEvent returns a text delta event with the given text.
-func NewTextDeltaEvent(text string) Event {
-	return Event{Type: EventTextDelta, Text: text}
+func NewThinkingStartedEvent() Event {
+	return Event{Type: EventThinkingStarted}
 }
 
-// NewThinkingDeltaEvent returns a thinking delta event with the given text.
 func NewThinkingDeltaEvent(text string) Event {
 	return Event{Type: EventThinkingDelta, Text: text}
 }
 
-// NewToolCallEvent returns a tool call event for the given tool call.
-func NewToolCallEvent(tc ToolCall) Event {
-	return Event{Type: EventToolCall, ToolCall: tc}
+func NewThinkingDoneEvent(thinking string) Event {
+	return Event{Type: EventThinkingDone, Thinking: thinking}
 }
 
-// NewToolResultEvent returns a tool result event for the given tool result.
+func NewContentPartStartedEvent(partType ContentType) Event {
+	return Event{
+		Type:            EventContentPartStarted,
+		ContentPartType: partType,
+	}
+}
+
+func NewContentPartDeltaEvent(partType ContentType, text string) Event {
+	return Event{
+		Type:            EventContentPartDelta,
+		ContentPartType: partType,
+		Text:            text,
+	}
+}
+
+func NewContentPartDoneEvent(part ContentPart) Event {
+	return Event{
+		Type:            EventContentPartDone,
+		ContentPartType: part.Type,
+		ContentPart:     &part,
+	}
+}
+
+func NewToolCallStartedEvent(tc ToolCall) Event {
+	return Event{Type: EventToolCallStarted, ToolCall: tc}
+}
+
+func NewToolCallDoneEvent(tc ToolCall) Event {
+	return Event{Type: EventToolCallDone, ToolCall: tc}
+}
+
 func NewToolResultEvent(tr ToolResult) Event {
 	return Event{Type: EventToolResult, ToolResult: tr}
 }
 
-// NewContextSummaryEvent returns an event indicating that the conversation
-// history was compacted. The summary contains the condensed conversation text.
-func NewContextSummaryEvent(summary string) Event {
-	return Event{Type: EventContextSummary, Summary: summary}
+func NewCompactionDoneEvent(summary string) Event {
+	return Event{Type: EventCompactionDone, Summary: summary}
 }
 
-// NewMessageEvent returns an event carrying a complete assembled message.
 func NewMessageEvent(msg Message) Event {
 	return Event{Type: EventMessage, Message: msg}
 }

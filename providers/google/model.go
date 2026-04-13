@@ -33,23 +33,25 @@ func (m *model) Generate(ctx context.Context, req kit.ModelRequest) (kit.ModelRe
 	return convertResponse(resp), nil
 }
 
-func (m *model) GenerateStream(ctx context.Context, req kit.ModelRequest) (*kit.Stream[kit.ModelChunk, kit.ModelResponse], error) {
+func (m *model) GenerateStream(ctx context.Context, req kit.ModelRequest) (*kit.Stream[kit.ModelEvent, kit.ModelResponse], error) {
 	contents := convertMessages(req.Messages)
 	config := buildConfig(req)
 
 	iter := m.client.Models.GenerateContentStream(ctx, m.config.ID, contents, config)
 
-	return kit.NewStream(func(yield func(kit.ModelChunk, error) bool) kit.ModelResponse {
+	return kit.NewStream(func(yield func(kit.ModelEvent, error) bool) kit.ModelResponse {
 		var (
-			lastResp  *genai.GenerateContentResponse
-			content   strings.Builder
-			thinking  strings.Builder
-			toolCalls []kit.ToolCall
+			lastResp           *genai.GenerateContentResponse
+			content            strings.Builder
+			thinking           strings.Builder
+			toolCalls          []kit.ToolCall
+			thinkingStarted    bool
+			contentPartStarted bool
 		)
 
 		for resp, err := range iter {
 			if err != nil {
-				yield(kit.ModelChunk{}, convertError(err))
+				yield(kit.ModelEvent{}, convertError(err))
 
 				return kit.ModelResponse{}
 			}
@@ -61,13 +63,29 @@ func (m *model) GenerateStream(ctx context.Context, req kit.ModelRequest) (*kit.
 					if p.Thought {
 						thinking.WriteString(p.Text)
 
-						if !yield(kit.NewThinkingChunk(p.Text), nil) {
+						if !thinkingStarted {
+							thinkingStarted = true
+
+							if !yield(kit.NewModelThinkingStartedEvent(), nil) {
+								return kit.ModelResponse{}
+							}
+						}
+
+						if !yield(kit.NewModelThinkingDeltaEvent(p.Text), nil) {
 							return kit.ModelResponse{}
 						}
 					} else if p.Text != "" {
 						content.WriteString(p.Text)
 
-						if !yield(kit.NewTextChunk(p.Text), nil) {
+						if !contentPartStarted {
+							contentPartStarted = true
+
+							if !yield(kit.NewModelContentPartStartedEvent(kit.ContentTypeText), nil) {
+								return kit.ModelResponse{}
+							}
+						}
+
+						if !yield(kit.NewModelContentPartDeltaEvent(kit.ContentTypeText, p.Text), nil) {
 							return kit.ModelResponse{}
 						}
 					}
@@ -89,7 +107,11 @@ func (m *model) GenerateStream(ctx context.Context, req kit.ModelRequest) (*kit.
 						}
 
 						toolCalls = append(toolCalls, tc)
-						if !yield(kit.NewToolCallChunk(tc), nil) {
+						if !yield(kit.NewModelToolCallStartedEvent(tc), nil) {
+							return kit.ModelResponse{}
+						}
+
+						if !yield(kit.NewModelToolCallDoneEvent(tc), nil) {
 							return kit.ModelResponse{}
 						}
 					}
@@ -117,6 +139,18 @@ func (m *model) GenerateStream(ctx context.Context, req kit.ModelRequest) (*kit.
 				OutputTokens:    lastResp.UsageMetadata.CandidatesTokenCount,
 				CacheReadTokens: lastResp.UsageMetadata.CachedContentTokenCount,
 				ReasoningTokens: lastResp.UsageMetadata.ThoughtsTokenCount,
+			}
+		}
+
+		if result.Message.Thinking != "" {
+			if !yield(kit.NewModelThinkingDoneEvent(result.Message.Thinking), nil) {
+				return result
+			}
+		}
+
+		for _, part := range result.Message.Content {
+			if !yield(kit.NewModelContentPartDoneEvent(part), nil) {
+				return result
 			}
 		}
 
@@ -185,11 +219,15 @@ func convertContentPart(p kit.ContentPart) *genai.Part {
 		return &genai.Part{Text: p.Text}
 	case kit.ContentTypeImage, kit.ContentTypeDocument:
 		if len(p.Data) > 0 {
-			return &genai.Part{InlineData: &genai.Blob{Data: p.Data, MIMEType: p.MediaType}}
+			return &genai.Part{
+				InlineData: &genai.Blob{Data: p.Data, MIMEType: p.MediaType},
+			}
 		}
 
 		if p.URL != "" {
-			return &genai.Part{FileData: &genai.FileData{FileURI: p.URL, MIMEType: p.MediaType}}
+			return &genai.Part{
+				FileData: &genai.FileData{FileURI: p.URL, MIMEType: p.MediaType},
+			}
 		}
 	}
 
@@ -202,13 +240,23 @@ func convertAssistantMessage(msg kit.Message) *genai.Content {
 		Parts: make([]*genai.Part, 0),
 	}
 
-	if text := msg.Text(); text != "" {
-		content.Parts = append(content.Parts, &genai.Part{Text: text})
+	if msg.Thinking != "" {
+		content.Parts = append(content.Parts, &genai.Part{
+			Text:    msg.Thinking,
+			Thought: true,
+		})
+	}
+
+	for _, part := range msg.Content {
+		if converted := convertContentPart(part); converted != nil {
+			content.Parts = append(content.Parts, converted)
+		}
 	}
 
 	for _, tc := range msg.ToolCalls {
 		part := &genai.Part{
 			FunctionCall: &genai.FunctionCall{
+				ID:   tc.ID,
 				Name: tc.Name,
 				Args: tc.Arguments,
 			},
@@ -267,7 +315,7 @@ func convertResponse(resp *genai.GenerateContentResponse) kit.ModelResponse {
 	candidate := resp.Candidates[0]
 
 	var (
-		content   strings.Builder
+		content   []kit.ContentPart
 		thinking  strings.Builder
 		toolCalls []kit.ToolCall
 	)
@@ -276,8 +324,8 @@ func convertResponse(resp *genai.GenerateContentResponse) kit.ModelResponse {
 		for _, p := range candidate.Content.Parts {
 			if p.Thought {
 				thinking.WriteString(p.Text)
-			} else if p.Text != "" {
-				content.WriteString(p.Text)
+			} else if part, ok := convertResponsePart(p); ok {
+				content = append(content, part)
 			}
 
 			if p.FunctionCall != nil {
@@ -301,7 +349,12 @@ func convertResponse(resp *genai.GenerateContentResponse) kit.ModelResponse {
 	}
 
 	result := kit.ModelResponse{
-		Message:      kit.NewAssistantMessage(content.String(), thinking.String(), toolCalls),
+		Message: kit.Message{
+			Role:      kit.MessageRoleAssistant,
+			Content:   content,
+			Thinking:  thinking.String(),
+			ToolCalls: toolCalls,
+		},
 		FinishReason: convertFinishReason(candidate.FinishReason, toolCalls),
 	}
 
@@ -315,6 +368,34 @@ func convertResponse(resp *genai.GenerateContentResponse) kit.ModelResponse {
 	}
 
 	return result
+}
+
+func convertResponsePart(p *genai.Part) (kit.ContentPart, bool) {
+	if p == nil {
+		return kit.ContentPart{}, false
+	}
+
+	var part kit.ContentPart
+	switch {
+	case p.Text != "":
+		part = kit.NewTextPart(p.Text)
+	case p.InlineData != nil:
+		if strings.HasPrefix(p.InlineData.MIMEType, "image/") {
+			part = kit.NewImageDataPart(p.InlineData.Data, p.InlineData.MIMEType)
+		} else {
+			part = kit.NewDocumentDataPart(p.InlineData.Data, p.InlineData.MIMEType)
+		}
+	case p.FileData != nil:
+		if strings.HasPrefix(p.FileData.MIMEType, "image/") {
+			part = kit.ContentPart{Type: kit.ContentTypeImage, URL: p.FileData.FileURI, MediaType: p.FileData.MIMEType}
+		} else {
+			part = kit.ContentPart{Type: kit.ContentTypeDocument, URL: p.FileData.FileURI, MediaType: p.FileData.MIMEType}
+		}
+	default:
+		return kit.ContentPart{}, false
+	}
+
+	return part, true
 }
 
 func convertFinishReason(r genai.FinishReason, toolCalls []kit.ToolCall) kit.FinishReason {

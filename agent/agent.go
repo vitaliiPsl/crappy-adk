@@ -191,27 +191,8 @@ func (a *Agent) callModel(
 		return kit.Message{}, kit.Usage{}, err
 	}
 
-	for chunk, err := range stream.Iter() {
-		if err != nil {
-			return kit.Message{}, kit.Usage{}, err
-		}
-
-		var event kit.Event
-
-		switch chunk.Type {
-		case kit.ChunkTypeThinking:
-			event = kit.NewThinkingDeltaEvent(chunk.Thinking)
-		case kit.ChunkTypeText:
-			event = kit.NewTextDeltaEvent(chunk.Text)
-		case kit.ChunkTypeToolCall:
-			event = kit.NewToolCallEvent(*chunk.ToolCall)
-		default:
-			continue
-		}
-
-		if !yield(event, nil) {
-			break
-		}
+	if err := a.forwardModelEvents(stream, yield); err != nil {
+		return kit.Message{}, kit.Usage{}, err
 	}
 
 	modelResp, streamErr := stream.Result()
@@ -225,6 +206,63 @@ func (a *Agent) callModel(
 	}
 
 	return resp.Message, resp.Usage, nil
+}
+
+func (a *Agent) forwardModelEvents(
+	stream *kit.Stream[kit.ModelEvent, kit.ModelResponse],
+	yield func(kit.Event, error) bool,
+) error {
+	for ev, err := range stream.Iter() {
+		if err != nil {
+			return err
+		}
+
+		event, ok := modelEventToAgentEvent(ev)
+		if !ok {
+			continue
+		}
+
+		if !yield(event, nil) {
+			return nil
+		}
+	}
+
+	return nil
+}
+
+func modelEventToAgentEvent(ev kit.ModelEvent) (kit.Event, bool) {
+	switch ev.Type {
+	case kit.ModelEventThinkingStarted:
+		return kit.NewThinkingStartedEvent(), true
+	case kit.ModelEventThinkingDelta:
+		return kit.NewThinkingDeltaEvent(ev.Text), true
+	case kit.ModelEventThinkingDone:
+		return kit.NewThinkingDoneEvent(ev.Thinking), true
+	case kit.ModelEventContentPartStarted:
+		return kit.NewContentPartStartedEvent(ev.ContentPartType), true
+	case kit.ModelEventContentPartDelta:
+		return kit.NewContentPartDeltaEvent(ev.ContentPartType, ev.Text), true
+	case kit.ModelEventContentPartDone:
+		if ev.ContentPart == nil {
+			return kit.Event{}, false
+		}
+
+		return kit.NewContentPartDoneEvent(*ev.ContentPart), true
+	case kit.ModelEventToolCallStarted:
+		if ev.ToolCall == nil {
+			return kit.Event{}, false
+		}
+
+		return kit.NewToolCallStartedEvent(*ev.ToolCall), true
+	case kit.ModelEventToolCallDone:
+		if ev.ToolCall == nil {
+			return kit.Event{}, false
+		}
+
+		return kit.NewToolCallDoneEvent(*ev.ToolCall), true
+	default:
+		return kit.Event{}, false
+	}
 }
 
 func (a *Agent) toolDefinitions() []kit.ToolDefinition {
@@ -382,7 +420,7 @@ func (a *Agent) compact(
 
 	summaryMsg := kit.NewSummaryMessage(summary)
 
-	if !yield(kit.NewContextSummaryEvent(summary), nil) {
+	if !yield(kit.NewCompactionDoneEvent(summary), nil) {
 		return msgs, nil, false
 	}
 

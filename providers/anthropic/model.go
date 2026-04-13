@@ -36,56 +36,149 @@ func (m *model) Generate(ctx context.Context, req kit.ModelRequest) (kit.ModelRe
 	return convertResponse(resp), nil
 }
 
-func (m *model) GenerateStream(ctx context.Context, req kit.ModelRequest) (*kit.Stream[kit.ModelChunk, kit.ModelResponse], error) {
+func (m *model) GenerateStream(ctx context.Context, req kit.ModelRequest) (*kit.Stream[kit.ModelEvent, kit.ModelResponse], error) {
 	params := buildParams(req, m.config)
 	stream := m.client.Messages.NewStreaming(ctx, params)
 
-	return kit.NewStream(func(yield func(kit.ModelChunk, error) bool) kit.ModelResponse {
+	return kit.NewStream(func(yield func(kit.ModelEvent, error) bool) kit.ModelResponse {
 		defer func() { _ = stream.Close() }()
 
-		var message anthropic.Message
+		var (
+			message        anthropic.Message
+			currentBlock   anthropic.ContentBlockStartEvent
+			hasBlock       bool
+			thinkingText   strings.Builder
+			contentText    strings.Builder
+			toolInputJSON  strings.Builder
+			toolStartInput string
+		)
 
 		for stream.Next() {
 			event := stream.Current()
 
 			if err := message.Accumulate(event); err != nil {
-				yield(kit.ModelChunk{}, fmt.Errorf("anthropic: accumulate message: %w", err))
+				yield(kit.ModelEvent{}, fmt.Errorf("anthropic: accumulate message: %w", err))
 
 				return kit.ModelResponse{}
 			}
 
 			switch e := event.AsAny().(type) {
+			case anthropic.ContentBlockStartEvent:
+				currentBlock = e
+				hasBlock = true
+
+				thinkingText.Reset()
+				contentText.Reset()
+				toolInputJSON.Reset()
+
+				toolStartInput = ""
+
+				switch block := e.ContentBlock.AsAny().(type) {
+				case anthropic.TextBlock:
+					if !yield(kit.NewModelContentPartStartedEvent(kit.ContentTypeText), nil) {
+						return kit.ModelResponse{}
+					}
+				case anthropic.ThinkingBlock:
+					if !yield(kit.NewModelThinkingStartedEvent(), nil) {
+						return kit.ModelResponse{}
+					}
+				case anthropic.ToolUseBlock:
+					toolStartInput = strings.TrimSpace(string(block.Input))
+					if !yield(kit.NewModelToolCallStartedEvent(kit.ToolCall{
+						ID:   block.ID,
+						Name: block.Name,
+					}), nil) {
+						return kit.ModelResponse{}
+					}
+				}
+
 			case anthropic.ContentBlockDeltaEvent:
+				if !hasBlock || e.Index != currentBlock.Index {
+					continue
+				}
+
 				switch d := e.Delta.AsAny().(type) {
 				case anthropic.TextDelta:
-					if !yield(kit.NewTextChunk(d.Text), nil) {
+					contentText.WriteString(d.Text)
+
+					if !yield(kit.NewModelContentPartDeltaEvent(kit.ContentTypeText, d.Text), nil) {
 						return kit.ModelResponse{}
 					}
 
 				case anthropic.ThinkingDelta:
-					if !yield(kit.NewThinkingChunk(d.Thinking), nil) {
+					thinkingText.WriteString(d.Thinking)
+
+					if !yield(kit.NewModelThinkingDeltaEvent(d.Thinking), nil) {
+						return kit.ModelResponse{}
+					}
+
+				case anthropic.InputJSONDelta:
+					toolInputJSON.WriteString(d.PartialJSON)
+				}
+
+			case anthropic.ContentBlockStopEvent:
+				if !hasBlock || e.Index != currentBlock.Index {
+					continue
+				}
+
+				switch block := currentBlock.ContentBlock.AsAny().(type) {
+				case anthropic.TextBlock:
+					if !yield(kit.NewModelContentPartDoneEvent(kit.NewTextPart(contentText.String())), nil) {
+						return kit.ModelResponse{}
+					}
+
+				case anthropic.ThinkingBlock:
+					if !yield(kit.NewModelThinkingDoneEvent(thinkingText.String()), nil) {
+						return kit.ModelResponse{}
+					}
+
+				case anthropic.ToolUseBlock:
+					args, err := parseToolUseInput(toolInputJSON.String(), toolStartInput)
+					if err != nil {
+						yield(kit.ModelEvent{}, err)
+
+						return kit.ModelResponse{}
+					}
+
+					if !yield(kit.NewModelToolCallDoneEvent(kit.ToolCall{
+						ID:        block.ID,
+						Name:      block.Name,
+						Arguments: args,
+					}), nil) {
 						return kit.ModelResponse{}
 					}
 				}
+
+				hasBlock = false
 			}
 		}
 
 		if err := stream.Err(); err != nil {
-			yield(kit.ModelChunk{}, convertError(err))
+			yield(kit.ModelEvent{}, convertError(err))
 
 			return kit.ModelResponse{}
 		}
 
-		resp := convertResponse(&message)
-
-		for i := range resp.Message.ToolCalls {
-			if !yield(kit.NewToolCallChunk(resp.Message.ToolCalls[i]), nil) {
-				return resp
-			}
-		}
-
-		return resp
+		return convertResponse(&message)
 	}), nil
+}
+
+func parseToolUseInput(raw string, fallback string) (map[string]any, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		raw = strings.TrimSpace(fallback)
+	}
+
+	if raw == "" {
+		return nil, nil
+	}
+
+	var args map[string]any
+	if err := json.Unmarshal([]byte(raw), &args); err != nil {
+		return nil, fmt.Errorf("anthropic: unmarshal tool args: %w", err)
+	}
+
+	return args, nil
 }
 
 func buildParams(req kit.ModelRequest, cfg kit.ModelConfig) anthropic.MessageNewParams {

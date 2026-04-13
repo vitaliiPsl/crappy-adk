@@ -316,8 +316,10 @@ func TestAgent_Stream_Events(t *testing.T) {
 		kittest.ModelTurn{
 			Text: "Hello world",
 			Stream: []kittest.ChunkResult{
-				{Chunk: kit.NewTextChunk("Hello ")},
-				{Chunk: kit.NewTextChunk("world")},
+				{Event: kit.NewModelContentPartStartedEvent(kit.ContentTypeText)},
+				{Event: kit.NewModelContentPartDeltaEvent(kit.ContentTypeText, "Hello ")},
+				{Event: kit.NewModelContentPartDeltaEvent(kit.ContentTypeText, "world")},
+				{Event: kit.NewModelContentPartDoneEvent(kit.NewTextPart("Hello world"))},
 			},
 		},
 	)
@@ -344,7 +346,13 @@ func TestAgent_Stream_Events(t *testing.T) {
 		eventTypes = append(eventTypes, event.Type)
 	}
 
-	expected := []kit.EventType{kit.EventTextDelta, kit.EventTextDelta, kit.EventMessage}
+	expected := []kit.EventType{
+		kit.EventContentPartStarted,
+		kit.EventContentPartDelta,
+		kit.EventContentPartDelta,
+		kit.EventContentPartDone,
+		kit.EventMessage,
+	}
 	if len(eventTypes) != len(expected) {
 		t.Fatalf("event count = %d, want %d: %v", len(eventTypes), len(expected), eventTypes)
 	}
@@ -367,14 +375,19 @@ func TestAgent_Stream_ToolCallEvents(t *testing.T) {
 		kittest.ModelTurn{
 			ToolCalls: []kit.ToolCall{searchCall},
 			Stream: []kittest.ChunkResult{
-				{Chunk: kit.NewThinkingChunk("let me search")},
-				{Chunk: kit.NewToolCallChunk(searchCall)},
+				{Event: kit.NewModelThinkingStartedEvent()},
+				{Event: kit.NewModelThinkingDeltaEvent("let me search")},
+				{Event: kit.NewModelThinkingDoneEvent("let me search")},
+				{Event: kit.NewModelToolCallStartedEvent(searchCall)},
+				{Event: kit.NewModelToolCallDoneEvent(searchCall)},
 			},
 		},
 		kittest.ModelTurn{
 			Text: "Here you go.",
 			Stream: []kittest.ChunkResult{
-				{Chunk: kit.NewTextChunk("Here you go.")},
+				{Event: kit.NewModelContentPartStartedEvent(kit.ContentTypeText)},
+				{Event: kit.NewModelContentPartDeltaEvent(kit.ContentTypeText, "Here you go.")},
+				{Event: kit.NewModelContentPartDoneEvent(kit.NewTextPart("Here you go."))},
 			},
 		},
 	)
@@ -404,15 +417,20 @@ func TestAgent_Stream_ToolCallEvents(t *testing.T) {
 		eventTypes = append(eventTypes, event.Type)
 	}
 
-	// Turn 1: thinking chunk, tool_call chunk, assistant message, tool_result, tool message
-	// Turn 2: text delta, assistant message
+	// Turn 1: thinking lifecycle, tool call lifecycle, assistant message, tool result, tool message
+	// Turn 2: content part lifecycle, assistant message
 	expected := []kit.EventType{
+		kit.EventThinkingStarted,
 		kit.EventThinkingDelta,
-		kit.EventToolCall,
+		kit.EventThinkingDone,
+		kit.EventToolCallStarted,
+		kit.EventToolCallDone,
 		kit.EventMessage,
 		kit.EventToolResult,
 		kit.EventMessage,
-		kit.EventTextDelta,
+		kit.EventContentPartStarted,
+		kit.EventContentPartDelta,
+		kit.EventContentPartDone,
 		kit.EventMessage,
 	}
 
@@ -454,7 +472,8 @@ func TestAgent_Run_StreamError(t *testing.T) {
 func TestAgent_Run_MidStreamError(t *testing.T) {
 	model := kittest.NewModel(t,
 		kittest.ModelTurn{Stream: []kittest.ChunkResult{
-			{Chunk: kit.NewTextChunk("partial ")},
+			{Event: kit.NewModelContentPartStartedEvent(kit.ContentTypeText)},
+			{Event: kit.NewModelContentPartDeltaEvent(kit.ContentTypeText, "partial ")},
 			{Err: errors.New("connection lost")},
 		}},
 	)

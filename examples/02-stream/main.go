@@ -64,9 +64,9 @@ func main() {
 		switch event.Type {
 		case kit.EventThinkingDelta:
 			fmt.Print(event.Text)
-		case kit.EventTextDelta:
+		case kit.EventContentPartDelta:
 			fmt.Print(event.Text)
-		case kit.EventToolCall:
+		case kit.EventToolCallDone:
 			fmt.Printf("\n[%s]\n", event.ToolCall.Name)
 		case kit.EventToolResult:
 			fmt.Printf("[%s done]\n\n", event.ToolResult.Call.Name)

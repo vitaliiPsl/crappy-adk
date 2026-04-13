@@ -20,7 +20,7 @@ func (b *BaseModel) Generate(ctx context.Context, req kit.ModelRequest) (kit.Mod
 	return b.Next.Generate(ctx, req)
 }
 
-func (b *BaseModel) GenerateStream(ctx context.Context, req kit.ModelRequest) (*kit.Stream[kit.ModelChunk, kit.ModelResponse], error) {
+func (b *BaseModel) GenerateStream(ctx context.Context, req kit.ModelRequest) (*kit.Stream[kit.ModelEvent, kit.ModelResponse], error) {
 	return b.Next.GenerateStream(ctx, req)
 }
 

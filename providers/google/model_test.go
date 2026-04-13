@@ -105,8 +105,12 @@ func TestConvertContentPart_DocumentURL(t *testing.T) {
 
 func TestConvertAssistantMessage_PreservesToolMetadata(t *testing.T) {
 	msg := convertAssistantMessage(kit.Message{
-		Role:    kit.MessageRoleAssistant,
-		Content: []kit.ContentPart{kit.NewTextPart("done")},
+		Role:     kit.MessageRoleAssistant,
+		Thinking: "chain",
+		Content: []kit.ContentPart{{
+			Type: kit.ContentTypeText,
+			Text: "done",
+		}},
 		ToolCalls: []kit.ToolCall{{
 			ID:        "call_1",
 			Name:      "search",
@@ -119,25 +123,33 @@ func TestConvertAssistantMessage_PreservesToolMetadata(t *testing.T) {
 		t.Fatalf("role = %q, want %q", msg.Role, genai.RoleModel)
 	}
 
-	if got := len(msg.Parts); got != 2 {
-		t.Fatalf("len(parts) = %d, want 2", got)
+	if got := len(msg.Parts); got != 3 {
+		t.Fatalf("len(parts) = %d, want 3", got)
 	}
 
-	if msg.Parts[0].Text != "done" {
-		t.Fatalf("text = %q, want %q", msg.Parts[0].Text, "done")
+	if !msg.Parts[0].Thought || msg.Parts[0].Text != "chain" {
+		t.Fatalf("thinking part = %+v", msg.Parts[0])
 	}
 
-	call := msg.Parts[1].FunctionCall
+	if msg.Parts[1].Text != "done" {
+		t.Fatalf("text = %q, want %q", msg.Parts[1].Text, "done")
+	}
+
+	call := msg.Parts[2].FunctionCall
 	if call == nil {
 		t.Fatal("expected function call part")
+	}
+
+	if call.ID != "call_1" {
+		t.Fatalf("tool id = %q, want %q", call.ID, "call_1")
 	}
 
 	if call.Name != "search" {
 		t.Fatalf("tool name = %q, want %q", call.Name, "search")
 	}
 
-	if string(msg.Parts[1].ThoughtSignature) != "sig" {
-		t.Fatalf("thought signature = %q, want %q", string(msg.Parts[1].ThoughtSignature), "sig")
+	if string(msg.Parts[2].ThoughtSignature) != "sig" {
+		t.Fatalf("thought signature = %q, want %q", string(msg.Parts[2].ThoughtSignature), "sig")
 	}
 }
 
@@ -150,7 +162,12 @@ func TestConvertResponse_PreservesThinkingToolCallsAndUsage(t *testing.T) {
 					{Text: "chain", Thought: true},
 					{Text: "final"},
 					{
+						InlineData:       &genai.Blob{Data: []byte("img"), MIMEType: "image/png"},
+						ThoughtSignature: []byte("part-sig"),
+					},
+					{
 						FunctionCall: &genai.FunctionCall{
+							ID:   "call_9",
 							Name: "read_file",
 							Args: map[string]any{"path": "README.md"},
 						},
@@ -179,12 +196,24 @@ func TestConvertResponse_PreservesThinkingToolCallsAndUsage(t *testing.T) {
 		t.Fatalf("finish reason = %q, want %q", resp.FinishReason, kit.FinishReasonToolCall)
 	}
 
+	if got := len(resp.Message.Content); got != 2 {
+		t.Fatalf("len(content) = %d, want 2", got)
+	}
+
+	if resp.Message.Content[1].Type != kit.ContentTypeImage {
+		t.Fatalf("content[1].type = %q, want %q", resp.Message.Content[1].Type, kit.ContentTypeImage)
+	}
+
+	if string(resp.Message.Content[1].Data) != "img" {
+		t.Fatalf("content[1].data = %q, want %q", string(resp.Message.Content[1].Data), "img")
+	}
+
 	if got := len(resp.Message.ToolCalls); got != 1 {
 		t.Fatalf("len(tool_calls) = %d, want 1", got)
 	}
 
-	if resp.Message.ToolCalls[0].ID != "read_file" {
-		t.Fatalf("tool id = %q, want %q", resp.Message.ToolCalls[0].ID, "read_file")
+	if resp.Message.ToolCalls[0].ID != "call_9" {
+		t.Fatalf("tool id = %q, want %q", resp.Message.ToolCalls[0].ID, "call_9")
 	}
 
 	if string(resp.Message.ToolCalls[0].Metadata["thought_signature"].([]byte)) != "sig" {

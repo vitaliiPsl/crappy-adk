@@ -142,9 +142,9 @@ for event, err := range stream.Iter() {
     switch event.Type {
     case kit.EventThinkingDelta:
         fmt.Print(event.Text)
-    case kit.EventTextDelta:
+    case kit.EventContentPartDelta:
         fmt.Print(event.Text)
-    case kit.EventToolCall:
+    case kit.EventToolCallDone:
         fmt.Printf("\n[%s]\n", event.ToolCall.Name)
     case kit.EventToolResult:
         fmt.Printf("[done]\n\n")
