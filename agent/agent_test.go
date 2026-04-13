@@ -69,6 +69,60 @@ func TestAgent_Run_ToolCall(t *testing.T) {
 	searchTool.AssertCalledWith(t, 0, map[string]any{"query": "Crappy"})
 }
 
+func TestAgent_Run_ToolCallFeedsAssistantAndToolMessagesToNextModelTurn(t *testing.T) {
+	searchTool := kittest.NewTool(t, "search", "Search the web",
+		kittest.ToolResponse{Result: `{"results": ["Crappy is not that crappy"]}`},
+	)
+
+	model := kittest.NewModel(t,
+		kittest.ModelTurn{ToolCalls: []kit.ToolCall{
+			{ID: "call_1", Name: "search", Arguments: map[string]any{"query": "Crappy"}},
+		}},
+		kittest.ModelTurn{Text: "Crappy is not that crappy"},
+	)
+
+	agent, err := agent.New(model, agent.WithTools(searchTool))
+	if err != nil {
+		t.Fatalf("NewAgent: %v", err)
+	}
+
+	_, err = agent.Run(context.Background(), []kit.Message{
+		kit.NewUserMessage(kit.NewTextPart("Tell me about Crappy")),
+	})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	req := model.CallAt(1)
+	if len(req.Messages) != 3 {
+		t.Fatalf("len(messages) = %d, want %d", len(req.Messages), 3)
+	}
+
+	if req.Messages[1].Role != kit.MessageRoleAssistant {
+		t.Fatalf("messages[1].role = %q, want %q", req.Messages[1].Role, kit.MessageRoleAssistant)
+	}
+
+	if len(req.Messages[1].ToolCalls) != 1 {
+		t.Fatalf("len(messages[1].tool_calls) = %d, want %d", len(req.Messages[1].ToolCalls), 1)
+	}
+
+	if req.Messages[1].ToolCalls[0].ID != "call_1" {
+		t.Fatalf("messages[1].tool_calls[0].id = %q, want %q", req.Messages[1].ToolCalls[0].ID, "call_1")
+	}
+
+	if req.Messages[2].Role != kit.MessageRoleTool {
+		t.Fatalf("messages[2].role = %q, want %q", req.Messages[2].Role, kit.MessageRoleTool)
+	}
+
+	if req.Messages[2].ToolCallID != "call_1" {
+		t.Fatalf("messages[2].tool_call_id = %q, want %q", req.Messages[2].ToolCallID, "call_1")
+	}
+
+	if got := req.Messages[2].Text(); got != `{"results": ["Crappy is not that crappy"]}` {
+		t.Fatalf("messages[2].text = %q, want %q", got, `{"results": ["Crappy is not that crappy"]}`)
+	}
+}
+
 func TestAgent_Run_MultipleToolCalls(t *testing.T) {
 	searchTool := kittest.NewTool(t, "search", "Search",
 		kittest.ToolResponse{Result: "result A"},

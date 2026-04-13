@@ -30,7 +30,7 @@ func WithInstruction(text string) Option {
 // agent's system prompt. Sources are evaluated in order on each [Agent.Run].
 func WithInstructions(sources ...kit.Instruction) Option {
 	return func(a *Agent) error {
-		a.instructions = append(a.instructions, sources...)
+		a.config.Instructions = append(a.config.Instructions, sources...)
 
 		return nil
 	}
@@ -54,10 +54,37 @@ func WithSequentialToolExecution() Option {
 	}
 }
 
-// WithGenerationConfig sets the generation parameters used on every model request.
-func WithGenerationConfig(config kit.GenerationConfig) Option {
+// WithTemperature sets the temperature used on every model request.
+func WithTemperature(value float32) Option {
 	return func(a *Agent) error {
-		a.config.Generation = config
+		a.config.Temperature = &value
+
+		return nil
+	}
+}
+
+// WithTopP sets the top-p value used on every model request.
+func WithTopP(value float32) Option {
+	return func(a *Agent) error {
+		a.config.TopP = &value
+
+		return nil
+	}
+}
+
+// WithMaxOutputTokens sets the max output token limit used on every model request.
+func WithMaxOutputTokens(value int32) Option {
+	return func(a *Agent) error {
+		a.config.MaxOutputTokens = &value
+
+		return nil
+	}
+}
+
+// WithThinking sets the thinking level used on every model request.
+func WithThinking(value kit.ThinkingLevel) Option {
+	return func(a *Agent) error {
+		a.config.Thinking = value
 
 		return nil
 	}

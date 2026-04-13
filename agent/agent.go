@@ -13,8 +13,22 @@ const (
 
 // Config holds configuration for an [Agent].
 type Config struct {
-	// Generation controls generation parameters used on every model request.
-	Generation kit.GenerationConfig
+	// Instructions are composed into the system prompt on each run.
+	Instructions []kit.Instruction
+
+	// Temperature controls randomness. Nil uses the model default.
+	Temperature *float32
+
+	// TopP limits sampling to the smallest set of tokens whose cumulative
+	// probability meets this threshold. Nil uses the model default.
+	TopP *float32
+
+	// MaxOutputTokens limits the number of tokens the model can generate.
+	// Nil uses the model default.
+	MaxOutputTokens *int32
+
+	// Thinking controls extended thinking. Empty disables it.
+	Thinking kit.ThinkingLevel
 
 	// ToolExecution controls whether tool calls run in parallel or sequentially.
 	// Defaults to ToolExecutionParallel.
@@ -28,10 +42,8 @@ type Config struct {
 // Agent runs a ReAct loop: it calls the model, executes any requested tool
 // calls, and feeds the results back until the model returns a final response.
 type Agent struct {
-	config       Config
-	instructions []kit.Instruction
-
-	model kit.Model
+	config Config
+	model  kit.Model
 
 	tools           map[string]kit.Tool
 	toolDefinitions []kit.ToolDefinition
@@ -76,7 +88,7 @@ func (a *Agent) Run(ctx context.Context, messages []kit.Message) (kit.Result, er
 // and tool results — as the agent works. Call [kit.Stream.Result] after
 // iteration to retrieve the accumulated [kit.Result].
 func (a *Agent) Stream(ctx context.Context, msgs []kit.Message) (*kit.Stream[kit.Event, kit.Result], error) {
-	instruction, err := kit.ComposeInstructions(ctx, "\n\n", a.instructions...)
+	instruction, err := kit.ComposeInstructions(ctx, "\n\n", a.config.Instructions...)
 	if err != nil {
 		return nil, err
 	}
@@ -103,6 +115,9 @@ func (a *Agent) Stream(ctx context.Context, msgs []kit.Message) (*kit.Stream[kit
 	}), nil
 }
 
+// TODO: really need to consider separate runner component with state,
+// so there is no need to carry so much data through input params.
+// Also don't like the response mutation.
 func (a *Agent) runLoop(
 	ctx context.Context,
 	instruction string,
@@ -119,52 +134,32 @@ func (a *Agent) runLoop(
 			return response, err
 		}
 
-		modelRunner := a.modelRunner()
-
-		assistantMsg, usage, err := modelRunner.run(ctx, instruction, msgs, yield)
+		assistantMsg, usage, ok, err := a.runAssistantTurn(ctx, instruction, msgs, &response, yield)
 		if err != nil {
 			return response, err
 		}
 
+		if !ok {
+			return response, nil
+		}
+
 		msgs = append(msgs, assistantMsg)
-		response.Messages = append(response.Messages, assistantMsg)
 
-		response.Usage.Add(usage)
-		response.LastUsage = usage
-
-		if !yield(kit.NewMessageEvent(assistantMsg), nil) {
+		done := a.tryExit(assistantMsg, &response)
+		if done {
 			return response, nil
 		}
 
-		if len(assistantMsg.ToolCalls) == 0 {
-			if len(assistantMsg.Content) > 0 {
-				response.Output = assistantMsg.Content[0]
-			}
-
-			return response, nil
-		}
-
-		toolRunner := a.toolRunner()
-
-		toolMsgs, ok := toolRunner.run(ctx, assistantMsg.ToolCalls, yield)
+		toolMsgs, ok := a.runToolTurn(ctx, assistantMsg.ToolCalls, &response, yield)
 		if !ok {
 			return response, nil
 		}
 
 		msgs = append(msgs, toolMsgs...)
-		response.Messages = append(response.Messages, toolMsgs...)
 
-		if a.needsCompaction(usage) {
-			compacted, summaryMsg, ok := a.compact(ctx, msgs, yield)
-			if !ok {
-				return response, nil
-			}
-
-			msgs = compacted
-
-			if summaryMsg != nil {
-				response.Messages = append(response.Messages, *summaryMsg)
-			}
+		msgs, ok = a.runCompactionTurn(ctx, msgs, usage, &response, yield)
+		if !ok {
+			return response, nil
 		}
 
 		ctx, err = a.hooks.onTurnEnd(ctx, msgs)
@@ -172,6 +167,84 @@ func (a *Agent) runLoop(
 			return response, err
 		}
 	}
+}
+
+func (a *Agent) runAssistantTurn(
+	ctx context.Context,
+	instruction string,
+	msgs []kit.Message,
+	response *kit.Result,
+	yield func(kit.Event, error) bool,
+) (kit.Message, kit.Usage, bool, error) {
+	modelRunner := a.modelRunner()
+
+	assistantMsg, usage, err := modelRunner.run(ctx, instruction, msgs, yield)
+	if err != nil {
+		return kit.Message{}, kit.Usage{}, false, err
+	}
+
+	response.Messages = append(response.Messages, assistantMsg)
+	response.Usage.Add(usage)
+	response.LastUsage = usage
+
+	if !yield(kit.NewMessageEvent(assistantMsg), nil) {
+		return kit.Message{}, kit.Usage{}, false, nil
+	}
+
+	return assistantMsg, usage, true, nil
+}
+
+func (a *Agent) tryExit(assistantMsg kit.Message, response *kit.Result) bool {
+	if len(assistantMsg.ToolCalls) > 0 {
+		return false
+	}
+
+	if len(assistantMsg.Content) > 0 {
+		response.Output = assistantMsg.Content[0]
+	}
+
+	return true
+}
+
+func (a *Agent) runToolTurn(
+	ctx context.Context,
+	toolCalls []kit.ToolCall,
+	response *kit.Result,
+	yield func(kit.Event, error) bool,
+) ([]kit.Message, bool) {
+	toolRunner := a.toolRunner()
+
+	toolMsgs, ok := toolRunner.run(ctx, toolCalls, yield)
+	if !ok {
+		return nil, false
+	}
+
+	response.Messages = append(response.Messages, toolMsgs...)
+
+	return toolMsgs, true
+}
+
+func (a *Agent) runCompactionTurn(
+	ctx context.Context,
+	msgs []kit.Message,
+	usage kit.Usage,
+	response *kit.Result,
+	yield func(kit.Event, error) bool,
+) ([]kit.Message, bool) {
+	if !a.needsCompaction(usage) {
+		return msgs, true
+	}
+
+	compacted, summaryMsg, ok := a.compact(ctx, msgs, yield)
+	if !ok {
+		return msgs, false
+	}
+
+	if summaryMsg != nil {
+		response.Messages = append(response.Messages, *summaryMsg)
+	}
+
+	return compacted, true
 }
 
 func (a *Agent) modelRunner() modelRunner {

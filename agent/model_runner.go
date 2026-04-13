@@ -24,7 +24,12 @@ func (r *modelRunner) run(
 		Instruction: instruction,
 		Messages:    msgs,
 		Tools:       r.toolDefinitions,
-		Config:      r.config.Generation,
+		Config: kit.GenerationConfig{
+			Temperature:     r.config.Temperature,
+			TopP:            r.config.TopP,
+			MaxOutputTokens: r.config.MaxOutputTokens,
+			Thinking:        r.config.Thinking,
+		},
 	}
 
 	ctx, req, err := r.hooks.onModelRequest(ctx, req)

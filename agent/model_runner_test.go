@@ -23,9 +23,7 @@ func TestModelRunner_Run_AppliesHooksAndForwardsEvents(t *testing.T) {
 			tool.Definition(),
 		},
 		config: &Config{
-			Generation: kit.GenerationConfig{
-				Thinking: kit.ThinkingLevelHigh,
-			},
+			Thinking: kit.ThinkingLevelHigh,
 		},
 		hooks: &hooks{
 			modelRequest: []kit.OnModelRequest{
