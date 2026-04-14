@@ -3,6 +3,7 @@ package openai
 import (
 	"encoding/base64"
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/openai/openai-go/v3/responses"
@@ -11,7 +12,7 @@ import (
 )
 
 func TestConvertContentPart_Text(t *testing.T) {
-	part, ok := convertContentPart(kit.NewTextPart("hello"))
+	part, ok := convertUserContentPart(kit.NewTextPart("hello"))
 	if !ok {
 		t.Fatal("convertContentPart returned ok=false")
 	}
@@ -26,7 +27,7 @@ func TestConvertContentPart_Text(t *testing.T) {
 }
 
 func TestConvertContentPart_ImageData(t *testing.T) {
-	part, ok := convertContentPart(kit.NewImageDataPart([]byte("png-bytes"), "image/png"))
+	part, ok := convertUserContentPart(kit.NewImageDataPart([]byte("png-bytes"), "image/png"))
 	if !ok {
 		t.Fatal("convertContentPart returned ok=false")
 	}
@@ -42,7 +43,7 @@ func TestConvertContentPart_ImageData(t *testing.T) {
 }
 
 func TestConvertContentPart_ImageURL(t *testing.T) {
-	part, ok := convertContentPart(kit.NewImageURLPart("https://example.com/image.png"))
+	part, ok := convertUserContentPart(kit.NewImageURLPart("https://example.com/image.png"))
 	if !ok {
 		t.Fatal("convertContentPart returned ok=false")
 	}
@@ -57,7 +58,7 @@ func TestConvertContentPart_ImageURL(t *testing.T) {
 }
 
 func TestConvertContentPart_DocumentData(t *testing.T) {
-	part, ok := convertContentPart(kit.NewDocumentDataPart([]byte("%PDF-1.7"), "application/pdf"))
+	part, ok := convertUserContentPart(kit.NewDocumentDataPart([]byte("%PDF-1.7"), "application/pdf"))
 	if !ok {
 		t.Fatal("convertContentPart returned ok=false")
 	}
@@ -77,7 +78,7 @@ func TestConvertContentPart_DocumentData(t *testing.T) {
 }
 
 func TestConvertContentPart_DocumentURL(t *testing.T) {
-	part, ok := convertContentPart(kit.NewDocumentURLPart("https://example.com/files/spec.pdf"))
+	part, ok := convertUserContentPart(kit.NewDocumentURLPart("https://example.com/files/spec.pdf"))
 	if !ok {
 		t.Fatal("convertContentPart returned ok=false")
 	}
@@ -96,7 +97,7 @@ func TestConvertContentPart_DocumentURL(t *testing.T) {
 }
 
 func TestConvertContentPart_DocumentURLWithQuery_UsesPathFilename(t *testing.T) {
-	part, ok := convertContentPart(kit.NewDocumentURLPart("https://example.com/files/spec.pdf?download=1"))
+	part, ok := convertUserContentPart(kit.NewDocumentURLPart("https://example.com/files/spec.pdf?download=1"))
 	if !ok {
 		t.Fatal("convertContentPart returned ok=false")
 	}
@@ -110,10 +111,18 @@ func TestConvertContentPart_DocumentURLWithQuery_UsesPathFilename(t *testing.T) 
 	}
 }
 
-func TestConvertInputItems_AssistantPreservesTextAndToolCalls(t *testing.T) {
-	items := convertInputItems(kit.Message{
-		Role:    kit.MessageRoleAssistant,
-		Content: []kit.ContentPart{kit.NewTextPart("done")},
+func TestConvertAssistantMessage_PreservesTextAndToolCalls(t *testing.T) {
+	items := convertAssistantMessage(kit.Message{
+		Role: kit.MessageRoleAssistant,
+		Content: []kit.ContentPart{
+			{
+				Type:      kit.ContentTypeThinking,
+				ID:        "rs_123",
+				Text:      "chain",
+				Signature: "enc_sig",
+			},
+			kit.NewTextPart("done"),
+		},
 		ToolCalls: []kit.ToolCall{{
 			ID:        "call_1",
 			Name:      "search",
@@ -121,20 +130,89 @@ func TestConvertInputItems_AssistantPreservesTextAndToolCalls(t *testing.T) {
 		}},
 	})
 
-	if got := len(items); got != 2 {
-		t.Fatalf("len(items) = %d, want 2", got)
+	if got := len(items); got != 3 {
+		t.Fatalf("len(items) = %d, want 3", got)
+	}
+
+	if items[0].OfReasoning == nil {
+		t.Fatal("expected first item to be reasoning")
+	}
+
+	if got := items[0].OfReasoning.ID; got != "rs_123" {
+		t.Fatalf("reasoning id = %q, want %q", got, "rs_123")
+	}
+
+	if got := items[0].OfReasoning.EncryptedContent.Value; got != "enc_sig" {
+		t.Fatalf("encrypted_content = %q, want %q", got, "enc_sig")
+	}
+
+	if items[1].OfMessage == nil || items[1].OfMessage.Role != responses.EasyInputMessageRoleAssistant {
+		t.Fatal("expected second item to be assistant message")
+	}
+
+	if items[2].OfFunctionCall == nil {
+		t.Fatal("expected third item to be function call")
+	}
+
+	if items[2].OfFunctionCall.Name != "search" {
+		t.Fatalf("tool name = %q, want %q", items[2].OfFunctionCall.Name, "search")
+	}
+}
+
+func TestConvertAssistantMessage_SkipsThinkingWithoutProviderID(t *testing.T) {
+	items := convertAssistantMessage(kit.Message{
+		Role: kit.MessageRoleAssistant,
+		Content: []kit.ContentPart{
+			kit.NewThinkingPart("chain", "enc_sig"),
+			kit.NewTextPart("done"),
+		},
+	})
+
+	if got := len(items); got != 1 {
+		t.Fatalf("len(items) = %d, want 1", got)
 	}
 
 	if items[0].OfMessage == nil || items[0].OfMessage.Role != responses.EasyInputMessageRoleAssistant {
-		t.Fatal("expected first item to be assistant message")
+		t.Fatal("expected only assistant text message to remain")
+	}
+}
+
+func TestConvertReasoningPart_PreservesSummaryAndOmitsSyntheticContent(t *testing.T) {
+	item := convertReasoningPart(kit.ContentPart{
+		Type:      kit.ContentTypeThinking,
+		ID:        "rs_123",
+		Text:      "chain",
+		Signature: "enc_sig",
+	})
+
+	if item.OfReasoning == nil {
+		t.Fatal("expected reasoning item")
 	}
 
-	if items[1].OfFunctionCall == nil {
-		t.Fatal("expected second item to be function call")
+	data, err := json.Marshal(item.OfReasoning)
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
 	}
 
-	if items[1].OfFunctionCall.Name != "search" {
-		t.Fatalf("tool name = %q, want %q", items[1].OfFunctionCall.Name, "search")
+	raw := string(data)
+	if strings.Contains(raw, "\"content\"") {
+		t.Fatalf("reasoning json = %s, expected no content field", raw)
+	}
+
+	if !strings.Contains(raw, "\"id\":\"rs_123\"") {
+		t.Fatalf("reasoning json = %s, expected reasoning id", raw)
+	}
+
+	if !strings.Contains(raw, "\"summary\"") {
+		t.Fatalf("reasoning json = %s, expected summary field", raw)
+	}
+
+	if !strings.Contains(raw, "\"text\":\"chain\"") {
+		t.Fatalf("reasoning json = %s, expected summary text", raw)
+	}
+
+	if !strings.Contains(raw, "\"encrypted_content\":\"enc_sig\"") {
+		t.Fatalf("reasoning json = %s, expected encrypted_content", raw)
 	}
 }
 
@@ -145,7 +223,8 @@ func TestConvertResponse_PreservesThinkingToolCallsAndUsage(t *testing.T) {
 			{
 				"type":"reasoning",
 				"id":"rs_123",
-				"summary":[{"type":"summary_text","text":"chain"}]
+				"summary":[{"type":"summary_text","text":"chain"}],
+				"encrypted_content":"enc_sig"
 			},
 			{
 				"type":"message",
@@ -180,8 +259,24 @@ func TestConvertResponse_PreservesThinkingToolCallsAndUsage(t *testing.T) {
 		t.Fatalf("text = %q, want %q", got.Message.Text(), "final")
 	}
 
-	if got.Message.Thinking != "chain" {
-		t.Fatalf("thinking = %q, want %q", got.Message.Thinking, "chain")
+	if got.Message.Thinking() != "chain" {
+		t.Fatalf("thinking = %q, want %q", got.Message.Thinking(), "chain")
+	}
+
+	if gotLen := len(got.Message.Content); gotLen != 2 {
+		t.Fatalf("len(content) = %d, want 2", gotLen)
+	}
+
+	if got.Message.Content[0].Type != kit.ContentTypeThinking {
+		t.Fatalf("content[0].type = %q, want %q", got.Message.Content[0].Type, kit.ContentTypeThinking)
+	}
+
+	if got.Message.Content[0].ID != "rs_123" {
+		t.Fatalf("content[0].id = %q, want %q", got.Message.Content[0].ID, "rs_123")
+	}
+
+	if got.Message.Content[0].Signature != "enc_sig" {
+		t.Fatalf("content[0].signature = %q, want %q", got.Message.Content[0].Signature, "enc_sig")
 	}
 
 	if got.FinishReason != kit.FinishReasonToolCall {

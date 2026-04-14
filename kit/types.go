@@ -21,6 +21,16 @@ const (
 	ContentTypeImage ContentType = "image"
 	// ContentTypeDocument is a document such as a PDF.
 	ContentTypeDocument ContentType = "document"
+	// ContentTypeThinking is an extended-thinking / reasoning block. The Text
+	// field holds the reasoning text; Signature holds the provider-issued
+	// cryptographic signature that must be passed back on subsequent turns
+	// (e.g. Anthropic thinking signatures) to preserve the model's reasoning
+	// chain during multi-turn tool use.
+	ContentTypeThinking ContentType = "thinking"
+	// ContentTypeRedactedThinking is an opaque reasoning block the provider
+	// chose not to reveal. Data holds the provider-issued bytes that must be
+	// echoed back verbatim on subsequent turns.
+	ContentTypeRedactedThinking ContentType = "redacted_thinking"
 )
 
 // ContentPart is a single typed piece of message content.
@@ -28,6 +38,11 @@ const (
 type ContentPart struct {
 	// Type indicates what kind of content this part carries.
 	Type ContentType `json:"type"`
+
+	// ID is the provider-issued identifier for this content part when one is
+	// available. Some providers require this exact ID to be preserved and sent
+	// back on subsequent turns.
+	ID string `json:"id,omitempty"`
 
 	// Text holds the text value for ContentTypeText parts.
 	Text string `json:"text,omitempty"`
@@ -43,6 +58,11 @@ type ContentPart struct {
 	// URL is a remote reference for URL-based content.
 	// Mutually exclusive with Data.
 	URL string `json:"url,omitempty"`
+
+	// Signature is provider-issued opaque carry-over data for thinking parts.
+	// Must be preserved verbatim and returned to the provider on subsequent
+	// turns when the provider exposes such a value.
+	Signature string `json:"signature,omitempty"`
 }
 
 // NewTextPart creates a text content part.
@@ -72,6 +92,19 @@ func NewDocumentDataPart(data []byte, mediaType string) ContentPart {
 	return ContentPart{Type: ContentTypeDocument, Data: data, MediaType: mediaType}
 }
 
+// NewThinkingPart creates a thinking content part. signature should be the
+// provider-issued signature when one is available; pass "" if the provider
+// does not supply one.
+func NewThinkingPart(text, signature string) ContentPart {
+	return ContentPart{Type: ContentTypeThinking, Text: text, Signature: signature}
+}
+
+// NewRedactedThinkingPart creates an opaque thinking content part carrying
+// provider-supplied encrypted data that must be echoed back verbatim.
+func NewRedactedThinkingPart(data []byte) ContentPart {
+	return ContentPart{Type: ContentTypeRedactedThinking, Data: data}
+}
+
 // Message is a single entry in the conversation history.
 type Message struct {
 	// Who sent this message.
@@ -79,12 +112,10 @@ type Message struct {
 
 	// Content holds the parts that make up this message.
 	// User messages may contain text, images, documents, etc.
-	// Assistant and tool messages contain text only.
+	// Assistant messages may additionally contain thinking parts that carry
+	// reasoning text and a provider-issued signature that must be preserved
+	// across turns for thinking-enabled models.
 	Content []ContentPart `json:"content,omitempty"`
-
-	// Thinking is the reasoning produced by the model when extended thinking is
-	// enabled. Must be preserved in conversation history for thinking-enabled models.
-	Thinking string `json:"thinking,omitempty"`
 
 	// Name of the tool that produced this message. Set on tool messages.
 	ToolName string `json:"tool_name,omitempty"`
@@ -113,6 +144,19 @@ func (m Message) Text() string {
 	return out.String()
 }
 
+// Thinking returns the concatenation of all thinking part texts in the message.
+// Signatures and redacted-thinking parts are not included.
+func (m Message) Thinking() string {
+	var out strings.Builder
+	for _, p := range m.Content {
+		if p.Type == ContentTypeThinking {
+			out.WriteString(p.Text)
+		}
+	}
+
+	return out.String()
+}
+
 type ToolCall struct {
 	// Unique identifier for this call, used to match results back to the model.
 	ID string `json:"id"`
@@ -120,8 +164,7 @@ type ToolCall struct {
 	Name string `json:"name"`
 	// Arguments parsed from the model's response.
 	Arguments map[string]any `json:"arguments,omitempty"`
-	// Metadata holds provider-specific data that must be preserved across turns
-	// (e.g. Gemini's thought_signature for thinking models).
+	// Metadata holds provider-specific data that must be preserved across turns.
 	Metadata map[string]any `json:"metadata,omitempty"`
 }
 
@@ -133,17 +176,22 @@ func NewUserMessage(parts ...ContentPart) Message {
 	}
 }
 
-// NewAssistantMessage creates a complete assistant message.
+// NewAssistantMessage creates a complete assistant message. When thinking is
+// non-empty a thinking part with no signature is prepended; providers that
+// preserve signatures should build the Message directly with the signed part.
 func NewAssistantMessage(content, thinking string, toolCalls []ToolCall) Message {
 	var parts []ContentPart
+	if thinking != "" {
+		parts = append(parts, NewThinkingPart(thinking, ""))
+	}
+
 	if content != "" {
-		parts = []ContentPart{NewTextPart(content)}
+		parts = append(parts, NewTextPart(content))
 	}
 
 	return Message{
 		Role:      MessageRoleAssistant,
 		Content:   parts,
-		Thinking:  thinking,
 		ToolCalls: toolCalls,
 	}
 }

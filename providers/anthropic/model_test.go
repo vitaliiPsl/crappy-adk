@@ -11,7 +11,7 @@ import (
 )
 
 func TestConvertContentPart_Text(t *testing.T) {
-	part, ok := convertContentPart(kit.NewTextPart("hello"))
+	part, ok := convertUserContentPart(kit.NewTextPart("hello"))
 	if !ok {
 		t.Fatal("convertContentPart returned ok=false")
 	}
@@ -27,7 +27,7 @@ func TestConvertContentPart_Text(t *testing.T) {
 }
 
 func TestConvertContentPart_ImageData(t *testing.T) {
-	part, ok := convertContentPart(kit.NewImageDataPart([]byte("png-bytes"), "image/png"))
+	part, ok := convertUserContentPart(kit.NewImageDataPart([]byte("png-bytes"), "image/png"))
 	if !ok {
 		t.Fatal("convertContentPart returned ok=false")
 	}
@@ -49,7 +49,7 @@ func TestConvertContentPart_ImageData(t *testing.T) {
 }
 
 func TestConvertContentPart_ImageURL(t *testing.T) {
-	part, ok := convertContentPart(kit.NewImageURLPart("https://example.com/image.png"))
+	part, ok := convertUserContentPart(kit.NewImageURLPart("https://example.com/image.png"))
 	if !ok {
 		t.Fatal("convertContentPart returned ok=false")
 	}
@@ -70,7 +70,7 @@ func TestConvertContentPart_ImageURL(t *testing.T) {
 }
 
 func TestConvertContentPart_DocumentData(t *testing.T) {
-	part, ok := convertContentPart(kit.NewDocumentDataPart([]byte("%PDF-1.7"), "application/pdf"))
+	part, ok := convertUserContentPart(kit.NewDocumentDataPart([]byte("%PDF-1.7"), "application/pdf"))
 	if !ok {
 		t.Fatal("convertContentPart returned ok=false")
 	}
@@ -92,7 +92,7 @@ func TestConvertContentPart_DocumentData(t *testing.T) {
 }
 
 func TestConvertContentPart_DocumentURL(t *testing.T) {
-	part, ok := convertContentPart(kit.NewDocumentURLPart("https://example.com/files/spec.pdf"))
+	part, ok := convertUserContentPart(kit.NewDocumentURLPart("https://example.com/files/spec.pdf"))
 	if !ok {
 		t.Fatal("convertContentPart returned ok=false")
 	}
@@ -114,9 +114,11 @@ func TestConvertContentPart_DocumentURL(t *testing.T) {
 
 func TestConvertAssistantMessage_PreservesThinkingAndToolCalls(t *testing.T) {
 	msg := convertAssistantMessage(kit.Message{
-		Role:     kit.MessageRoleAssistant,
-		Content:  []kit.ContentPart{kit.NewTextPart("done")},
-		Thinking: "internal reasoning",
+		Role: kit.MessageRoleAssistant,
+		Content: []kit.ContentPart{
+			kit.NewThinkingPart("internal reasoning", ""),
+			kit.NewTextPart("done"),
+		},
 		ToolCalls: []kit.ToolCall{{
 			ID:        "call_1",
 			Name:      "search",
@@ -178,8 +180,8 @@ func TestConvertResponse_PreservesThinkingToolCallsAndUsage(t *testing.T) {
 		t.Fatalf("text = %q, want %q", resp.Message.Text(), "final text")
 	}
 
-	if resp.Message.Thinking != "chain of thought" {
-		t.Fatalf("thinking = %q, want %q", resp.Message.Thinking, "chain of thought")
+	if resp.Message.Thinking() != "chain of thought" {
+		t.Fatalf("thinking = %q, want %q", resp.Message.Thinking(), "chain of thought")
 	}
 
 	if resp.FinishReason != kit.FinishReasonToolCall {

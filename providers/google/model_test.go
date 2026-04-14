@@ -9,7 +9,7 @@ import (
 )
 
 func TestConvertContentPart_Text(t *testing.T) {
-	part := convertContentPart(kit.NewTextPart("hello"))
+	part := convertUserContentPart(kit.NewTextPart("hello"))
 	if part == nil {
 		t.Fatal("expected text part")
 	}
@@ -20,7 +20,7 @@ func TestConvertContentPart_Text(t *testing.T) {
 }
 
 func TestConvertContentPart_ImageData(t *testing.T) {
-	part := convertContentPart(kit.NewImageDataPart([]byte("png-bytes"), "image/png"))
+	part := convertUserContentPart(kit.NewImageDataPart([]byte("png-bytes"), "image/png"))
 	if part == nil {
 		t.Fatal("expected image part")
 	}
@@ -39,7 +39,7 @@ func TestConvertContentPart_ImageData(t *testing.T) {
 }
 
 func TestConvertContentPart_ImageURL(t *testing.T) {
-	part := convertContentPart(kit.ContentPart{
+	part := convertUserContentPart(kit.ContentPart{
 		Type:      kit.ContentTypeImage,
 		URL:       "https://example.com/image.png",
 		MediaType: "image/png",
@@ -62,7 +62,7 @@ func TestConvertContentPart_ImageURL(t *testing.T) {
 }
 
 func TestConvertContentPart_DocumentData(t *testing.T) {
-	part := convertContentPart(kit.NewDocumentDataPart([]byte("%PDF-1.7"), "application/pdf"))
+	part := convertUserContentPart(kit.NewDocumentDataPart([]byte("%PDF-1.7"), "application/pdf"))
 	if part == nil {
 		t.Fatal("expected document part")
 	}
@@ -81,7 +81,7 @@ func TestConvertContentPart_DocumentData(t *testing.T) {
 }
 
 func TestConvertContentPart_DocumentURL(t *testing.T) {
-	part := convertContentPart(kit.ContentPart{
+	part := convertUserContentPart(kit.ContentPart{
 		Type:      kit.ContentTypeDocument,
 		URL:       "https://example.com/files/spec.pdf",
 		MediaType: "application/pdf",
@@ -105,12 +105,14 @@ func TestConvertContentPart_DocumentURL(t *testing.T) {
 
 func TestConvertAssistantMessage_PreservesToolMetadata(t *testing.T) {
 	msg := convertAssistantMessage(kit.Message{
-		Role:     kit.MessageRoleAssistant,
-		Thinking: "chain",
-		Content: []kit.ContentPart{{
-			Type: kit.ContentTypeText,
-			Text: "done",
-		}},
+		Role: kit.MessageRoleAssistant,
+		Content: []kit.ContentPart{
+			kit.NewThinkingPart("chain", "sig-part"),
+			{
+				Type: kit.ContentTypeText,
+				Text: "done",
+			},
+		},
 		ToolCalls: []kit.ToolCall{{
 			ID:        "call_1",
 			Name:      "search",
@@ -129,6 +131,10 @@ func TestConvertAssistantMessage_PreservesToolMetadata(t *testing.T) {
 
 	if !msg.Parts[0].Thought || msg.Parts[0].Text != "chain" {
 		t.Fatalf("thinking part = %+v", msg.Parts[0])
+	}
+
+	if string(msg.Parts[0].ThoughtSignature) != "sig-part" {
+		t.Fatalf("thinking signature = %q, want %q", string(msg.Parts[0].ThoughtSignature), "sig-part")
 	}
 
 	if msg.Parts[1].Text != "done" {
@@ -159,11 +165,10 @@ func TestConvertResponse_PreservesThinkingToolCallsAndUsage(t *testing.T) {
 			FinishReason: genai.FinishReasonStop,
 			Content: &genai.Content{
 				Parts: []*genai.Part{
-					{Text: "chain", Thought: true},
+					{Text: "chain", Thought: true, ThoughtSignature: []byte("part-sig")},
 					{Text: "final"},
 					{
-						InlineData:       &genai.Blob{Data: []byte("img"), MIMEType: "image/png"},
-						ThoughtSignature: []byte("part-sig"),
+						InlineData: &genai.Blob{Data: []byte("img"), MIMEType: "image/png"},
 					},
 					{
 						FunctionCall: &genai.FunctionCall{
@@ -188,24 +193,40 @@ func TestConvertResponse_PreservesThinkingToolCallsAndUsage(t *testing.T) {
 		t.Fatalf("text = %q, want %q", resp.Message.Text(), "final")
 	}
 
-	if resp.Message.Thinking != "chain" {
-		t.Fatalf("thinking = %q, want %q", resp.Message.Thinking, "chain")
+	if resp.Message.Thinking() != "chain" {
+		t.Fatalf("thinking = %q, want %q", resp.Message.Thinking(), "chain")
 	}
 
 	if resp.FinishReason != kit.FinishReasonToolCall {
 		t.Fatalf("finish reason = %q, want %q", resp.FinishReason, kit.FinishReasonToolCall)
 	}
 
-	if got := len(resp.Message.Content); got != 2 {
-		t.Fatalf("len(content) = %d, want 2", got)
+	if got := len(resp.Message.Content); got != 3 {
+		t.Fatalf("len(content) = %d, want 3", got)
 	}
 
-	if resp.Message.Content[1].Type != kit.ContentTypeImage {
-		t.Fatalf("content[1].type = %q, want %q", resp.Message.Content[1].Type, kit.ContentTypeImage)
+	if resp.Message.Content[0].Type != kit.ContentTypeThinking {
+		t.Fatalf("content[0].type = %q, want %q", resp.Message.Content[0].Type, kit.ContentTypeThinking)
 	}
 
-	if string(resp.Message.Content[1].Data) != "img" {
-		t.Fatalf("content[1].data = %q, want %q", string(resp.Message.Content[1].Data), "img")
+	if resp.Message.Content[0].Signature != "part-sig" {
+		t.Fatalf("content[0].signature = %q, want %q", resp.Message.Content[0].Signature, "part-sig")
+	}
+
+	if resp.Message.Content[1].Type != kit.ContentTypeText {
+		t.Fatalf("content[1].type = %q, want %q", resp.Message.Content[1].Type, kit.ContentTypeText)
+	}
+
+	if resp.Message.Content[1].Text != "final" {
+		t.Fatalf("content[1].text = %q, want %q", resp.Message.Content[1].Text, "final")
+	}
+
+	if resp.Message.Content[2].Type != kit.ContentTypeImage {
+		t.Fatalf("content[2].type = %q, want %q", resp.Message.Content[2].Type, kit.ContentTypeImage)
+	}
+
+	if string(resp.Message.Content[2].Data) != "img" {
+		t.Fatalf("content[2].data = %q, want %q", string(resp.Message.Content[2].Data), "img")
 	}
 
 	if got := len(resp.Message.ToolCalls); got != 1 {
@@ -229,5 +250,26 @@ func TestConvertFinishReason_NoToolCallsUsesProviderReason(t *testing.T) {
 	got := convertFinishReason(genai.FinishReasonSafety, nil)
 	if got != kit.FinishReasonSafety {
 		t.Fatalf("finish reason = %q, want %q", got, kit.FinishReasonSafety)
+	}
+}
+
+func TestAppendThinkingDelta_MergesAndPreservesLatestSignature(t *testing.T) {
+	parts := appendThinkingDelta(nil, "chain ", nil)
+	parts = appendThinkingDelta(parts, "continued", []byte("sig"))
+
+	if got := len(parts); got != 1 {
+		t.Fatalf("len(parts) = %d, want 1", got)
+	}
+
+	if parts[0].Type != kit.ContentTypeThinking {
+		t.Fatalf("parts[0].type = %q, want %q", parts[0].Type, kit.ContentTypeThinking)
+	}
+
+	if parts[0].Text != "chain continued" {
+		t.Fatalf("parts[0].text = %q, want %q", parts[0].Text, "chain continued")
+	}
+
+	if parts[0].Signature != "sig" {
+		t.Fatalf("parts[0].signature = %q, want %q", parts[0].Signature, "sig")
 	}
 }

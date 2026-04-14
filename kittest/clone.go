@@ -26,7 +26,6 @@ func cloneModelRequest(req kit.ModelRequest) kit.ModelRequest {
 func cloneMessage(msg kit.Message) kit.Message {
 	cloned := kit.Message{
 		Role:       msg.Role,
-		Thinking:   msg.Thinking,
 		ToolName:   msg.ToolName,
 		ToolCallID: msg.ToolCallID,
 		IsSummary:  msg.IsSummary,
@@ -63,7 +62,6 @@ func cloneToolCall(call kit.ToolCall) kit.ToolCall {
 	if call.Arguments != nil {
 		cloned.Arguments = cloneMap(call.Arguments)
 	}
-
 	if call.Metadata != nil {
 		cloned.Metadata = cloneMap(call.Metadata)
 	}

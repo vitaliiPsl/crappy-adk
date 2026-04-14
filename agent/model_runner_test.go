@@ -35,7 +35,7 @@ func TestModelRunner_Run_AppliesHooksAndForwardsEvents(t *testing.T) {
 			},
 			modelResponse: []kit.OnModelResponse{
 				func(ctx context.Context, resp kit.ModelResponse) (context.Context, kit.ModelResponse, error) {
-					resp.Message = kit.NewAssistantMessage("hooked text", resp.Message.Thinking, resp.Message.ToolCalls)
+					resp.Message = kit.NewAssistantMessage("hooked text", resp.Message.Thinking(), resp.Message.ToolCalls)
 					resp.Usage.OutputTokens = 9
 
 					return ctx, resp, nil

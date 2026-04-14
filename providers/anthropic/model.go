@@ -235,31 +235,45 @@ func convertMessages(msgs []kit.Message) []anthropic.MessageParam {
 	result := make([]anthropic.MessageParam, 0, len(msgs))
 
 	for _, msg := range msgs {
-		switch msg.Role {
-		case kit.MessageRoleUser:
-			result = append(result, anthropic.NewUserMessage(convertContentParts(msg.Content)...))
-		case kit.MessageRoleAssistant:
-			result = append(result, convertAssistantMessage(msg))
-		case kit.MessageRoleTool:
-			// Consecutive turns are combined by the API into a single turn
-			result = append(result, anthropic.NewUserMessage(
-				anthropic.NewToolResultBlock(msg.ToolCallID, msg.Text(), false),
-			))
+		if converted := convertMessage(msg); len(converted) > 0 {
+			result = append(result, converted...)
 		}
 	}
 
 	return result
 }
 
+func convertMessage(msg kit.Message) []anthropic.MessageParam {
+	switch msg.Role {
+	case kit.MessageRoleUser:
+		return []anthropic.MessageParam{convertUserMessage(msg)}
+	case kit.MessageRoleAssistant:
+		return []anthropic.MessageParam{convertAssistantMessage(msg)}
+	case kit.MessageRoleTool:
+		return []anthropic.MessageParam{convertToolMessage(msg)}
+	default:
+		return nil
+	}
+}
+
+func convertUserMessage(msg kit.Message) anthropic.MessageParam {
+	return anthropic.NewUserMessage(convertUserContentParts(msg.Content)...)
+}
+
 func convertAssistantMessage(msg kit.Message) anthropic.MessageParam {
 	var blocks []anthropic.ContentBlockParamUnion
 
-	if msg.Thinking != "" {
-		blocks = append(blocks, anthropic.NewThinkingBlock("", msg.Thinking))
-	}
-
-	if text := msg.Text(); text != "" {
-		blocks = append(blocks, anthropic.NewTextBlock(text))
+	for _, p := range msg.Content {
+		switch p.Type {
+		case kit.ContentTypeThinking:
+			blocks = append(blocks, anthropic.NewThinkingBlock(p.Signature, p.Text))
+		case kit.ContentTypeRedactedThinking:
+			blocks = append(blocks, anthropic.NewRedactedThinkingBlock(string(p.Data)))
+		case kit.ContentTypeText:
+			if p.Text != "" {
+				blocks = append(blocks, anthropic.NewTextBlock(p.Text))
+			}
+		}
 	}
 
 	for _, tc := range msg.ToolCalls {
@@ -269,10 +283,17 @@ func convertAssistantMessage(msg kit.Message) anthropic.MessageParam {
 	return anthropic.NewAssistantMessage(blocks...)
 }
 
-func convertContentParts(parts []kit.ContentPart) []anthropic.ContentBlockParamUnion {
+func convertToolMessage(msg kit.Message) anthropic.MessageParam {
+	// Consecutive turns are combined by the API into a single turn.
+	return anthropic.NewUserMessage(
+		anthropic.NewToolResultBlock(msg.ToolCallID, msg.Text(), false),
+	)
+}
+
+func convertUserContentParts(parts []kit.ContentPart) []anthropic.ContentBlockParamUnion {
 	blocks := make([]anthropic.ContentBlockParamUnion, 0, len(parts))
 	for _, p := range parts {
-		if block, ok := convertContentPart(p); ok {
+		if block, ok := convertUserContentPart(p); ok {
 			blocks = append(blocks, block)
 		}
 	}
@@ -280,7 +301,7 @@ func convertContentParts(parts []kit.ContentPart) []anthropic.ContentBlockParamU
 	return blocks
 }
 
-func convertContentPart(p kit.ContentPart) (anthropic.ContentBlockParamUnion, bool) {
+func convertUserContentPart(p kit.ContentPart) (anthropic.ContentBlockParamUnion, bool) {
 	switch p.Type {
 	case kit.ContentTypeText:
 		return anthropic.NewTextBlock(p.Text), true
@@ -347,17 +368,18 @@ func convertTools(tools []kit.ToolDefinition) []anthropic.ToolUnionParam {
 
 func convertResponse(resp *anthropic.Message) kit.ModelResponse {
 	var (
-		content   strings.Builder
-		thinking  strings.Builder
+		parts     []kit.ContentPart
 		toolCalls []kit.ToolCall
 	)
 
 	for _, cb := range resp.Content {
 		switch v := cb.AsAny().(type) {
 		case anthropic.TextBlock:
-			content.WriteString(v.Text)
+			parts = append(parts, kit.NewTextPart(v.Text))
 		case anthropic.ThinkingBlock:
-			thinking.WriteString(v.Thinking)
+			parts = append(parts, kit.NewThinkingPart(v.Thinking, v.Signature))
+		case anthropic.RedactedThinkingBlock:
+			parts = append(parts, kit.NewRedactedThinkingPart([]byte(v.Data)))
 		case anthropic.ToolUseBlock:
 			tc, err := parseToolCall(v.ID, v.Name, string(v.Input))
 			if err != nil {
@@ -369,7 +391,11 @@ func convertResponse(resp *anthropic.Message) kit.ModelResponse {
 	}
 
 	return kit.ModelResponse{
-		Message:      kit.NewAssistantMessage(content.String(), thinking.String(), toolCalls),
+		Message: kit.Message{
+			Role:      kit.MessageRoleAssistant,
+			Content:   parts,
+			ToolCalls: toolCalls,
+		},
 		FinishReason: convertStopReason(resp.StopReason),
 		Usage: kit.Usage{
 			InputTokens:      int32(resp.Usage.InputTokens),
