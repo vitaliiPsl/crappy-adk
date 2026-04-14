@@ -137,11 +137,21 @@ func formatMessages(messages []kit.Message) string {
 		case kit.MessageRoleAssistant:
 			fmt.Fprintf(&b, "Assistant: %s", m.Text())
 
-			for _, tc := range m.ToolCalls {
+			for _, tc := range m.ToolCalls() {
 				fmt.Fprintf(&b, "\n  [Tool call: %s(%v)]", tc.Name, tc.Arguments)
 			}
 		case kit.MessageRoleTool:
-			fmt.Fprintf(&b, "Tool(%s): %s", m.ToolName, m.Text())
+			var name, id string
+			if part, ok := m.ToolResult(); ok {
+				name = part.Name
+				id = part.ID
+			}
+
+			if name != "" || id != "" {
+				fmt.Fprintf(&b, "Tool(%s): %s", name, m.Text())
+			} else {
+				fmt.Fprintf(&b, "Tool: %s", m.Text())
+			}
 		}
 
 		b.WriteString("\n\n")

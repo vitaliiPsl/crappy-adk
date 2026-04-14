@@ -107,18 +107,22 @@ Always follow this sequence: first delegate research tasks to the researcher, th
 		case kit.EventContentPartDelta:
 			fmt.Print(event.Text)
 		case kit.EventContentPartDone:
-			fmt.Print("\n")
-		case kit.EventToolCallStarted:
-			if event.ToolCall.Name == "delegate" {
-				fmt.Printf("[delegate → %s]\n", event.ToolCall.Arguments["agent"])
+			if event.ContentPart == nil {
+				break
 			}
-		case kit.EventToolCallDone:
-			if event.ToolCall.Name == "delegate" {
-				fmt.Printf("[delegate requested]\n")
-			}
-		case kit.EventToolResult:
-			if event.ToolResult.Call.Name == "delegate" {
-				fmt.Printf("[delegate ← done]\n")
+
+			switch event.ContentPart.Type {
+			case kit.ContentTypeText:
+				fmt.Print("\n")
+			case kit.ContentTypeToolCall:
+				if event.ContentPart.Name == "delegate" {
+					fmt.Printf("[delegate → %s]\n", event.ContentPart.Arguments["agent"])
+					fmt.Printf("[delegate requested]\n")
+				}
+			case kit.ContentTypeToolResult:
+				if event.ContentPart.Name == "delegate" {
+					fmt.Printf("[delegate ← done]\n")
+				}
 			}
 		}
 	}

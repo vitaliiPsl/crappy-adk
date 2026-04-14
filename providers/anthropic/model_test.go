@@ -118,12 +118,12 @@ func TestConvertAssistantMessage_PreservesThinkingAndToolCalls(t *testing.T) {
 		Content: []kit.ContentPart{
 			kit.NewThinkingPart("internal reasoning", ""),
 			kit.NewTextPart("done"),
+			kit.NewToolCallPart(kit.ToolCall{
+				ID:        "call_1",
+				Name:      "search",
+				Arguments: map[string]any{"query": "crappy"},
+			}),
 		},
-		ToolCalls: []kit.ToolCall{{
-			ID:        "call_1",
-			Name:      "search",
-			Arguments: map[string]any{"query": "crappy"},
-		}},
 	})
 
 	if msg.Role != anthropicapi.MessageParamRoleAssistant {
@@ -143,7 +143,7 @@ func TestConvertAssistantMessage_PreservesThinkingAndToolCalls(t *testing.T) {
 	}
 
 	if msg.Content[2].OfToolUse == nil {
-		t.Fatal("expected third content block to be tool use")
+		t.Fatal("expected third content block to be tool call")
 	}
 
 	if msg.Content[2].OfToolUse.Name != "search" {
@@ -188,12 +188,12 @@ func TestConvertResponse_PreservesThinkingToolCallsAndUsage(t *testing.T) {
 		t.Fatalf("finish reason = %q, want %q", resp.FinishReason, kit.FinishReasonToolCall)
 	}
 
-	if got := len(resp.Message.ToolCalls); got != 1 {
+	if got := len(resp.Message.ToolCalls()); got != 1 {
 		t.Fatalf("len(tool_calls) = %d, want 1", got)
 	}
 
-	if resp.Message.ToolCalls[0].Name != "read_file" {
-		t.Fatalf("tool name = %q, want %q", resp.Message.ToolCalls[0].Name, "read_file")
+	if resp.Message.ToolCalls()[0].Name != "read_file" {
+		t.Fatalf("tool name = %q, want %q", resp.Message.ToolCalls()[0].Name, "read_file")
 	}
 
 	if resp.Usage.InputTokens != 11 || resp.Usage.OutputTokens != 7 || resp.Usage.CacheReadTokens != 3 || resp.Usage.CacheWriteTokens != 2 {

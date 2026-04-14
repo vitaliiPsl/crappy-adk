@@ -35,8 +35,17 @@ func (r *toolRunner) runSequential(
 
 	for _, toolCall := range toolCalls {
 		result := r.call(ctx, toolCall)
+		part := kit.NewToolResultPart(result.Content, result.Call)
 
-		if !yield(kit.NewToolResultEvent(result), nil) {
+		if !yield(kit.NewContentPartStartedEvent(kit.ContentTypeToolResult), nil) {
+			return msgs, false
+		}
+
+		if !yield(kit.NewContentPartDeltaEvent(kit.ContentTypeToolResult, result.Content), nil) {
+			return msgs, false
+		}
+
+		if !yield(kit.NewContentPartDoneEvent(part), nil) {
 			return msgs, false
 		}
 
@@ -79,7 +88,17 @@ func (r *toolRunner) runParallel(
 			return msgs, false
 		}
 
-		if !yield(kit.NewToolResultEvent(result), nil) {
+		part := kit.NewToolResultPart(result.Content, result.Call)
+
+		if !yield(kit.NewContentPartStartedEvent(kit.ContentTypeToolResult), nil) {
+			return msgs, false
+		}
+
+		if !yield(kit.NewContentPartDeltaEvent(kit.ContentTypeToolResult, result.Content), nil) {
+			return msgs, false
+		}
+
+		if !yield(kit.NewContentPartDoneEvent(part), nil) {
 			return msgs, false
 		}
 

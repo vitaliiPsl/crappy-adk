@@ -74,12 +74,12 @@ func (m *model) GenerateStream(ctx context.Context, req kit.ModelRequest) (*kit.
 				if !thinkingStarted {
 					thinkingStarted = true
 
-					if !yield(kit.NewModelThinkingStartedEvent(), nil) {
+					if !yield(kit.NewModelContentPartStartedEvent(kit.ContentTypeThinking), nil) {
 						return kit.ModelResponse{}
 					}
 				}
 
-				if !yield(kit.NewModelThinkingDeltaEvent(e.Delta), nil) {
+				if !yield(kit.NewModelContentPartDeltaEvent(kit.ContentTypeThinking, e.Delta), nil) {
 					return kit.ModelResponse{}
 				}
 
@@ -95,11 +95,13 @@ func (m *model) GenerateStream(ctx context.Context, req kit.ModelRequest) (*kit.
 					return kit.ModelResponse{}
 				}
 
-				if !yield(kit.NewModelToolCallStartedEvent(tc), nil) {
+				toolPart := kit.NewToolCallPart(tc)
+
+				if !yield(kit.NewModelContentPartStartedEvent(kit.ContentTypeToolCall), nil) {
 					return kit.ModelResponse{}
 				}
 
-				if !yield(kit.NewModelToolCallDoneEvent(tc), nil) {
+				if !yield(kit.NewModelContentPartDoneEvent(toolPart), nil) {
 					return kit.ModelResponse{}
 				}
 
@@ -120,14 +122,8 @@ func (m *model) GenerateStream(ctx context.Context, req kit.ModelRequest) (*kit.
 
 		resp := convertResponse(response)
 
-		if resp.Message.Thinking() != "" {
-			if !yield(kit.NewModelThinkingDoneEvent(resp.Message.Thinking()), nil) {
-				return resp
-			}
-		}
-
 		for _, part := range resp.Message.Content {
-			if part.Type == kit.ContentTypeThinking || part.Type == kit.ContentTypeRedactedThinking {
+			if part.Type == kit.ContentTypeRedactedThinking || part.Type == kit.ContentTypeToolCall {
 				continue
 			}
 
@@ -229,15 +225,27 @@ func convertUserMessage(msg kit.Message) []responses.ResponseInputItemUnionParam
 }
 
 func convertAssistantMessage(msg kit.Message) []responses.ResponseInputItemUnionParam {
-	items := make([]responses.ResponseInputItemUnionParam, 0, len(msg.Content)+len(msg.ToolCalls))
+	items := make([]responses.ResponseInputItemUnionParam, 0, len(msg.Content)+len(msg.ToolCalls()))
+	seenToolCalls := make(map[string]struct{})
 
 	for _, part := range msg.Content {
+		if part.Type == kit.ContentTypeToolCall {
+			seenToolCalls[part.ID] = struct{}{}
+			items = append(items, convertToolCallPart(part))
+
+			continue
+		}
+
 		if item, ok := convertAssistantContentPart(part); ok {
 			items = append(items, item)
 		}
 	}
 
-	for _, tc := range msg.ToolCalls {
+	for _, tc := range msg.ToolCalls() {
+		if _, ok := seenToolCalls[tc.ID]; ok {
+			continue
+		}
+
 		args, _ := json.Marshal(tc.Arguments)
 		items = append(items, responses.ResponseInputItemUnionParam{
 			OfFunctionCall: &responses.ResponseFunctionToolCallParam{
@@ -252,14 +260,34 @@ func convertAssistantMessage(msg kit.Message) []responses.ResponseInputItemUnion
 }
 
 func convertToolMessage(msg kit.Message) []responses.ResponseInputItemUnionParam {
+	callID := ""
+
+	output := msg.Text()
+	if part, ok := msg.ToolResult(); ok {
+		callID = part.ID
+		output = part.Text
+	}
+
 	return []responses.ResponseInputItemUnionParam{{
 		OfFunctionCallOutput: &responses.ResponseInputItemFunctionCallOutputParam{
-			CallID: msg.ToolCallID,
+			CallID: callID,
 			Output: responses.ResponseInputItemFunctionCallOutputOutputUnionParam{
-				OfString: openaisdk.String(msg.Text()),
+				OfString: openaisdk.String(output),
 			},
 		},
 	}}
+}
+
+func convertToolCallPart(part kit.ContentPart) responses.ResponseInputItemUnionParam {
+	args, _ := json.Marshal(part.Arguments)
+
+	return responses.ResponseInputItemUnionParam{
+		OfFunctionCall: &responses.ResponseFunctionToolCallParam{
+			CallID:    part.ID,
+			Name:      part.Name,
+			Arguments: string(args),
+		},
+	}
 }
 
 func convertUserContent(parts []kit.ContentPart) responses.EasyInputMessageContentUnionParam {
@@ -385,8 +413,7 @@ func convertTools(tools []kit.ToolDefinition) []responses.ToolUnionParam {
 
 func convertResponse(resp *responses.Response) kit.ModelResponse {
 	var (
-		content   []kit.ContentPart
-		toolCalls []kit.ToolCall
+		content []kit.ContentPart
 	)
 
 	for _, item := range resp.Output {
@@ -405,10 +432,11 @@ func convertResponse(resp *responses.Response) kit.ModelResponse {
 				continue
 			}
 
-			toolCalls = append(toolCalls, tc)
+			content = append(content, kit.NewToolCallPart(tc))
 
 		case "reasoning":
 			reasoning := item.AsReasoning()
+
 			text := reasoningText(reasoning)
 			if text != "" || reasoning.EncryptedContent != "" {
 				content = append(content, kit.ContentPart{
@@ -423,9 +451,8 @@ func convertResponse(resp *responses.Response) kit.ModelResponse {
 
 	return kit.ModelResponse{
 		Message: kit.Message{
-			Role:      kit.MessageRoleAssistant,
-			Content:   content,
-			ToolCalls: toolCalls,
+			Role:    kit.MessageRoleAssistant,
+			Content: content,
 		},
 		FinishReason: convertStatus(resp),
 		Usage: kit.Usage{

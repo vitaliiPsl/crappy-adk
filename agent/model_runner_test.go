@@ -35,7 +35,7 @@ func TestModelRunner_Run_AppliesHooksAndForwardsEvents(t *testing.T) {
 			},
 			modelResponse: []kit.OnModelResponse{
 				func(ctx context.Context, resp kit.ModelResponse) (context.Context, kit.ModelResponse, error) {
-					resp.Message = kit.NewAssistantMessage("hooked text", resp.Message.Thinking(), resp.Message.ToolCalls)
+					resp.Message = kit.NewAssistantMessage("hooked text", resp.Message.Thinking(), resp.Message.ToolCalls())
 					resp.Usage.OutputTokens = 9
 
 					return ctx, resp, nil
@@ -83,9 +83,9 @@ func TestModelRunner_Run_AppliesHooksAndForwardsEvents(t *testing.T) {
 	}
 
 	wantEvents := []kit.Event{
-		kit.NewThinkingStartedEvent(),
-		kit.NewThinkingDeltaEvent("thinking"),
-		kit.NewThinkingDoneEvent("thinking"),
+		kit.NewContentPartStartedEvent(kit.ContentTypeThinking),
+		kit.NewContentPartDeltaEvent(kit.ContentTypeThinking, "thinking"),
+		kit.NewContentPartDoneEvent(kit.NewThinkingPart("thinking", "")),
 		kit.NewContentPartStartedEvent(kit.ContentTypeText),
 		kit.NewContentPartDeltaEvent(kit.ContentTypeText, "original text"),
 		kit.NewContentPartDoneEvent(kit.NewTextPart("original text")),

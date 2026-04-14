@@ -107,18 +107,19 @@ func TestConvertAssistantMessage_PreservesToolMetadata(t *testing.T) {
 	msg := convertAssistantMessage(kit.Message{
 		Role: kit.MessageRoleAssistant,
 		Content: []kit.ContentPart{
-			kit.NewThinkingPart("chain", "sig-part"),
+			kit.NewThinkingPart("chain", encodeSignature([]byte("sig-part"))),
 			{
 				Type: kit.ContentTypeText,
 				Text: "done",
 			},
+			{
+				Type:      kit.ContentTypeToolCall,
+				ID:        "call_1",
+				Name:      "search",
+				Arguments: map[string]any{"query": "crappy"},
+				Signature: encodeSignature([]byte("sig")),
+			},
 		},
-		ToolCalls: []kit.ToolCall{{
-			ID:        "call_1",
-			Name:      "search",
-			Arguments: map[string]any{"query": "crappy"},
-			Metadata:  map[string]any{"thought_signature": []byte("sig")},
-		}},
 	})
 
 	if msg.Role != genai.RoleModel {
@@ -201,16 +202,20 @@ func TestConvertResponse_PreservesThinkingToolCallsAndUsage(t *testing.T) {
 		t.Fatalf("finish reason = %q, want %q", resp.FinishReason, kit.FinishReasonToolCall)
 	}
 
-	if got := len(resp.Message.Content); got != 3 {
-		t.Fatalf("len(content) = %d, want 3", got)
+	if got := len(resp.Message.Content); got != 4 {
+		t.Fatalf("len(content) = %d, want 4", got)
+	}
+
+	if resp.Message.Content[3].Type != kit.ContentTypeToolCall {
+		t.Fatalf("content[3].type = %q, want %q", resp.Message.Content[3].Type, kit.ContentTypeToolCall)
 	}
 
 	if resp.Message.Content[0].Type != kit.ContentTypeThinking {
 		t.Fatalf("content[0].type = %q, want %q", resp.Message.Content[0].Type, kit.ContentTypeThinking)
 	}
 
-	if resp.Message.Content[0].Signature != "part-sig" {
-		t.Fatalf("content[0].signature = %q, want %q", resp.Message.Content[0].Signature, "part-sig")
+	if want := encodeSignature([]byte("part-sig")); resp.Message.Content[0].Signature != want {
+		t.Fatalf("content[0].signature = %q, want %q", resp.Message.Content[0].Signature, want)
 	}
 
 	if resp.Message.Content[1].Type != kit.ContentTypeText {
@@ -229,16 +234,26 @@ func TestConvertResponse_PreservesThinkingToolCallsAndUsage(t *testing.T) {
 		t.Fatalf("content[2].data = %q, want %q", string(resp.Message.Content[2].Data), "img")
 	}
 
-	if got := len(resp.Message.ToolCalls); got != 1 {
+	toolCalls := resp.Message.ToolCalls()
+	if got := len(toolCalls); got != 1 {
 		t.Fatalf("len(tool_calls) = %d, want 1", got)
 	}
 
-	if resp.Message.ToolCalls[0].ID != "call_9" {
-		t.Fatalf("tool id = %q, want %q", resp.Message.ToolCalls[0].ID, "call_9")
+	if toolCalls[0].ID != "call_9" {
+		t.Fatalf("tool id = %q, want %q", toolCalls[0].ID, "call_9")
 	}
 
-	if string(resp.Message.ToolCalls[0].Metadata["thought_signature"].([]byte)) != "sig" {
-		t.Fatalf("thought signature = %q, want %q", string(resp.Message.ToolCalls[0].Metadata["thought_signature"].([]byte)), "sig")
+	var toolPart kit.ContentPart
+	for _, p := range resp.Message.Content {
+		if p.Type == kit.ContentTypeToolCall {
+			toolPart = p
+
+			break
+		}
+	}
+
+	if want := encodeSignature([]byte("sig")); toolPart.Signature != want {
+		t.Fatalf("thought signature = %q, want %q", toolPart.Signature, want)
 	}
 
 	if resp.Usage.InputTokens != 9 || resp.Usage.OutputTokens != 4 || resp.Usage.CacheReadTokens != 2 || resp.Usage.ReasoningTokens != 6 {
@@ -269,7 +284,7 @@ func TestAppendThinkingDelta_MergesAndPreservesLatestSignature(t *testing.T) {
 		t.Fatalf("parts[0].text = %q, want %q", parts[0].Text, "chain continued")
 	}
 
-	if parts[0].Signature != "sig" {
-		t.Fatalf("parts[0].signature = %q, want %q", parts[0].Signature, "sig")
+	if want := encodeSignature([]byte("sig")); parts[0].Signature != want {
+		t.Fatalf("parts[0].signature = %q, want %q", parts[0].Signature, want)
 	}
 }

@@ -70,14 +70,13 @@ func TestToolRunner_RunSequential_AppliesHooksAndYieldsMessages(t *testing.T) {
 	}
 
 	wantEvents := []kit.Event{
-		kit.NewToolResultEvent(kit.ToolResult{
-			Call: kit.ToolCall{
-				ID:        "call-1",
-				Name:      "read",
-				Arguments: map[string]any{"path": "MAIN.GO"},
-			},
-			Content: "contents [hooked]",
-		}),
+		kit.NewContentPartStartedEvent(kit.ContentTypeToolResult),
+		kit.NewContentPartDeltaEvent(kit.ContentTypeToolResult, "contents [hooked]"),
+		kit.NewContentPartDoneEvent(kit.NewToolResultPart("contents [hooked]", kit.ToolCall{
+			ID:        "call-1",
+			Name:      "read",
+			Arguments: map[string]any{"path": "MAIN.GO"},
+		})),
 		kit.NewMessageEvent(wantMsgs[0]),
 	}
 	if !reflect.DeepEqual(gotEvents, wantEvents) {
@@ -127,15 +126,25 @@ func TestToolRunner_RunParallel_YieldsAllResults(t *testing.T) {
 		t.Fatalf("message count = %d, want %d", len(msgs), 2)
 	}
 
-	gotMsgIDs := []string{msgs[0].ToolCallID, msgs[1].ToolCallID}
+	part0, ok := msgs[0].ToolResult()
+	if !ok {
+		t.Fatal("expected first tool result part")
+	}
+
+	part1, ok := msgs[1].ToolResult()
+	if !ok {
+		t.Fatal("expected second tool result part")
+	}
+
+	gotMsgIDs := []string{part0.ID, part1.ID}
 	slices.Sort(gotMsgIDs)
 
 	if !reflect.DeepEqual(gotMsgIDs, []string{"call-1", "call-2"}) {
 		t.Fatalf("tool call ids = %#v, want %#v", gotMsgIDs, []string{"call-1", "call-2"})
 	}
 
-	if len(gotEvents) != 4 {
-		t.Fatalf("event count = %d, want %d", len(gotEvents), 4)
+	if len(gotEvents) != 8 {
+		t.Fatalf("event count = %d, want %d", len(gotEvents), 8)
 	}
 
 	var (
@@ -145,10 +154,21 @@ func TestToolRunner_RunParallel_YieldsAllResults(t *testing.T) {
 
 	for _, event := range gotEvents {
 		switch event.Type {
-		case kit.EventToolResult:
-			resultIDs = append(resultIDs, event.ToolResult.Call.ID)
+		case kit.EventContentPartStarted, kit.EventContentPartDelta:
+			continue
+		case kit.EventContentPartDone:
+			if event.ContentPart == nil || event.ContentPart.Type != kit.ContentTypeToolResult {
+				continue
+			}
+
+			resultIDs = append(resultIDs, event.ContentPart.ID)
 		case kit.EventMessage:
-			messageIDs = append(messageIDs, event.Message.ToolCallID)
+			part, ok := event.Message.ToolResult()
+			if !ok {
+				t.Fatal("expected tool result content part on message event")
+			}
+
+			messageIDs = append(messageIDs, part.ID)
 		default:
 			t.Fatalf("unexpected event type: %v", event.Type)
 		}

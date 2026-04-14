@@ -21,6 +21,7 @@ const (
 	ContentTypeImage ContentType = "image"
 	// ContentTypeDocument is a document such as a PDF.
 	ContentTypeDocument ContentType = "document"
+
 	// ContentTypeThinking is an extended-thinking / reasoning block. The Text
 	// field holds the reasoning text; Signature holds the provider-issued
 	// cryptographic signature that must be passed back on subsequent turns
@@ -31,6 +32,12 @@ const (
 	// chose not to reveal. Data holds the provider-issued bytes that must be
 	// echoed back verbatim on subsequent turns.
 	ContentTypeRedactedThinking ContentType = "redacted_thinking"
+
+	// ContentTypeToolCall is a model-requested tool call embedded in message
+	// content so providers can preserve exact ordering and provider metadata.
+	ContentTypeToolCall ContentType = "tool_call"
+	// ContentTypeToolResult is the content form of a tool response.
+	ContentTypeToolResult ContentType = "tool_result"
 )
 
 // ContentPart is a single typed piece of message content.
@@ -47,6 +54,12 @@ type ContentPart struct {
 	// Text holds the text value for ContentTypeText parts.
 	Text string `json:"text,omitempty"`
 
+	// Name identifies a tool for tool_call/tool_result parts.
+	Name string `json:"name,omitempty"`
+
+	// Arguments holds parsed tool-call arguments for tool_call parts.
+	Arguments map[string]any `json:"arguments,omitempty"`
+
 	// MediaType is the MIME type for binary or URL-based parts
 	// (e.g. "image/png", "application/pdf").
 	MediaType string `json:"media_type,omitempty"`
@@ -59,7 +72,7 @@ type ContentPart struct {
 	// Mutually exclusive with Data.
 	URL string `json:"url,omitempty"`
 
-	// Signature is provider-issued opaque carry-over data for thinking parts.
+	// Signature is provider-issued opaque carry-over data for this content part.
 	// Must be preserved verbatim and returned to the provider on subsequent
 	// turns when the provider exposes such a value.
 	Signature string `json:"signature,omitempty"`
@@ -99,6 +112,26 @@ func NewThinkingPart(text, signature string) ContentPart {
 	return ContentPart{Type: ContentTypeThinking, Text: text, Signature: signature}
 }
 
+// NewToolCallPart creates a tool-call content part from a tool call.
+func NewToolCallPart(call ToolCall) ContentPart {
+	return ContentPart{
+		Type:      ContentTypeToolCall,
+		ID:        call.ID,
+		Name:      call.Name,
+		Arguments: call.Arguments,
+	}
+}
+
+// NewToolResultPart creates a tool-result content part from a tool call.
+func NewToolResultPart(content string, toolCall ToolCall) ContentPart {
+	return ContentPart{
+		Type: ContentTypeToolResult,
+		ID:   toolCall.ID,
+		Name: toolCall.Name,
+		Text: content,
+	}
+}
+
 // NewRedactedThinkingPart creates an opaque thinking content part carrying
 // provider-supplied encrypted data that must be echoed back verbatim.
 func NewRedactedThinkingPart(data []byte) ContentPart {
@@ -117,14 +150,6 @@ type Message struct {
 	// across turns for thinking-enabled models.
 	Content []ContentPart `json:"content,omitempty"`
 
-	// Name of the tool that produced this message. Set on tool messages.
-	ToolName string `json:"tool_name,omitempty"`
-	// ID of the tool call this message is a result for. Set on tool messages.
-	ToolCallID string `json:"tool_call_id,omitempty"`
-
-	// Tool calls requested by the model. Set on assistant messages.
-	ToolCalls []ToolCall `json:"tool_calls,omitempty"`
-
 	// IsSummary marks this message as a compaction summary. When building
 	// input for the next run, clients can use the last summary message as
 	// the starting point — everything before it has been compacted away.
@@ -136,7 +161,7 @@ type Message struct {
 func (m Message) Text() string {
 	var out strings.Builder
 	for _, p := range m.Content {
-		if p.Type == ContentTypeText {
+		if p.Type == ContentTypeText || p.Type == ContentTypeToolResult {
 			out.WriteString(p.Text)
 		}
 	}
@@ -157,6 +182,35 @@ func (m Message) Thinking() string {
 	return out.String()
 }
 
+// ToolCalls returns tool calls embedded in message content.
+func (m Message) ToolCalls() []ToolCall {
+	var calls []ToolCall
+	for _, p := range m.Content {
+		if p.Type != ContentTypeToolCall {
+			continue
+		}
+
+		calls = append(calls, ToolCall{
+			ID:        p.ID,
+			Name:      p.Name,
+			Arguments: p.Arguments,
+		})
+	}
+
+	return calls
+}
+
+// ToolResult returns the first embedded tool-result part, if present.
+func (m Message) ToolResult() (ContentPart, bool) {
+	for _, p := range m.Content {
+		if p.Type == ContentTypeToolResult {
+			return p, true
+		}
+	}
+
+	return ContentPart{}, false
+}
+
 type ToolCall struct {
 	// Unique identifier for this call, used to match results back to the model.
 	ID string `json:"id"`
@@ -164,8 +218,6 @@ type ToolCall struct {
 	Name string `json:"name"`
 	// Arguments parsed from the model's response.
 	Arguments map[string]any `json:"arguments,omitempty"`
-	// Metadata holds provider-specific data that must be preserved across turns.
-	Metadata map[string]any `json:"metadata,omitempty"`
 }
 
 // NewUserMessage creates a user message with the given content parts.
@@ -189,10 +241,13 @@ func NewAssistantMessage(content, thinking string, toolCalls []ToolCall) Message
 		parts = append(parts, NewTextPart(content))
 	}
 
+	for _, tc := range toolCalls {
+		parts = append(parts, NewToolCallPart(tc))
+	}
+
 	return Message{
-		Role:      MessageRoleAssistant,
-		Content:   parts,
-		ToolCalls: toolCalls,
+		Role:    MessageRoleAssistant,
+		Content: parts,
 	}
 }
 
@@ -209,10 +264,8 @@ func NewSummaryMessage(summary string) Message {
 // NewToolMessage creates a tool result message for the given tool call.
 func NewToolMessage(content string, toolCall ToolCall) Message {
 	return Message{
-		Role:       MessageRoleTool,
-		Content:    []ContentPart{NewTextPart(content)},
-		ToolName:   toolCall.Name,
-		ToolCallID: toolCall.ID,
+		Role:    MessageRoleTool,
+		Content: []ContentPart{NewToolResultPart(content, toolCall)},
 	}
 }
 
@@ -235,15 +288,9 @@ type Result struct {
 type EventType string
 
 const (
-	EventThinkingStarted    EventType = "thinking_started"
-	EventThinkingDelta      EventType = "thinking_delta"
-	EventThinkingDone       EventType = "thinking_done"
 	EventContentPartStarted EventType = "content_part_started"
 	EventContentPartDelta   EventType = "content_part_delta"
 	EventContentPartDone    EventType = "content_part_done"
-	EventToolCallStarted    EventType = "tool_call_started"
-	EventToolCallDone       EventType = "tool_call_done"
-	EventToolResult         EventType = "tool_result"
 	EventCompactionDone     EventType = "compaction_done"
 	EventMessage            EventType = "message"
 )
@@ -252,28 +299,11 @@ const (
 type Event struct {
 	Type EventType
 
-	Thinking string
-
 	ContentPartType ContentType
 	ContentPart     *ContentPart
 	Text            string
-
-	ToolCall   ToolCall
-	ToolResult ToolResult
-	Summary    string
-	Message    Message
-}
-
-func NewThinkingStartedEvent() Event {
-	return Event{Type: EventThinkingStarted}
-}
-
-func NewThinkingDeltaEvent(text string) Event {
-	return Event{Type: EventThinkingDelta, Text: text}
-}
-
-func NewThinkingDoneEvent(thinking string) Event {
-	return Event{Type: EventThinkingDone, Thinking: thinking}
+	Summary         string
+	Message         Message
 }
 
 func NewContentPartStartedEvent(partType ContentType) Event {
@@ -297,18 +327,6 @@ func NewContentPartDoneEvent(part ContentPart) Event {
 		ContentPartType: part.Type,
 		ContentPart:     &part,
 	}
-}
-
-func NewToolCallStartedEvent(tc ToolCall) Event {
-	return Event{Type: EventToolCallStarted, ToolCall: tc}
-}
-
-func NewToolCallDoneEvent(tc ToolCall) Event {
-	return Event{Type: EventToolCallDone, ToolCall: tc}
-}
-
-func NewToolResultEvent(tr ToolResult) Event {
-	return Event{Type: EventToolResult, ToolResult: tr}
 }
 
 func NewCompactionDoneEvent(summary string) Event {

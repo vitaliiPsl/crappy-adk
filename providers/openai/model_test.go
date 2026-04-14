@@ -122,12 +122,12 @@ func TestConvertAssistantMessage_PreservesTextAndToolCalls(t *testing.T) {
 				Signature: "enc_sig",
 			},
 			kit.NewTextPart("done"),
+			kit.NewToolCallPart(kit.ToolCall{
+				ID:        "call_1",
+				Name:      "search",
+				Arguments: map[string]any{"query": "crappy"},
+			}),
 		},
-		ToolCalls: []kit.ToolCall{{
-			ID:        "call_1",
-			Name:      "search",
-			Arguments: map[string]any{"query": "crappy"},
-		}},
 	})
 
 	if got := len(items); got != 3 {
@@ -263,8 +263,8 @@ func TestConvertResponse_PreservesThinkingToolCallsAndUsage(t *testing.T) {
 		t.Fatalf("thinking = %q, want %q", got.Message.Thinking(), "chain")
 	}
 
-	if gotLen := len(got.Message.Content); gotLen != 2 {
-		t.Fatalf("len(content) = %d, want 2", gotLen)
+	if gotLen := len(got.Message.Content); gotLen != 3 {
+		t.Fatalf("len(content) = %d, want 3", gotLen)
 	}
 
 	if got.Message.Content[0].Type != kit.ContentTypeThinking {
@@ -279,16 +279,24 @@ func TestConvertResponse_PreservesThinkingToolCallsAndUsage(t *testing.T) {
 		t.Fatalf("content[0].signature = %q, want %q", got.Message.Content[0].Signature, "enc_sig")
 	}
 
+	if got.Message.Content[2].Type != kit.ContentTypeToolCall {
+		t.Fatalf("content[2].type = %q, want %q", got.Message.Content[2].Type, kit.ContentTypeToolCall)
+	}
+
+	if got.Message.Content[2].ID != "call_1" {
+		t.Fatalf("content[2].id = %q, want %q", got.Message.Content[2].ID, "call_1")
+	}
+
 	if got.FinishReason != kit.FinishReasonToolCall {
 		t.Fatalf("finish reason = %q, want %q", got.FinishReason, kit.FinishReasonToolCall)
 	}
 
-	if len(got.Message.ToolCalls) != 1 {
-		t.Fatalf("len(tool_calls) = %d, want 1", len(got.Message.ToolCalls))
+	if len(got.Message.ToolCalls()) != 1 {
+		t.Fatalf("len(tool_calls) = %d, want 1", len(got.Message.ToolCalls()))
 	}
 
-	if got.Message.ToolCalls[0].Name != "read_file" {
-		t.Fatalf("tool name = %q, want %q", got.Message.ToolCalls[0].Name, "read_file")
+	if got.Message.ToolCalls()[0].Name != "read_file" {
+		t.Fatalf("tool name = %q, want %q", got.Message.ToolCalls()[0].Name, "read_file")
 	}
 
 	if got.Usage.InputTokens != 9 || got.Usage.OutputTokens != 4 || got.Usage.CacheReadTokens != 2 || got.Usage.ReasoningTokens != 6 {

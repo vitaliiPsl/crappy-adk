@@ -102,20 +102,20 @@ func TestAgent_Run_ToolCallFeedsAssistantAndToolMessagesToNextModelTurn(t *testi
 		t.Fatalf("messages[1].role = %q, want %q", req.Messages[1].Role, kit.MessageRoleAssistant)
 	}
 
-	if len(req.Messages[1].ToolCalls) != 1 {
-		t.Fatalf("len(messages[1].tool_calls) = %d, want %d", len(req.Messages[1].ToolCalls), 1)
+	if got := len(req.Messages[1].ToolCalls()); got != 1 {
+		t.Fatalf("len(messages[1].tool_calls) = %d, want %d", got, 1)
 	}
 
-	if req.Messages[1].ToolCalls[0].ID != "call_1" {
-		t.Fatalf("messages[1].tool_calls[0].id = %q, want %q", req.Messages[1].ToolCalls[0].ID, "call_1")
+	if req.Messages[1].ToolCalls()[0].ID != "call_1" {
+		t.Fatalf("messages[1].tool_calls[0].id = %q, want %q", req.Messages[1].ToolCalls()[0].ID, "call_1")
 	}
 
 	if req.Messages[2].Role != kit.MessageRoleTool {
 		t.Fatalf("messages[2].role = %q, want %q", req.Messages[2].Role, kit.MessageRoleTool)
 	}
 
-	if req.Messages[2].ToolCallID != "call_1" {
-		t.Fatalf("messages[2].tool_call_id = %q, want %q", req.Messages[2].ToolCallID, "call_1")
+	if part, ok := req.Messages[2].ToolResult(); !ok || part.ID != "call_1" {
+		t.Fatalf("messages[2].tool_result.id = %q, want %q", part.ID, "call_1")
 	}
 
 	if got := req.Messages[2].Text(); got != `{"results": ["Crappy is not that crappy"]}` {
@@ -488,11 +488,11 @@ func TestAgent_Stream_ToolCallEvents(t *testing.T) {
 		kittest.ModelTurn{
 			ToolCalls: []kit.ToolCall{searchCall},
 			Stream: []kittest.ChunkResult{
-				{Event: kit.NewModelThinkingStartedEvent()},
-				{Event: kit.NewModelThinkingDeltaEvent("let me search")},
-				{Event: kit.NewModelThinkingDoneEvent("let me search")},
-				{Event: kit.NewModelToolCallStartedEvent(searchCall)},
-				{Event: kit.NewModelToolCallDoneEvent(searchCall)},
+				{Event: kit.NewModelContentPartStartedEvent(kit.ContentTypeThinking)},
+				{Event: kit.NewModelContentPartDeltaEvent(kit.ContentTypeThinking, "let me search")},
+				{Event: kit.NewModelContentPartDoneEvent(kit.NewThinkingPart("let me search", ""))},
+				{Event: kit.NewModelContentPartStartedEvent(kit.ContentTypeToolCall)},
+				{Event: kit.NewModelContentPartDoneEvent(kit.NewToolCallPart(searchCall))},
 			},
 		},
 		kittest.ModelTurn{
@@ -533,13 +533,15 @@ func TestAgent_Stream_ToolCallEvents(t *testing.T) {
 	// Turn 1: thinking lifecycle, tool call lifecycle, assistant message, tool result, tool message
 	// Turn 2: content part lifecycle, assistant message
 	expected := []kit.EventType{
-		kit.EventThinkingStarted,
-		kit.EventThinkingDelta,
-		kit.EventThinkingDone,
-		kit.EventToolCallStarted,
-		kit.EventToolCallDone,
+		kit.EventContentPartStarted,
+		kit.EventContentPartDelta,
+		kit.EventContentPartDone,
+		kit.EventContentPartStarted,
+		kit.EventContentPartDone,
 		kit.EventMessage,
-		kit.EventToolResult,
+		kit.EventContentPartStarted,
+		kit.EventContentPartDelta,
+		kit.EventContentPartDone,
 		kit.EventMessage,
 		kit.EventContentPartStarted,
 		kit.EventContentPartDelta,

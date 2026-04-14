@@ -40,9 +40,9 @@ func (turn ModelTurn) events() []kit.ModelEvent {
 
 	if turn.Thinking != "" {
 		events = append(events,
-			kit.NewModelThinkingStartedEvent(),
-			kit.NewModelThinkingDeltaEvent(turn.Thinking),
-			kit.NewModelThinkingDoneEvent(turn.Thinking),
+			kit.NewModelContentPartStartedEvent(kit.ContentTypeThinking),
+			kit.NewModelContentPartDeltaEvent(kit.ContentTypeThinking, turn.Thinking),
+			kit.NewModelContentPartDoneEvent(kit.NewThinkingPart(turn.Thinking, "")),
 		)
 	}
 
@@ -56,9 +56,10 @@ func (turn ModelTurn) events() []kit.ModelEvent {
 	}
 
 	for _, toolCall := range turn.ToolCalls {
+		part := kit.NewToolCallPart(toolCall)
 		events = append(events,
-			kit.NewModelToolCallStartedEvent(toolCall),
-			kit.NewModelToolCallDoneEvent(toolCall),
+			kit.NewModelContentPartStartedEvent(kit.ContentTypeToolCall),
+			kit.NewModelContentPartDoneEvent(part),
 		)
 	}
 

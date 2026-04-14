@@ -25,23 +25,14 @@ func cloneModelRequest(req kit.ModelRequest) kit.ModelRequest {
 
 func cloneMessage(msg kit.Message) kit.Message {
 	cloned := kit.Message{
-		Role:       msg.Role,
-		ToolName:   msg.ToolName,
-		ToolCallID: msg.ToolCallID,
-		IsSummary:  msg.IsSummary,
+		Role:      msg.Role,
+		IsSummary: msg.IsSummary,
 	}
 
 	if len(msg.Content) > 0 {
 		cloned.Content = make([]kit.ContentPart, len(msg.Content))
 		for i, part := range msg.Content {
 			cloned.Content[i] = cloneContentPart(part)
-		}
-	}
-
-	if len(msg.ToolCalls) > 0 {
-		cloned.ToolCalls = make([]kit.ToolCall, len(msg.ToolCalls))
-		for i, tc := range msg.ToolCalls {
-			cloned.ToolCalls[i] = cloneToolCall(tc)
 		}
 	}
 
@@ -54,16 +45,8 @@ func cloneContentPart(part kit.ContentPart) kit.ContentPart {
 		cloned.Data = append([]byte(nil), part.Data...)
 	}
 
-	return cloned
-}
-
-func cloneToolCall(call kit.ToolCall) kit.ToolCall {
-	cloned := call
-	if call.Arguments != nil {
-		cloned.Arguments = cloneMap(call.Arguments)
-	}
-	if call.Metadata != nil {
-		cloned.Metadata = cloneMap(call.Metadata)
+	if part.Arguments != nil {
+		cloned.Arguments = cloneMap(part.Arguments)
 	}
 
 	return cloned

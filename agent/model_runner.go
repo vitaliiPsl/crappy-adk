@@ -83,12 +83,6 @@ func (r *modelRunner) forwardEvents(
 
 func eventFromModelEvent(ev kit.ModelEvent) (kit.Event, bool) {
 	switch ev.Type {
-	case kit.ModelEventThinkingStarted:
-		return kit.NewThinkingStartedEvent(), true
-	case kit.ModelEventThinkingDelta:
-		return kit.NewThinkingDeltaEvent(ev.Text), true
-	case kit.ModelEventThinkingDone:
-		return kit.NewThinkingDoneEvent(ev.Thinking), true
 	case kit.ModelEventContentPartStarted:
 		return kit.NewContentPartStartedEvent(ev.ContentPartType), true
 	case kit.ModelEventContentPartDelta:
@@ -99,18 +93,6 @@ func eventFromModelEvent(ev kit.ModelEvent) (kit.Event, bool) {
 		}
 
 		return kit.NewContentPartDoneEvent(*ev.ContentPart), true
-	case kit.ModelEventToolCallStarted:
-		if ev.ToolCall == nil {
-			return kit.Event{}, false
-		}
-
-		return kit.NewToolCallStartedEvent(*ev.ToolCall), true
-	case kit.ModelEventToolCallDone:
-		if ev.ToolCall == nil {
-			return kit.Event{}, false
-		}
-
-		return kit.NewToolCallDoneEvent(*ev.ToolCall), true
 	default:
 		return kit.Event{}, false
 	}

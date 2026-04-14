@@ -46,10 +46,8 @@ func (m *model) GenerateStream(ctx context.Context, req kit.ModelRequest) (*kit.
 		var (
 			message        anthropic.Message
 			currentBlock   anthropic.ContentBlockStartEvent
-			hasBlock       bool
-			thinkingText   strings.Builder
-			contentText    strings.Builder
-			toolInputJSON  strings.Builder
+			currentPart    *kit.ContentPart
+			builder        strings.Builder
 			toolStartInput string
 		)
 
@@ -65,91 +63,89 @@ func (m *model) GenerateStream(ctx context.Context, req kit.ModelRequest) (*kit.
 			switch e := event.AsAny().(type) {
 			case anthropic.ContentBlockStartEvent:
 				currentBlock = e
-				hasBlock = true
+				currentPart = nil
 
-				thinkingText.Reset()
-				contentText.Reset()
-				toolInputJSON.Reset()
+				builder.Reset()
 
 				toolStartInput = ""
 
 				switch block := e.ContentBlock.AsAny().(type) {
 				case anthropic.TextBlock:
+					part := kit.NewTextPart("")
+					currentPart = &part
+
 					if !yield(kit.NewModelContentPartStartedEvent(kit.ContentTypeText), nil) {
 						return kit.ModelResponse{}
 					}
 				case anthropic.ThinkingBlock:
-					if !yield(kit.NewModelThinkingStartedEvent(), nil) {
+					part := kit.NewThinkingPart("", block.Signature)
+					currentPart = &part
+
+					if !yield(kit.NewModelContentPartStartedEvent(kit.ContentTypeThinking), nil) {
 						return kit.ModelResponse{}
 					}
 				case anthropic.ToolUseBlock:
 					toolStartInput = strings.TrimSpace(string(block.Input))
-					if !yield(kit.NewModelToolCallStartedEvent(kit.ToolCall{
+					part := kit.NewToolCallPart(kit.ToolCall{
 						ID:   block.ID,
 						Name: block.Name,
-					}), nil) {
+					})
+					currentPart = &part
+
+					if !yield(kit.NewModelContentPartStartedEvent(kit.ContentTypeToolCall), nil) {
 						return kit.ModelResponse{}
 					}
 				}
 
 			case anthropic.ContentBlockDeltaEvent:
-				if !hasBlock || e.Index != currentBlock.Index {
+				if currentPart == nil || e.Index != currentBlock.Index {
 					continue
 				}
 
 				switch d := e.Delta.AsAny().(type) {
 				case anthropic.TextDelta:
-					contentText.WriteString(d.Text)
+					builder.WriteString(d.Text)
 
 					if !yield(kit.NewModelContentPartDeltaEvent(kit.ContentTypeText, d.Text), nil) {
 						return kit.ModelResponse{}
 					}
 
 				case anthropic.ThinkingDelta:
-					thinkingText.WriteString(d.Thinking)
+					builder.WriteString(d.Thinking)
 
-					if !yield(kit.NewModelThinkingDeltaEvent(d.Thinking), nil) {
+					if !yield(kit.NewModelContentPartDeltaEvent(kit.ContentTypeThinking, d.Thinking), nil) {
 						return kit.ModelResponse{}
 					}
 
 				case anthropic.InputJSONDelta:
-					toolInputJSON.WriteString(d.PartialJSON)
+					builder.WriteString(d.PartialJSON)
 				}
 
 			case anthropic.ContentBlockStopEvent:
-				if !hasBlock || e.Index != currentBlock.Index {
+				if currentPart == nil || e.Index != currentBlock.Index {
 					continue
 				}
 
-				switch block := currentBlock.ContentBlock.AsAny().(type) {
-				case anthropic.TextBlock:
-					if !yield(kit.NewModelContentPartDoneEvent(kit.NewTextPart(contentText.String())), nil) {
-						return kit.ModelResponse{}
-					}
+				switch currentPart.Type {
+				case kit.ContentTypeText, kit.ContentTypeThinking:
+					currentPart.Text = builder.String()
 
-				case anthropic.ThinkingBlock:
-					if !yield(kit.NewModelThinkingDoneEvent(thinkingText.String()), nil) {
-						return kit.ModelResponse{}
-					}
-
-				case anthropic.ToolUseBlock:
-					args, err := parseToolUseInput(toolInputJSON.String(), toolStartInput)
+				case kit.ContentTypeToolCall:
+					args, err := parseToolUseInput(builder.String(), toolStartInput)
 					if err != nil {
 						yield(kit.ModelEvent{}, err)
 
 						return kit.ModelResponse{}
 					}
 
-					if !yield(kit.NewModelToolCallDoneEvent(kit.ToolCall{
-						ID:        block.ID,
-						Name:      block.Name,
-						Arguments: args,
-					}), nil) {
-						return kit.ModelResponse{}
-					}
+					currentPart.Arguments = args
 				}
 
-				hasBlock = false
+				if !yield(kit.NewModelContentPartDoneEvent(*currentPart), nil) {
+					return kit.ModelResponse{}
+				}
+
+				currentPart = nil
 			}
 		}
 
@@ -263,6 +259,8 @@ func convertUserMessage(msg kit.Message) anthropic.MessageParam {
 func convertAssistantMessage(msg kit.Message) anthropic.MessageParam {
 	var blocks []anthropic.ContentBlockParamUnion
 
+	seenToolCalls := make(map[string]struct{})
+
 	for _, p := range msg.Content {
 		switch p.Type {
 		case kit.ContentTypeThinking:
@@ -273,10 +271,17 @@ func convertAssistantMessage(msg kit.Message) anthropic.MessageParam {
 			if p.Text != "" {
 				blocks = append(blocks, anthropic.NewTextBlock(p.Text))
 			}
+		case kit.ContentTypeToolCall:
+			blocks = append(blocks, anthropic.NewToolUseBlock(p.ID, p.Arguments, p.Name))
+			seenToolCalls[p.ID] = struct{}{}
 		}
 	}
 
-	for _, tc := range msg.ToolCalls {
+	for _, tc := range msg.ToolCalls() {
+		if _, ok := seenToolCalls[tc.ID]; ok {
+			continue
+		}
+
 		blocks = append(blocks, anthropic.NewToolUseBlock(tc.ID, tc.Arguments, tc.Name))
 	}
 
@@ -284,9 +289,17 @@ func convertAssistantMessage(msg kit.Message) anthropic.MessageParam {
 }
 
 func convertToolMessage(msg kit.Message) anthropic.MessageParam {
+	callID := ""
+
+	output := msg.Text()
+	if part, ok := msg.ToolResult(); ok {
+		callID = part.ID
+		output = part.Text
+	}
+
 	// Consecutive turns are combined by the API into a single turn.
 	return anthropic.NewUserMessage(
-		anthropic.NewToolResultBlock(msg.ToolCallID, msg.Text(), false),
+		anthropic.NewToolResultBlock(callID, output, false),
 	)
 }
 
@@ -368,8 +381,7 @@ func convertTools(tools []kit.ToolDefinition) []anthropic.ToolUnionParam {
 
 func convertResponse(resp *anthropic.Message) kit.ModelResponse {
 	var (
-		parts     []kit.ContentPart
-		toolCalls []kit.ToolCall
+		parts []kit.ContentPart
 	)
 
 	for _, cb := range resp.Content {
@@ -386,15 +398,14 @@ func convertResponse(resp *anthropic.Message) kit.ModelResponse {
 				continue
 			}
 
-			toolCalls = append(toolCalls, tc)
+			parts = append(parts, kit.NewToolCallPart(tc))
 		}
 	}
 
 	return kit.ModelResponse{
 		Message: kit.Message{
-			Role:      kit.MessageRoleAssistant,
-			Content:   parts,
-			ToolCalls: toolCalls,
+			Role:    kit.MessageRoleAssistant,
+			Content: parts,
 		},
 		FinishReason: convertStopReason(resp.StopReason),
 		Usage: kit.Usage{

@@ -161,11 +161,11 @@ func streamResponse(
 			return kit.ModelResponse{}
 		}
 
-		if !yield(kit.NewModelToolCallStartedEvent(tc), nil) {
+		if !yield(kit.NewModelContentPartStartedEvent(kit.ContentTypeToolCall), nil) {
 			return kit.ModelResponse{}
 		}
 
-		if !yield(kit.NewModelToolCallDoneEvent(tc), nil) {
+		if !yield(kit.NewModelContentPartDoneEvent(kit.NewToolCallPart(tc)), nil) {
 			return kit.ModelResponse{}
 		}
 
@@ -225,7 +225,7 @@ func convertMessage(msg kit.Message) []openaisdk.ChatCompletionMessageParamUnion
 			}
 		}
 
-		for _, tc := range msg.ToolCalls {
+		for _, tc := range msg.ToolCalls() {
 			args, _ := json.Marshal(tc.Arguments)
 			param.ToolCalls = append(param.ToolCalls, openaisdk.ChatCompletionMessageToolCallUnionParam{
 				OfFunction: &openaisdk.ChatCompletionMessageFunctionToolCallParam{
@@ -243,8 +243,13 @@ func convertMessage(msg kit.Message) []openaisdk.ChatCompletionMessageParamUnion
 		}
 
 	case kit.MessageRoleTool:
+		callID := ""
+		if part, ok := msg.ToolResult(); ok {
+			callID = part.ID
+		}
+
 		return []openaisdk.ChatCompletionMessageParamUnion{
-			openaisdk.ToolMessage(msg.Text(), msg.ToolCallID),
+			openaisdk.ToolMessage(msg.Text(), callID),
 		}
 
 	default:

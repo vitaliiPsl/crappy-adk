@@ -177,7 +177,7 @@ func (a *Agent) runLoop(
 			return response, nil
 		}
 
-		toolMsgs, ok := a.runToolTurn(ctx, assistantMsg.ToolCalls, &response, yield)
+		toolMsgs, ok := a.runToolTurn(ctx, assistantMsg.ToolCalls(), &response, yield)
 		if !ok {
 			return response, nil
 		}
@@ -222,7 +222,7 @@ func (a *Agent) runAssistantTurn(
 }
 
 func (a *Agent) tryExit(assistantMsg kit.Message, response *kit.Result) bool {
-	if len(assistantMsg.ToolCalls) > 0 {
+	if len(assistantMsg.ToolCalls()) > 0 {
 		return false
 	}
 

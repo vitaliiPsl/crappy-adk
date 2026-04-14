@@ -114,38 +114,17 @@ type ModelResponse struct {
 type ModelEventType string
 
 const (
-	ModelEventThinkingStarted    ModelEventType = "thinking_started"
-	ModelEventThinkingDelta      ModelEventType = "thinking_delta"
-	ModelEventThinkingDone       ModelEventType = "thinking_done"
 	ModelEventContentPartStarted ModelEventType = "content_part_started"
 	ModelEventContentPartDelta   ModelEventType = "content_part_delta"
 	ModelEventContentPartDone    ModelEventType = "content_part_done"
-	ModelEventToolCallStarted    ModelEventType = "tool_call_started"
-	ModelEventToolCallDone       ModelEventType = "tool_call_done"
 )
 
 type ModelEvent struct {
 	Type ModelEventType
 
-	Thinking string
-
 	ContentPartType ContentType
 	ContentPart     *ContentPart
 	Text            string
-
-	ToolCall *ToolCall
-}
-
-func NewModelThinkingStartedEvent() ModelEvent {
-	return ModelEvent{Type: ModelEventThinkingStarted}
-}
-
-func NewModelThinkingDeltaEvent(text string) ModelEvent {
-	return ModelEvent{Type: ModelEventThinkingDelta, Text: text}
-}
-
-func NewModelThinkingDoneEvent(thinking string) ModelEvent {
-	return ModelEvent{Type: ModelEventThinkingDone, Thinking: thinking}
 }
 
 func NewModelContentPartStartedEvent(partType ContentType) ModelEvent {
@@ -169,14 +148,6 @@ func NewModelContentPartDoneEvent(part ContentPart) ModelEvent {
 		ContentPartType: part.Type,
 		ContentPart:     &part,
 	}
-}
-
-func NewModelToolCallStartedEvent(tc ToolCall) ModelEvent {
-	return ModelEvent{Type: ModelEventToolCallStarted, ToolCall: &tc}
-}
-
-func NewModelToolCallDoneEvent(tc ToolCall) ModelEvent {
-	return ModelEvent{Type: ModelEventToolCallDone, ToolCall: &tc}
 }
 
 // GenerationConfig controls how the model generates its response.
