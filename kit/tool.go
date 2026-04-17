@@ -25,6 +25,16 @@ type ToolDefinition struct {
 	Schema *jsonschema.Schema
 }
 
+// ToolCall represents a request to execute a tool.
+type ToolCall struct {
+	// Unique identifier for this call, used to match results back to the model.
+	ID string `json:"id"`
+	// Name of the tool to execute.
+	Name string `json:"name"`
+	// Arguments parsed from the model's response.
+	Arguments map[string]any `json:"arguments,omitempty"`
+}
+
 // ToolResult carries the output of a tool execution.
 type ToolResult struct {
 	Call    ToolCall `json:"tool_call"`

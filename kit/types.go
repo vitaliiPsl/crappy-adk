@@ -211,15 +211,6 @@ func (m Message) ToolResult() (ContentPart, bool) {
 	return ContentPart{}, false
 }
 
-type ToolCall struct {
-	// Unique identifier for this call, used to match results back to the model.
-	ID string `json:"id"`
-	// Name of the tool to execute.
-	Name string `json:"name"`
-	// Arguments parsed from the model's response.
-	Arguments map[string]any `json:"arguments,omitempty"`
-}
-
 // NewUserMessage creates a user message with the given content parts.
 func NewUserMessage(parts ...ContentPart) Message {
 	return Message{
