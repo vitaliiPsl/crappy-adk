@@ -11,6 +11,38 @@ import (
 	"github.com/vitaliiPsl/crappy-adk/kit"
 )
 
+func TestNew_AllowsUnknownModelIDs(t *testing.T) {
+	model, err := New("", "claude-compatible")
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	cfg := model.Config()
+	if cfg.ID != "claude-compatible" {
+		t.Fatalf("config.ID = %q, want %q", cfg.ID, "claude-compatible")
+	}
+
+	if cfg.Provider != ProviderID {
+		t.Fatalf("config.Provider = %q, want %q", cfg.Provider, ProviderID)
+	}
+}
+
+func TestNew_PreservesKnownModelMetadata(t *testing.T) {
+	model, err := New("", "claude-haiku-4-5")
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	cfg := model.Config()
+	if cfg.OutputLimit == 0 {
+		t.Fatal("expected known model metadata to be preserved")
+	}
+
+	if !cfg.Capabilities.Tools {
+		t.Fatal("expected known model capabilities to be preserved")
+	}
+}
+
 func TestConvertContentPart_Text(t *testing.T) {
 	part, ok := convertUserContentPart(kit.NewTextPart("hello"))
 	if !ok {

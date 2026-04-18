@@ -72,33 +72,43 @@ fmt.Printf("tokens used: in=%d out=%d\n", result.Usage.InputTokens, result.Usage
 
 ## Providers
 
-Each provider package exposes a `New(apiKey, modelID string) (kit.Model, error)` constructor and a `Models() []kit.ModelConfig` function listing known models. The returned `kit.Model` handles both blocking (`Generate`) and streaming (`GenerateStream`) calls — the agent doesn't know or care which provider is behind it.
+Each provider package exposes a `New(...)` constructor and a `Models() []kit.ModelConfig` function listing known models. The returned `kit.Model` handles both blocking (`Generate`) and streaming (`GenerateStream`) calls — the agent doesn't know or care which provider is behind it.
 
-| Provider | Package | Models |
-|---|---|---|
-| Anthropic | `providers/anthropic` | claude-opus-4-6, claude-sonnet-4-6, claude-haiku-4-5, ... |
-| OpenAI | `providers/openai` | gpt-5.4, gpt-5.4-pro, gpt-5.4-mini, ... |
-| Google Gemini | `providers/google` | gemini-2.5-pro, gemini-2.5-flash, ... |
-| OpenAI-compatible | `providers/openaicompat` | any model via Ollama, vLLM, LM Studio, Groq, Together, etc. |
+| Provider | Package | API | Models |
+|---|---|---|---|
+| Anthropic | `providers/anthropic` | Anthropic Messages API | claude-opus-4-6, claude-sonnet-4-6, claude-haiku-4-5, ... |
+| OpenAI | `providers/openai` | OpenAI Responses API | gpt-5.4, gpt-5.4-pro, gpt-5.4-mini, ... |
+| Google Gemini | `providers/google` | Gemini GenerateContent API | gemini-2.5-pro, gemini-2.5-flash, ... |
 
 All first-party providers support extended thinking where the underlying model offers it.
 Anthropic, OpenAI, and Google also support structured final output via `agent.WithResponseSchema(...)`
 or the typed helper `agent.WithResponseSchemaFor[T]()`.
 
-`openaicompat` targets the Chat Completions API and works with any OpenAI-compatible inference server. Pass a base URL to point at a local or self-hosted model:
+These adapters represent API dialects rather than vendor names. Each provider can be pointed at a compatible endpoint with `WithBaseURL(...)`.
+
+`providers/openai` targets the OpenAI Responses API and can also point at OpenAI-compatible backends:
 
 ```go
-// Minimal — just an ID
-model := openaicompat.New("http://localhost:11434/v1", "", kit.ModelConfig{
-    ID: "llama3.2",
-})
+model, err := openai.New("ollama", "gemma4",
+    openai.WithBaseURL("http://localhost:11434/v1"),
+)
 
-// With metadata — enables compaction, cost tracking, capability checks
-model := openaicompat.New("https://api.groq.com/openai/v1", apiKey, kit.ModelConfig{
-    ID:         "llama-3.3-70b-versatile",
-    InputLimit: 128_000,
-    Capabilities: kit.ModelCapabilities{Text: true, Tools: true, Streaming: true},
-})
+```
+
+`providers/anthropic` targets the Anthropic Messages API:
+
+```go
+model, err := anthropic.New(apiKey, "claude-compatible",
+    anthropic.WithBaseURL("https://your-anthropic-compatible-gateway.example.com"),
+)
+```
+
+`providers/google` targets the Gemini GenerateContent API:
+
+```go
+model, err := google.New(apiKey, "gemini-compatible",
+    google.WithBaseURL("https://your-gemini-compatible-gateway.example.com"),
+)
 ```
 
 ## Tools
@@ -339,7 +349,7 @@ If you need full manual control, use `agent.WithResponseSchema(schema)` with a
 | `examples/02-stream` | `Stream()`, events in real time |
 | `examples/03-tools` | `FunctionTool[T]` with a custom typed tool |
 | `examples/04-providers` | Anthropic, OpenAI, and Google side by side |
-| `examples/05-local-model` | `openaicompat` with a local model via Ollama |
+| `examples/05-local-model` | `providers/openai` against a local Ollama server |
 | `examples/06-multiturn` | Stateless multi-turn conversation pattern |
 | `examples/07-hooks` | Token logging and tool timing |
 | `examples/08-middleware` | Retry middleware with custom backoff |

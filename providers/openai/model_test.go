@@ -12,6 +12,38 @@ import (
 	"github.com/vitaliiPsl/crappy-adk/kit"
 )
 
+func TestNew_AllowsUnknownModelIDs(t *testing.T) {
+	model, err := New("", "qwen3:8b")
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	cfg := model.Config()
+	if cfg.ID != "qwen3:8b" {
+		t.Fatalf("config.ID = %q, want %q", cfg.ID, "qwen3:8b")
+	}
+
+	if cfg.Provider != ProviderID {
+		t.Fatalf("config.Provider = %q, want %q", cfg.Provider, ProviderID)
+	}
+}
+
+func TestNew_PreservesKnownModelMetadata(t *testing.T) {
+	model, err := New("", "gpt-5.4-mini")
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	cfg := model.Config()
+	if cfg.OutputLimit == 0 {
+		t.Fatal("expected known model metadata to be preserved")
+	}
+
+	if !cfg.Capabilities.Tools {
+		t.Fatal("expected known model capabilities to be preserved")
+	}
+}
+
 func TestConvertContentPart_Text(t *testing.T) {
 	part, ok := convertUserContentPart(kit.NewTextPart("hello"))
 	if !ok {

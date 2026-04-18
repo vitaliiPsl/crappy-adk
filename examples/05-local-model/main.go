@@ -7,16 +7,15 @@ import (
 
 	"github.com/vitaliiPsl/crappy-adk/agent"
 	"github.com/vitaliiPsl/crappy-adk/kit"
-	"github.com/vitaliiPsl/crappy-adk/providers/openaicompat"
+	"github.com/vitaliiPsl/crappy-adk/providers/openai"
 	filesystem "github.com/vitaliiPsl/crappy-adk/tools/fs"
 )
 
 /*
 Example 05 — Local model
 
-The custom provider wraps any OpenAI-compatible inference server.
-Pass a base URL to target a specific server, or leave it empty to
-default to Ollama at localhost:11434.
+The OpenAI provider can target any compatible Responses API backend.
+Pass a base URL to point at a local or self-hosted server such as Ollama.
 
 Run:
 
@@ -31,9 +30,12 @@ func main() {
 	ctx := context.Background()
 
 	// Could also be a remote server e.g. "https://your-remote-server.space/v1".
-	model := openaicompat.New("http://localhost:11434/v1", "", kit.ModelConfig{
-		ID: "gemma4",
-	})
+	model, err := openai.New("ollama", "gemma4",
+		openai.WithBaseURL("http://localhost:11434/v1"),
+	)
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	a, err := agent.New(model,
 		agent.WithInstruction("You are a helpful coding assistant with access to the filesystem."),

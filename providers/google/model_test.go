@@ -10,6 +10,38 @@ import (
 	"github.com/vitaliiPsl/crappy-adk/kit"
 )
 
+func TestNew_AllowsUnknownModelIDs(t *testing.T) {
+	model, err := New("test-key", "gemini-compatible")
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	cfg := model.Config()
+	if cfg.ID != "gemini-compatible" {
+		t.Fatalf("config.ID = %q, want %q", cfg.ID, "gemini-compatible")
+	}
+
+	if cfg.Provider != ProviderID {
+		t.Fatalf("config.Provider = %q, want %q", cfg.Provider, ProviderID)
+	}
+}
+
+func TestNew_PreservesKnownModelMetadata(t *testing.T) {
+	model, err := New("test-key", "gemini-2.5-flash")
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	cfg := model.Config()
+	if cfg.OutputLimit == 0 {
+		t.Fatal("expected known model metadata to be preserved")
+	}
+
+	if !cfg.Capabilities.Tools {
+		t.Fatal("expected known model capabilities to be preserved")
+	}
+}
+
 func TestConvertContentPart_Text(t *testing.T) {
 	part := convertUserContentPart(kit.NewTextPart("hello"))
 	if part == nil {
