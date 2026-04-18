@@ -6,11 +6,12 @@ import (
 )
 
 var (
-	ErrRateLimit      = errors.New("rate limit exceeded")
-	ErrContextLength  = errors.New("context length exceeded")
-	ErrAuthentication = errors.New("authentication failed")
-	ErrInvalidRequest = errors.New("invalid request")
-	ErrServerError    = errors.New("server error")
+	ErrRateLimit        = errors.New("rate limit exceeded")
+	ErrContextLength    = errors.New("context length exceeded")
+	ErrAuthentication   = errors.New("authentication failed")
+	ErrInvalidRequest   = errors.New("invalid request")
+	ErrServerError      = errors.New("server error")
+	ErrStructuredOutput = errors.New("structured output validation failed")
 )
 
 // LLMError is a structured error returned by model providers.

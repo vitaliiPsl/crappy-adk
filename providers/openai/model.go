@@ -15,6 +15,7 @@ import (
 	"github.com/openai/openai-go/v3/shared"
 
 	"github.com/vitaliiPsl/crappy-adk/kit"
+	"github.com/vitaliiPsl/crappy-adk/x/structuredoutput"
 )
 
 // model implements [kit.Model] for an OpenAI model via the Responses API.
@@ -30,18 +31,38 @@ func (m *model) Config() kit.ModelConfig {
 }
 
 func (m *model) Generate(ctx context.Context, req kit.ModelRequest) (kit.ModelResponse, error) {
-	params := buildParams(req, m.config.ID)
+	params, err := buildParams(req, m.config.ID)
+	if err != nil {
+		return kit.ModelResponse{}, err
+	}
 
 	resp, err := m.client.Responses.New(ctx, params)
 	if err != nil {
 		return kit.ModelResponse{}, convertError(err)
 	}
 
-	return convertResponse(resp), nil
+	out := convertResponse(resp)
+
+	out.StructuredOutput, err = structuredoutput.Validate(out.Message.Text(), req.ResponseSchema)
+	if err != nil {
+		return kit.ModelResponse{}, &kit.LLMError{
+			Kind:      kit.ErrStructuredOutput,
+			Message:   err.Error(),
+			Retryable: false,
+			Provider:  ProviderID,
+			Cause:     err,
+		}
+	}
+
+	return out, nil
 }
 
 func (m *model) GenerateStream(ctx context.Context, req kit.ModelRequest) (*kit.Stream[kit.ModelEvent, kit.ModelResponse], error) {
-	params := buildParams(req, m.config.ID)
+	params, err := buildParams(req, m.config.ID)
+	if err != nil {
+		return nil, err
+	}
+
 	stream := m.client.Responses.NewStreaming(ctx, params)
 
 	return kit.NewStream(func(yield func(kit.ModelEvent, error) bool) kit.ModelResponse {
@@ -122,6 +143,19 @@ func (m *model) GenerateStream(ctx context.Context, req kit.ModelRequest) (*kit.
 
 		resp := convertResponse(response)
 
+		resp.StructuredOutput, err = structuredoutput.Validate(resp.Message.Text(), req.ResponseSchema)
+		if err != nil {
+			yield(kit.ModelEvent{}, &kit.LLMError{
+				Kind:      kit.ErrStructuredOutput,
+				Message:   err.Error(),
+				Retryable: false,
+				Provider:  ProviderID,
+				Cause:     err,
+			})
+
+			return kit.ModelResponse{}
+		}
+
 		for _, part := range resp.Message.Content {
 			if part.Type == kit.ContentTypeRedactedThinking || part.Type == kit.ContentTypeToolCall {
 				continue
@@ -136,13 +170,24 @@ func (m *model) GenerateStream(ctx context.Context, req kit.ModelRequest) (*kit.
 	}), nil
 }
 
-func buildParams(req kit.ModelRequest, modelID string) responses.ResponseNewParams {
+func buildParams(req kit.ModelRequest, modelID string) (responses.ResponseNewParams, error) {
 	params := responses.ResponseNewParams{
 		Model: modelID,
 		Input: responses.ResponseNewParamsInputUnion{
 			OfInputItemList: convertMessages(req.Messages),
 		},
 		Tools: convertTools(req.Tools),
+	}
+
+	if req.ResponseSchema != nil {
+		schema, err := structuredoutput.SchemaMap(req.ResponseSchema)
+		if err != nil {
+			return responses.ResponseNewParams{}, fmt.Errorf("openai: schema map: %w", err)
+		}
+
+		params.Text = responses.ResponseTextConfigParam{
+			Format: responses.ResponseFormatTextConfigParamOfJSONSchema("structured_output", schema),
+		}
 	}
 
 	if req.Instruction != "" {
@@ -169,7 +214,7 @@ func buildParams(req kit.ModelRequest, modelID string) responses.ResponseNewPara
 		}
 	}
 
-	return params
+	return params, nil
 }
 
 func reasoningEffort(level kit.ThinkingLevel) shared.ReasoningEffort {

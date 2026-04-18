@@ -265,6 +265,10 @@ type Result struct {
 	// Output is the final output of the agent.
 	Output ContentPart
 
+	// StructuredOutput is the validated machine-readable final answer when a
+	// response schema is configured on the agent.
+	StructuredOutput *StructuredOutput
+
 	// Messages are all new messages produced during this run.
 	Messages []Message
 

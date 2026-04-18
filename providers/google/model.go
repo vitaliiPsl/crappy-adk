@@ -8,6 +8,7 @@ import (
 	"google.golang.org/genai"
 
 	"github.com/vitaliiPsl/crappy-adk/kit"
+	"github.com/vitaliiPsl/crappy-adk/x/structuredoutput"
 )
 
 // encodeSignature base64-encodes a Gemini thought signature so the raw binary
@@ -50,19 +51,40 @@ func (m *model) Config() kit.ModelConfig {
 
 func (m *model) Generate(ctx context.Context, req kit.ModelRequest) (kit.ModelResponse, error) {
 	contents := convertMessages(req.Messages)
-	config := buildConfig(req)
+
+	config, err := buildConfig(req)
+	if err != nil {
+		return kit.ModelResponse{}, err
+	}
 
 	resp, err := m.client.Models.GenerateContent(ctx, m.config.ID, contents, config)
 	if err != nil {
 		return kit.ModelResponse{}, convertError(err)
 	}
 
-	return convertResponse(resp), nil
+	out := convertResponse(resp)
+
+	out.StructuredOutput, err = structuredoutput.Validate(out.Message.Text(), req.ResponseSchema)
+	if err != nil {
+		return kit.ModelResponse{}, &kit.LLMError{
+			Kind:      kit.ErrStructuredOutput,
+			Message:   err.Error(),
+			Retryable: false,
+			Provider:  ProviderID,
+			Cause:     err,
+		}
+	}
+
+	return out, nil
 }
 
 func (m *model) GenerateStream(ctx context.Context, req kit.ModelRequest) (*kit.Stream[kit.ModelEvent, kit.ModelResponse], error) {
 	contents := convertMessages(req.Messages)
-	config := buildConfig(req)
+
+	config, err := buildConfig(req)
+	if err != nil {
+		return nil, err
+	}
 
 	iter := m.client.Models.GenerateContentStream(ctx, m.config.ID, contents, config)
 
@@ -169,6 +191,19 @@ func (m *model) GenerateStream(ctx context.Context, req kit.ModelRequest) (*kit.
 			}
 		}
 
+		result.StructuredOutput, err = structuredoutput.Validate(result.Message.Text(), req.ResponseSchema)
+		if err != nil {
+			yield(kit.ModelEvent{}, &kit.LLMError{
+				Kind:      kit.ErrStructuredOutput,
+				Message:   err.Error(),
+				Retryable: false,
+				Provider:  ProviderID,
+				Cause:     err,
+			})
+
+			return kit.ModelResponse{}
+		}
+
 		return result
 	}), nil
 }
@@ -221,12 +256,17 @@ var thinkingBudgets = map[kit.ThinkingLevel]int32{
 	kit.ThinkingLevelHigh:   24576,
 }
 
-func buildConfig(req kit.ModelRequest) *genai.GenerateContentConfig {
+func buildConfig(req kit.ModelRequest) (*genai.GenerateContentConfig, error) {
 	config := &genai.GenerateContentConfig{
 		SystemInstruction: genai.NewContentFromText(req.Instruction, genai.RoleUser),
 		Tools:             convertTools(req.Tools),
 		Temperature:       req.Config.Temperature,
 		TopP:              req.Config.TopP,
+	}
+
+	if req.ResponseSchema != nil {
+		config.ResponseMIMEType = "application/json"
+		config.ResponseJsonSchema = req.ResponseSchema
 	}
 
 	if req.Config.MaxOutputTokens != nil {
@@ -240,7 +280,7 @@ func buildConfig(req kit.ModelRequest) *genai.GenerateContentConfig {
 		}
 	}
 
-	return config
+	return config, nil
 }
 
 func convertMessages(msgs []kit.Message) []*genai.Content {

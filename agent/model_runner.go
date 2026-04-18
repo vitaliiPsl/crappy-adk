@@ -19,11 +19,12 @@ func (r *modelRunner) run(
 	instruction string,
 	msgs []kit.Message,
 	yield func(kit.Event, error) bool,
-) (kit.Message, kit.Usage, error) {
+) (kit.ModelResponse, error) {
 	req := kit.ModelRequest{
-		Instruction: instruction,
-		Messages:    msgs,
-		Tools:       r.toolDefinitions,
+		Instruction:    instruction,
+		Messages:       msgs,
+		Tools:          r.toolDefinitions,
+		ResponseSchema: r.config.ResponseSchema,
 		Config: kit.GenerationConfig{
 			Temperature:     r.config.Temperature,
 			TopP:            r.config.TopP,
@@ -34,29 +35,29 @@ func (r *modelRunner) run(
 
 	ctx, req, err := r.hooks.onModelRequest(ctx, req)
 	if err != nil {
-		return kit.Message{}, kit.Usage{}, fmt.Errorf("model request hook failed: %w", err)
+		return kit.ModelResponse{}, fmt.Errorf("model request hook failed: %w", err)
 	}
 
 	stream, err := r.model.GenerateStream(ctx, req)
 	if err != nil {
-		return kit.Message{}, kit.Usage{}, err
+		return kit.ModelResponse{}, err
 	}
 
 	if err := r.forwardEvents(stream, yield); err != nil {
-		return kit.Message{}, kit.Usage{}, err
+		return kit.ModelResponse{}, err
 	}
 
 	modelResp, streamErr := stream.Result()
 	if streamErr != nil {
-		return kit.Message{}, kit.Usage{}, streamErr
+		return kit.ModelResponse{}, streamErr
 	}
 
 	_, resp, err := r.hooks.onModelResponse(ctx, modelResp)
 	if err != nil {
-		return kit.Message{}, kit.Usage{}, fmt.Errorf("model response hook failed: %w", err)
+		return kit.ModelResponse{}, fmt.Errorf("model response hook failed: %w", err)
 	}
 
-	return resp.Message, resp.Usage, nil
+	return resp, nil
 }
 
 func (r *modelRunner) forwardEvents(

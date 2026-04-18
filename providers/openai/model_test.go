@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/openai/openai-go/v3/responses"
 
 	"github.com/vitaliiPsl/crappy-adk/kit"
@@ -301,6 +302,33 @@ func TestConvertResponse_PreservesThinkingToolCallsAndUsage(t *testing.T) {
 
 	if got.Usage.InputTokens != 9 || got.Usage.OutputTokens != 4 || got.Usage.CacheReadTokens != 2 || got.Usage.ReasoningTokens != 6 {
 		t.Fatalf("usage = %+v", got.Usage)
+	}
+}
+
+func TestBuildParams_IncludesStructuredOutputSchema(t *testing.T) {
+	params, err := buildParams(kit.ModelRequest{
+		ResponseSchema: &jsonschema.Schema{
+			Type:     "object",
+			Required: []string{"answer"},
+			Properties: map[string]*jsonschema.Schema{
+				"answer": {Type: "string"},
+			},
+		},
+	}, "gpt-5")
+	if err != nil {
+		t.Fatalf("buildParams returned error: %v", err)
+	}
+
+	data, err := json.Marshal(params)
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+
+	raw := string(data)
+	if !strings.Contains(raw, `"type":"json_schema"`) ||
+		!strings.Contains(raw, `"name":"structured_output"`) ||
+		!strings.Contains(raw, `"answer":{"type":"string"}`) {
+		t.Fatalf("params json = %s", raw)
 	}
 }
 

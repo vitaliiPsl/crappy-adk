@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/google/jsonschema-go/jsonschema"
+
 	"github.com/vitaliiPsl/crappy-adk/kit"
 )
 
@@ -27,6 +29,9 @@ type Config struct {
 	// MaxOutputTokens limits the number of tokens the model can generate.
 	// Nil uses the model default.
 	MaxOutputTokens *int32
+
+	// ResponseSchema constrains the final assistant answer to JSON matching this schema.
+	ResponseSchema *jsonschema.Schema
 
 	// Thinking controls extended thinking. Empty disables it.
 	Thinking kit.ThinkingLevel
@@ -152,7 +157,7 @@ func (a *Agent) runLoop(
 			return response, err
 		}
 
-		assistantMsg, usage, ok, err := a.runAssistantTurn(ctx, instruction, msgs, &response, yield)
+		modelResp, ok, err := a.runModelTurn(ctx, instruction, msgs, &response, yield)
 		if err != nil {
 			if errors.Is(err, kit.ErrContextLength) && a.compactor != nil {
 				var compacted bool
@@ -170,21 +175,21 @@ func (a *Agent) runLoop(
 			return response, nil
 		}
 
-		msgs = append(msgs, assistantMsg)
+		msgs = append(msgs, modelResp.Message)
 
-		done := a.tryExit(assistantMsg, &response)
+		done := a.tryExit(modelResp, &response)
 		if done {
 			return response, nil
 		}
 
-		toolMsgs, ok := a.runToolTurn(ctx, assistantMsg.ToolCalls(), &response, yield)
+		toolMsgs, ok := a.runToolTurn(ctx, modelResp.Message.ToolCalls(), &response, yield)
 		if !ok {
 			return response, nil
 		}
 
 		msgs = append(msgs, toolMsgs...)
 
-		msgs, ok = a.runCompactionTurn(ctx, msgs, usage, &response, yield)
+		msgs, ok = a.runCompactionTurn(ctx, msgs, modelResp.Usage, &response, yield)
 		if !ok {
 			return response, nil
 		}
@@ -196,32 +201,33 @@ func (a *Agent) runLoop(
 	}
 }
 
-func (a *Agent) runAssistantTurn(
+func (a *Agent) runModelTurn(
 	ctx context.Context,
 	instruction string,
 	msgs []kit.Message,
 	response *kit.Result,
 	yield func(kit.Event, error) bool,
-) (kit.Message, kit.Usage, bool, error) {
+) (kit.ModelResponse, bool, error) {
 	modelRunner := a.modelRunner()
 
-	assistantMsg, usage, err := modelRunner.run(ctx, instruction, msgs, yield)
+	modelResp, err := modelRunner.run(ctx, instruction, msgs, yield)
 	if err != nil {
-		return kit.Message{}, kit.Usage{}, false, err
+		return kit.ModelResponse{}, false, err
 	}
 
-	response.Messages = append(response.Messages, assistantMsg)
-	response.Usage.Add(usage)
-	response.LastUsage = usage
+	response.Messages = append(response.Messages, modelResp.Message)
+	response.Usage.Add(modelResp.Usage)
+	response.LastUsage = modelResp.Usage
 
-	if !yield(kit.NewMessageEvent(assistantMsg), nil) {
-		return kit.Message{}, kit.Usage{}, false, nil
+	if !yield(kit.NewMessageEvent(modelResp.Message), nil) {
+		return kit.ModelResponse{}, false, nil
 	}
 
-	return assistantMsg, usage, true, nil
+	return modelResp, true, nil
 }
 
-func (a *Agent) tryExit(assistantMsg kit.Message, response *kit.Result) bool {
+func (a *Agent) tryExit(modelResp kit.ModelResponse, response *kit.Result) bool {
+	assistantMsg := modelResp.Message
 	if len(assistantMsg.ToolCalls()) > 0 {
 		return false
 	}
@@ -229,6 +235,8 @@ func (a *Agent) tryExit(assistantMsg kit.Message, response *kit.Result) bool {
 	if len(assistantMsg.Content) > 0 {
 		response.Output = assistantMsg.Content[0]
 	}
+
+	response.StructuredOutput = modelResp.StructuredOutput
 
 	return true
 }

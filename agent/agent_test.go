@@ -5,6 +5,8 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/google/jsonschema-go/jsonschema"
+
 	"github.com/vitaliiPsl/crappy-adk/agent"
 	"github.com/vitaliiPsl/crappy-adk/kit"
 	"github.com/vitaliiPsl/crappy-adk/kittest"
@@ -32,6 +34,94 @@ func TestAgent_Run_TextOnly(t *testing.T) {
 	}
 
 	model.AssertCallCount(t, 1)
+}
+
+func TestAgent_Run_WithResponseSchemaPassesSchemaAndReturnsStructuredOutput(t *testing.T) {
+	schema := &jsonschema.Schema{
+		Type: "object",
+		Properties: map[string]*jsonschema.Schema{
+			"answer": {Type: "string"},
+		},
+		Required: []string{"answer"},
+	}
+
+	model := kittest.NewModel(t,
+		kittest.ModelTurn{
+			Text: "ignored for structured output consumers",
+			StructuredOutput: &kit.StructuredOutput{
+				JSON: []byte(`{"answer":"done"}`),
+			},
+		},
+	)
+
+	agent, err := agent.New(model, agent.WithResponseSchema(schema))
+	if err != nil {
+		t.Fatalf("NewAgent: %v", err)
+	}
+
+	resp, err := agent.Run(context.Background(), []kit.Message{
+		kit.NewUserMessage(kit.NewTextPart("Hi")),
+	})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	if resp.StructuredOutput == nil {
+		t.Fatal("expected structured output, got nil")
+	}
+
+	if got := string(resp.StructuredOutput.JSON); got != `{"answer":"done"}` {
+		t.Fatalf("structured output json = %q, want %q", got, `{"answer":"done"}`)
+	}
+
+	req := model.CallAt(0)
+	if req.ResponseSchema == nil {
+		t.Fatal("expected response schema on model request")
+	}
+
+	if req.ResponseSchema.Type != "object" {
+		t.Fatalf("response schema type = %q, want %q", req.ResponseSchema.Type, "object")
+	}
+}
+
+func TestAgent_Run_WithResponseSchemaForInfersSchema(t *testing.T) {
+	type releaseNotes struct {
+		Title    string `json:"title"`
+		Breaking bool   `json:"breaking"`
+	}
+
+	model := kittest.NewModel(t,
+		kittest.ModelTurn{Text: "done"},
+	)
+
+	agent, err := agent.New(model, agent.WithResponseSchemaFor[releaseNotes]())
+	if err != nil {
+		t.Fatalf("NewAgent: %v", err)
+	}
+
+	_, err = agent.Run(context.Background(), []kit.Message{
+		kit.NewUserMessage(kit.NewTextPart("Hi")),
+	})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	req := model.CallAt(0)
+	if req.ResponseSchema == nil {
+		t.Fatal("expected response schema on model request")
+	}
+
+	if req.ResponseSchema.Type != "object" {
+		t.Fatalf("response schema type = %q, want %q", req.ResponseSchema.Type, "object")
+	}
+
+	if req.ResponseSchema.Properties["title"] == nil {
+		t.Fatal("expected title property in inferred response schema")
+	}
+
+	if req.ResponseSchema.AdditionalProperties == nil {
+		t.Fatal("expected inferred struct schema to disallow additional properties")
+	}
 }
 
 func TestAgent_Run_ToolCall(t *testing.T) {

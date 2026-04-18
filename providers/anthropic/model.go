@@ -11,6 +11,7 @@ import (
 	"github.com/anthropics/anthropic-sdk-go/packages/param"
 
 	"github.com/vitaliiPsl/crappy-adk/kit"
+	"github.com/vitaliiPsl/crappy-adk/x/structuredoutput"
 )
 
 // model implements [kit.Model] for an Anthropic model via the Messages API.
@@ -26,18 +27,38 @@ func (m *model) Config() kit.ModelConfig {
 }
 
 func (m *model) Generate(ctx context.Context, req kit.ModelRequest) (kit.ModelResponse, error) {
-	params := buildParams(req, m.config)
+	params, err := buildParams(req, m.config)
+	if err != nil {
+		return kit.ModelResponse{}, err
+	}
 
 	resp, err := m.client.Messages.New(ctx, params)
 	if err != nil {
 		return kit.ModelResponse{}, convertError(err)
 	}
 
-	return convertResponse(resp), nil
+	out := convertResponse(resp)
+
+	out.StructuredOutput, err = structuredoutput.Validate(out.Message.Text(), req.ResponseSchema)
+	if err != nil {
+		return kit.ModelResponse{}, &kit.LLMError{
+			Kind:      kit.ErrStructuredOutput,
+			Message:   err.Error(),
+			Retryable: false,
+			Provider:  ProviderID,
+			Cause:     err,
+		}
+	}
+
+	return out, nil
 }
 
 func (m *model) GenerateStream(ctx context.Context, req kit.ModelRequest) (*kit.Stream[kit.ModelEvent, kit.ModelResponse], error) {
-	params := buildParams(req, m.config)
+	params, err := buildParams(req, m.config)
+	if err != nil {
+		return nil, err
+	}
+
 	stream := m.client.Messages.NewStreaming(ctx, params)
 
 	return kit.NewStream(func(yield func(kit.ModelEvent, error) bool) kit.ModelResponse {
@@ -155,7 +176,22 @@ func (m *model) GenerateStream(ctx context.Context, req kit.ModelRequest) (*kit.
 			return kit.ModelResponse{}
 		}
 
-		return convertResponse(&message)
+		resp := convertResponse(&message)
+
+		resp.StructuredOutput, err = structuredoutput.Validate(resp.Message.Text(), req.ResponseSchema)
+		if err != nil {
+			yield(kit.ModelEvent{}, &kit.LLMError{
+				Kind:      kit.ErrStructuredOutput,
+				Message:   err.Error(),
+				Retryable: false,
+				Provider:  ProviderID,
+				Cause:     err,
+			})
+
+			return kit.ModelResponse{}
+		}
+
+		return resp
 	}), nil
 }
 
@@ -177,13 +213,24 @@ func parseToolUseInput(raw string, fallback string) (map[string]any, error) {
 	return args, nil
 }
 
-func buildParams(req kit.ModelRequest, cfg kit.ModelConfig) anthropic.MessageNewParams {
+func buildParams(req kit.ModelRequest, cfg kit.ModelConfig) (anthropic.MessageNewParams, error) {
 	gc := req.Config
 
 	params := anthropic.MessageNewParams{
 		Model:    anthropic.Model(cfg.ID),
 		Messages: convertMessages(req.Messages),
 		Tools:    convertTools(req.Tools),
+	}
+
+	if req.ResponseSchema != nil {
+		schema, err := structuredoutput.SchemaMap(req.ResponseSchema)
+		if err != nil {
+			return anthropic.MessageNewParams{}, fmt.Errorf("anthropic: schema map: %w", err)
+		}
+
+		params.OutputConfig = anthropic.OutputConfigParam{
+			Format: anthropic.JSONOutputFormatParam{Schema: schema},
+		}
 	}
 
 	if req.Instruction != "" {
@@ -210,7 +257,7 @@ func buildParams(req kit.ModelRequest, cfg kit.ModelConfig) anthropic.MessageNew
 		params.Thinking = anthropic.ThinkingConfigParamOfEnabled(budget)
 	}
 
-	return params
+	return params, nil
 }
 
 var thinkingBudgets = map[kit.ThinkingLevel]int64{

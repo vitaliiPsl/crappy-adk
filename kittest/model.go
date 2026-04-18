@@ -16,11 +16,12 @@ type ChunkResult struct {
 
 // ModelTurn describes a single model response in terms the test cares about.
 type ModelTurn struct {
-	Text      string
-	Thinking  string
-	ToolCalls []kit.ToolCall
-	Usage     kit.Usage
-	Error     error
+	Text             string
+	Thinking         string
+	ToolCalls        []kit.ToolCall
+	StructuredOutput *kit.StructuredOutput
+	Usage            kit.Usage
+	Error            error
 
 	// Stream, when set, overrides the auto-generated chunks for [Model.GenerateStream].
 	// Each [ChunkResult] is yielded in order, allowing tests to inject stream-level errors.
@@ -29,9 +30,10 @@ type ModelTurn struct {
 
 func (turn ModelTurn) modelResponse() kit.ModelResponse {
 	return kit.ModelResponse{
-		Message:      kit.NewAssistantMessage(turn.Text, turn.Thinking, turn.ToolCalls),
-		FinishReason: turn.finishReason(),
-		Usage:        turn.Usage,
+		Message:          kit.NewAssistantMessage(turn.Text, turn.Thinking, turn.ToolCalls),
+		StructuredOutput: turn.StructuredOutput,
+		FinishReason:     turn.finishReason(),
+		Usage:            turn.Usage,
 	}
 }
 

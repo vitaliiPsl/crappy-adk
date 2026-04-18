@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	anthropicapi "github.com/anthropics/anthropic-sdk-go"
+	"github.com/google/jsonschema-go/jsonschema"
 
 	"github.com/vitaliiPsl/crappy-adk/kit"
 )
@@ -198,5 +199,28 @@ func TestConvertResponse_PreservesThinkingToolCallsAndUsage(t *testing.T) {
 
 	if resp.Usage.InputTokens != 11 || resp.Usage.OutputTokens != 7 || resp.Usage.CacheReadTokens != 3 || resp.Usage.CacheWriteTokens != 2 {
 		t.Fatalf("usage = %+v", resp.Usage)
+	}
+}
+
+func TestBuildParams_IncludesStructuredOutputSchema(t *testing.T) {
+	params, err := buildParams(kit.ModelRequest{
+		ResponseSchema: &jsonschema.Schema{
+			Type:     "object",
+			Required: []string{"answer"},
+			Properties: map[string]*jsonschema.Schema{
+				"answer": {Type: "string"},
+			},
+		},
+	}, kit.ModelConfig{ID: "claude-sonnet-4-5"})
+	if err != nil {
+		t.Fatalf("buildParams returned error: %v", err)
+	}
+
+	if params.OutputConfig.Format.Schema == nil {
+		t.Fatal("expected output schema to be set")
+	}
+
+	if got := params.OutputConfig.Format.Schema["type"]; got != "object" {
+		t.Fatalf("schema type = %v, want %q", got, "object")
 	}
 }

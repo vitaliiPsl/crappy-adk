@@ -46,7 +46,7 @@ func TestModelRunner_Run_AppliesHooksAndForwardsEvents(t *testing.T) {
 
 	var gotEvents []kit.Event
 
-	msg, usage, err := runner.run(context.Background(), "base instruction", []kit.Message{
+	resp, err := runner.run(context.Background(), "base instruction", []kit.Message{
 		kit.NewUserMessage(kit.NewTextPart("hello")),
 	}, func(event kit.Event, err error) bool {
 		if err != nil {
@@ -74,12 +74,12 @@ func TestModelRunner_Run_AppliesHooksAndForwardsEvents(t *testing.T) {
 		t.Fatalf("thinking = %q, want %q", call.Config.Thinking, kit.ThinkingLevelHigh)
 	}
 
-	if got := msg.Text(); got != "hooked text" {
+	if got := resp.Message.Text(); got != "hooked text" {
 		t.Fatalf("message text = %q, want %q", got, "hooked text")
 	}
 
-	if usage.OutputTokens != 9 {
-		t.Fatalf("output tokens = %d, want %d", usage.OutputTokens, 9)
+	if resp.Usage.OutputTokens != 9 {
+		t.Fatalf("output tokens = %d, want %d", resp.Usage.OutputTokens, 9)
 	}
 
 	wantEvents := []kit.Event{

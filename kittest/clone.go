@@ -1,11 +1,21 @@
 package kittest
 
-import "github.com/vitaliiPsl/crappy-adk/kit"
+import (
+	"encoding/json"
+
+	"github.com/google/jsonschema-go/jsonschema"
+
+	"github.com/vitaliiPsl/crappy-adk/kit"
+)
 
 func cloneModelRequest(req kit.ModelRequest) kit.ModelRequest {
 	cloned := kit.ModelRequest{
 		Instruction: req.Instruction,
 		Config:      cloneGenerationConfig(req.Config),
+	}
+
+	if req.ResponseSchema != nil {
+		cloned.ResponseSchema = cloneSchema(req.ResponseSchema)
 	}
 
 	if len(req.Messages) > 0 {
@@ -110,4 +120,22 @@ func cloneAny(v any) any {
 	default:
 		return x
 	}
+}
+
+func cloneSchema(schema *jsonschema.Schema) *jsonschema.Schema {
+	if schema == nil {
+		return nil
+	}
+
+	data, err := json.Marshal(schema)
+	if err != nil {
+		panic(err)
+	}
+
+	var cloned jsonschema.Schema
+	if err := json.Unmarshal(data, &cloned); err != nil {
+		panic(err)
+	}
+
+	return &cloned
 }

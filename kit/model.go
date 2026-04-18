@@ -3,6 +3,8 @@ package kit
 import (
 	"context"
 	"time"
+
+	"github.com/google/jsonschema-go/jsonschema"
 )
 
 // ModelMiddleware wraps a [Model] to intercept and modify its behaviour.
@@ -95,6 +97,11 @@ type ModelRequest struct {
 	// Tools is the set of available tools.
 	Tools []ToolDefinition
 
+	// ResponseSchema constrains the final assistant message to JSON matching this
+	// schema. Providers may enforce the schema natively; the returned structured
+	// output is always validated locally before it is exposed to callers.
+	ResponseSchema *jsonschema.Schema
+
 	// Config controls generation parameters. Zero value uses model defaults.
 	Config GenerationConfig
 }
@@ -103,6 +110,10 @@ type ModelRequest struct {
 type ModelResponse struct {
 	// Message is the assistant message produced by the model.
 	Message Message
+
+	// StructuredOutput is the validated JSON payload produced when
+	// [ModelRequest.ResponseSchema] is set.
+	StructuredOutput *StructuredOutput
 
 	// FinishReason indicates why the model stopped generating.
 	FinishReason FinishReason

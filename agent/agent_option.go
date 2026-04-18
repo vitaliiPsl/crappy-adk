@@ -3,6 +3,8 @@ package agent
 import (
 	"context"
 
+	"github.com/google/jsonschema-go/jsonschema"
+
 	"github.com/vitaliiPsl/crappy-adk/kit"
 )
 
@@ -76,6 +78,30 @@ func WithTopP(value float32) Option {
 func WithMaxOutputTokens(value int32) Option {
 	return func(a *Agent) error {
 		a.config.MaxOutputTokens = &value
+
+		return nil
+	}
+}
+
+// WithResponseSchema constrains the final assistant answer to JSON matching this schema.
+func WithResponseSchema(schema *jsonschema.Schema) Option {
+	return func(a *Agent) error {
+		a.config.ResponseSchema = schema
+
+		return nil
+	}
+}
+
+// WithResponseSchemaFor infers a JSON schema from T and constrains the final
+// assistant answer to match it.
+func WithResponseSchemaFor[T any]() Option {
+	return func(a *Agent) error {
+		schema, err := jsonschema.For[T](nil)
+		if err != nil {
+			return err
+		}
+
+		a.config.ResponseSchema = schema
 
 		return nil
 	}

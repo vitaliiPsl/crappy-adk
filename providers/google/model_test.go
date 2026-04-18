@@ -1,8 +1,10 @@
 package google
 
 import (
+	"encoding/json"
 	"testing"
 
+	"github.com/google/jsonschema-go/jsonschema"
 	"google.golang.org/genai"
 
 	"github.com/vitaliiPsl/crappy-adk/kit"
@@ -258,6 +260,40 @@ func TestConvertResponse_PreservesThinkingToolCallsAndUsage(t *testing.T) {
 
 	if resp.Usage.InputTokens != 9 || resp.Usage.OutputTokens != 4 || resp.Usage.CacheReadTokens != 2 || resp.Usage.ReasoningTokens != 6 {
 		t.Fatalf("usage = %+v", resp.Usage)
+	}
+}
+
+func TestBuildConfig_IncludesStructuredOutputSchema(t *testing.T) {
+	config, err := buildConfig(kit.ModelRequest{
+		ResponseSchema: &jsonschema.Schema{
+			Type:     "object",
+			Required: []string{"answer"},
+			Properties: map[string]*jsonschema.Schema{
+				"answer": {Type: "string"},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("buildConfig returned error: %v", err)
+	}
+
+	if config.ResponseMIMEType != "application/json" {
+		t.Fatalf("response mime type = %q, want %q", config.ResponseMIMEType, "application/json")
+	}
+
+	if config.ResponseJsonSchema == nil {
+		t.Fatal("expected response json schema to be set")
+	}
+
+	raw, err := json.Marshal(config.ResponseJsonSchema)
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+
+	got := string(raw)
+	if got != `{"type":"object","properties":{"answer":{"type":"string"}},"required":["answer"]}` &&
+		got != `{"properties":{"answer":{"type":"string"}},"required":["answer"],"type":"object"}` {
+		t.Fatalf("response json schema = %s", got)
 	}
 }
 
