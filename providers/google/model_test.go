@@ -27,9 +27,16 @@ func TestNew_AllowsUnknownModelIDs(t *testing.T) {
 }
 
 func TestNew_PreservesKnownModelMetadata(t *testing.T) {
-	model, err := New("test-key", "gemini-2.5-flash")
+	model, err := NewWithConfig("test-key", kit.ModelConfig{
+		ID:          "gemini-2.5-flash",
+		Provider:    ProviderID,
+		OutputLimit: 65_536,
+		Capabilities: kit.ModelCapabilities{
+			Tools: true,
+		},
+	})
 	if err != nil {
-		t.Fatalf("New: %v", err)
+		t.Fatalf("NewWithConfig: %v", err)
 	}
 
 	cfg := model.Config()

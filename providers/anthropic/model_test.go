@@ -11,6 +11,20 @@ import (
 	"github.com/vitaliiPsl/crappy-adk/kit"
 )
 
+func TestBuildParams_DefaultsMaxTokensWhenOutputLimitUnknown(t *testing.T) {
+	params, err := buildParams(kit.ModelRequest{}, kit.ModelConfig{
+		ID:       "claude-compatible",
+		Provider: ProviderID,
+	})
+	if err != nil {
+		t.Fatalf("buildParams: %v", err)
+	}
+
+	if params.MaxTokens < 1 {
+		t.Fatalf("max_tokens = %d, want >= 1", params.MaxTokens)
+	}
+}
+
 func TestNew_AllowsUnknownModelIDs(t *testing.T) {
 	model, err := New("", "claude-compatible")
 	if err != nil {
@@ -28,9 +42,16 @@ func TestNew_AllowsUnknownModelIDs(t *testing.T) {
 }
 
 func TestNew_PreservesKnownModelMetadata(t *testing.T) {
-	model, err := New("", "claude-haiku-4-5")
+	model, err := NewWithConfig("", kit.ModelConfig{
+		ID:          "claude-haiku-4-5",
+		Provider:    ProviderID,
+		OutputLimit: 64_000,
+		Capabilities: kit.ModelCapabilities{
+			Tools: true,
+		},
+	})
 	if err != nil {
-		t.Fatalf("New: %v", err)
+		t.Fatalf("NewWithConfig: %v", err)
 	}
 
 	cfg := model.Config()

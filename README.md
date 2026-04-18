@@ -72,7 +72,7 @@ fmt.Printf("tokens used: in=%d out=%d\n", result.Usage.InputTokens, result.Usage
 
 ## Providers
 
-Each provider package exposes a `New(...)` constructor and a `Models() []kit.ModelConfig` function listing known models. The returned `kit.Model` handles both blocking (`Generate`) and streaming (`GenerateStream`) calls — the agent doesn't know or care which provider is behind it.
+Each provider package exposes a `New(...)` constructor for simple model IDs and a `NewWithConfig(...)` constructor when you want to attach static model metadata such as token limits, capabilities, pricing, or release dates. The returned `kit.Model` handles both blocking (`Generate`) and streaming (`GenerateStream`) calls — the agent doesn't know or care which provider is behind it.
 
 | Provider | Package | API | Models |
 |---|---|---|---|

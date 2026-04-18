@@ -29,9 +29,16 @@ func TestNew_AllowsUnknownModelIDs(t *testing.T) {
 }
 
 func TestNew_PreservesKnownModelMetadata(t *testing.T) {
-	model, err := New("", "gpt-5.4-mini")
+	model, err := NewWithConfig("", kit.ModelConfig{
+		ID:          "gpt-5.4-mini",
+		Provider:    ProviderID,
+		OutputLimit: 128_000,
+		Capabilities: kit.ModelCapabilities{
+			Tools: true,
+		},
+	})
 	if err != nil {
-		t.Fatalf("New: %v", err)
+		t.Fatalf("NewWithConfig: %v", err)
 	}
 
 	cfg := model.Config()

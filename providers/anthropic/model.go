@@ -14,6 +14,8 @@ import (
 	"github.com/vitaliiPsl/crappy-adk/x/structuredoutput"
 )
 
+const defaultMaxOutputTokens int64 = 8192
+
 // model implements [kit.Model] for an Anthropic model via the Messages API.
 type model struct {
 	client *anthropic.Client
@@ -245,7 +247,8 @@ func buildParams(req kit.ModelRequest, cfg kit.ModelConfig) (anthropic.MessageNe
 		params.TopP = param.NewOpt(float64(*gc.TopP))
 	}
 
-	maxTokens := int64(cfg.OutputLimit)
+	// Anthropic requires max_tokens >= 1
+	maxTokens := defaultMaxTokens(cfg.OutputLimit)
 	if gc.MaxOutputTokens != nil {
 		maxTokens = int64(*gc.MaxOutputTokens)
 	}
@@ -258,6 +261,14 @@ func buildParams(req kit.ModelRequest, cfg kit.ModelConfig) (anthropic.MessageNe
 	}
 
 	return params, nil
+}
+
+func defaultMaxTokens(limit int) int64 {
+	if limit > 0 {
+		return int64(limit)
+	}
+
+	return defaultMaxOutputTokens
 }
 
 var thinkingBudgets = map[kit.ThinkingLevel]int64{

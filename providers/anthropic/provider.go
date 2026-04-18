@@ -25,10 +25,19 @@ func WithBaseURL(baseURL string) Option {
 }
 
 // New returns an authenticated model for the given modelID and apiKey.
-// Unknown model IDs are allowed so callers can target compatible gateways that
-// expose models not listed in the built-in catalog.
 func New(apiKey, modelID string, opts ...Option) (kit.Model, error) {
-	cfg := modelConfig(modelID)
+	return NewWithConfig(apiKey, kit.ModelConfig{
+		ID:       modelID,
+		Provider: ProviderID,
+	}, opts...)
+}
+
+// NewWithConfig returns an authenticated model using the provided static
+// model metadata.
+func NewWithConfig(apiKey string, cfg kit.ModelConfig, opts ...Option) (kit.Model, error) {
+	if cfg.Provider == "" {
+		cfg.Provider = ProviderID
+	}
 
 	options := options{}
 	for _, opt := range opts {
@@ -45,22 +54,4 @@ func New(apiKey, modelID string, opts ...Option) (kit.Model, error) {
 	client := anthropic.NewClient(clientOptions...)
 
 	return &model{client: &client, config: cfg}, nil
-}
-
-func modelConfig(modelID string) kit.ModelConfig {
-	for _, cfg := range knownModels {
-		if cfg.ID == modelID {
-			return cfg
-		}
-	}
-
-	return kit.ModelConfig{
-		ID:       modelID,
-		Provider: ProviderID,
-	}
-}
-
-// Models returns the list of supported models.
-func Models() []kit.ModelConfig {
-	return knownModels
 }
