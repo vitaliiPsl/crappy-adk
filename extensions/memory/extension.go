@@ -8,7 +8,9 @@ import (
 	"github.com/vitaliiPsl/crappy-adk/kit"
 )
 
-const baseInstructionTemplate = `You have access to durable memory%s.
+const baseInstructionTemplate = `# Memory
+
+You have access to durable memory%s.
 
 Use memory to preserve stable information that should remain useful in future conversations.
 Saved memory is automatically included in your instructions.

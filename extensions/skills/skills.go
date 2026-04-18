@@ -16,10 +16,12 @@ const (
 	readReferenceName        = "read_skill_reference"
 	readReferenceDescription = "Load a reference document from a skill. Use this to access supporting documents related to a skill."
 
-	instructionTemplate = "You have access to specialized skills. " +
-		"Use read_skill to load full instructions when a task matches a skill. " +
-		"Use read_skill_reference to access supporting documents.\n\n" +
-		"Available skills:\n%s"
+	instructionTemplate = `# Skills
+
+You have access to specialized skills. Use read_skill to load full instructions when a task matches a skill. Use read_skill_reference to access supporting documents.
+
+Available skills:
+%s`
 )
 
 // Skill is a named, loadable set of instructions the agent can use on demand.
