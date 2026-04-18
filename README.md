@@ -26,6 +26,7 @@ Felt bored while on vacation, so decided to learn more about AI agents and build
 - [Middleware](#middleware)
 - [Subagents](#subagents)
 - [Extending](#extending)
+- [Structured output](#structured-output)
 - [Examples](#examples)
 - [License](#license)
 
@@ -81,6 +82,8 @@ Each provider package exposes a `New(apiKey, modelID string) (kit.Model, error)`
 | OpenAI-compatible | `providers/openaicompat` | any model via Ollama, vLLM, LM Studio, Groq, Together, etc. |
 
 All first-party providers support extended thinking where the underlying model offers it.
+Anthropic, OpenAI, and Google also support structured final output via `agent.WithResponseSchema(...)`
+or the typed helper `agent.WithResponseSchemaFor[T]()`.
 
 `openaicompat` targets the Chat Completions API and works with any OpenAI-compatible inference server. Pass a base URL to point at a local or self-hosted model:
 
@@ -289,6 +292,45 @@ Everything is an interface. If something doesn't fit, replace it.
 - **Compactor** — `kit.Compactor`. Built-in compactor implementations live in `x/compactors`.
 - **Extension** — `agent.WithExtension([]Option)` bundles options into a reusable capability.
 
+## Structured output
+
+Use structured output when you want the final agent answer to be valid JSON that
+matches a schema. The provider may enforce the schema natively, and the ADK
+always validates the final JSON locally before returning it on `result.StructuredOutput`.
+
+For most cases, the typed helper is the nicest API:
+
+```go
+type ReleaseNotes struct {
+    Title      string   `json:"title" jsonschema:"Short release note title"`
+    Highlights []string `json:"highlights" jsonschema:"Short highlights for the release note"`
+    Breaking   bool     `json:"breaking" jsonschema:"Whether this update is breaking"`
+}
+
+a, err := agent.New(model,
+    agent.WithInstruction("Extract release notes into JSON. Include 2 or 3 highlights."),
+    agent.WithResponseSchemaFor[ReleaseNotes](),
+)
+if err != nil {
+    log.Fatal(err)
+}
+
+result, err := a.Run(ctx, []kit.Message{
+    kit.NewUserMessage(kit.NewTextPart("Summarize this release update.")),
+})
+if err != nil {
+    log.Fatal(err)
+}
+
+var notes ReleaseNotes
+if err := json.Unmarshal(result.StructuredOutput.JSON, &notes); err != nil {
+    log.Fatal(err)
+}
+```
+
+If you need full manual control, use `agent.WithResponseSchema(schema)` with a
+`*jsonschema.Schema` instead.
+
 ## Examples
 
 | Example | What it shows |
@@ -302,6 +344,7 @@ Everything is an interface. If something doesn't fit, replace it.
 | `examples/07-hooks` | Token logging and tool timing |
 | `examples/08-middleware` | Retry middleware with custom backoff |
 | `examples/09-subagents` | Orchestrator with researcher and writer subagents |
+| `examples/10-structured-output` | Typed structured final output with `WithResponseSchemaFor[T]()` |
 
 Run any example from the repo root:
 

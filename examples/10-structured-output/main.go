@@ -32,7 +32,6 @@ func main() {
 	ctx := context.Background()
 
 	model, err := google.New(os.Getenv("GEMINI_API_KEY"), "gemini-2.5-flash")
-
 	if err != nil {
 		log.Fatal(err)
 	}
