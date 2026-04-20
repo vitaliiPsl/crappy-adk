@@ -58,7 +58,7 @@ func main() {
 }
 
 func run(ctx context.Context, label string, model kit.Model, prompt string) {
-	a, err := agent.New(model, agent.WithInstruction("You are a helpful assistant."))
+	a, err := agent.New(model, agent.WithSystemPrompt("You are a helpful assistant."))
 	if err != nil {
 		log.Fatal(err)
 	}

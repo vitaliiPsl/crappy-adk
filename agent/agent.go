@@ -8,6 +8,7 @@ import (
 	"github.com/google/jsonschema-go/jsonschema"
 
 	"github.com/vitaliiPsl/crappy-adk/kit"
+	"github.com/vitaliiPsl/crappy-adk/x/instructions"
 )
 
 const (
@@ -23,7 +24,10 @@ type Config struct {
 	// Used by parent agents to decide which subagent to delegate to.
 	Description string
 
-	// Instructions are composed into the system prompt on each run.
+	// SystemPrompt is a static system prompt used as-is on every run.
+	SystemPrompt string
+
+	// Instructions are dynamic sources composed into the system prompt on each run.
 	Instructions []kit.Instruction
 
 	// Temperature controls randomness. Nil uses the model default.
@@ -67,7 +71,7 @@ type Agent struct {
 
 // New creates an agent backed by the given model. Options are applied in order.
 func New(model kit.Model, options ...Option) (*Agent, error) {
-	agent := &Agent{
+	a := &Agent{
 		model: model,
 		tools: make(map[string]kit.Tool),
 		config: Config{
@@ -76,12 +80,34 @@ func New(model kit.Model, options ...Option) (*Agent, error) {
 	}
 
 	for _, opt := range options {
-		if err := opt(agent); err != nil {
+		if err := opt(a); err != nil {
 			return nil, err
 		}
 	}
 
-	return agent, nil
+	return a, nil
+}
+
+// NewFromConfig creates an agent seeded from cfg. Additional options are applied
+// on top, allowing callers to extend the config (e.g. attach resolved tools).
+func NewFromConfig(model kit.Model, cfg Config, options ...Option) (*Agent, error) {
+	if cfg.CompactionThreshold == 0 {
+		cfg.CompactionThreshold = defaultCompactionThreshold
+	}
+
+	a := &Agent{
+		model:  model,
+		tools:  make(map[string]kit.Tool),
+		config: cfg,
+	}
+
+	for _, opt := range options {
+		if err := opt(a); err != nil {
+			return nil, err
+		}
+	}
+
+	return a, nil
 }
 
 // Name returns the agent's name.
@@ -133,7 +159,9 @@ func (a *Agent) Run(ctx context.Context, messages []kit.Message) (kit.Result, er
 // and tool results — as the agent works. Call [kit.Stream.Result] after
 // iteration to retrieve the accumulated [kit.Result].
 func (a *Agent) Stream(ctx context.Context, msgs []kit.Message) (*kit.Stream[kit.Event, kit.Result], error) {
-	instruction, err := kit.ComposeInstructions(ctx, "\n\n", a.config.Instructions...)
+	instructions := append([]kit.Instruction{instructions.Static(a.config.SystemPrompt)}, a.config.Instructions...)
+
+	instruction, err := kit.ComposeInstructions(ctx, "\n\n", instructions...)
 	if err != nil {
 		return nil, err
 	}

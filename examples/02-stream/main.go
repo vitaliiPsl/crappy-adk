@@ -38,7 +38,7 @@ func main() {
 	}
 
 	a, err := agent.New(model,
-		agent.WithInstruction("You are a helpful coding assistant with access to the filesystem and shell."),
+		agent.WithSystemPrompt("You are a helpful coding assistant with access to the filesystem and shell."),
 		agent.WithTools(
 			bash.NewBash(),
 			filesystem.NewReadFile(),

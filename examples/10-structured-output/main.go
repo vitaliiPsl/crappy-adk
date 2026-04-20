@@ -43,7 +43,7 @@ func main() {
 	}
 
 	a, err := agent.New(model,
-		agent.WithInstruction("You extract short, factual release notes into JSON. Return only the requested data. Include 2 or 3 highlights."),
+		agent.WithSystemPrompt("You extract short, factual release notes into JSON. Return only the requested data. Include 2 or 3 highlights."),
 		agent.WithResponseSchemaFor[releaseNotes](),
 	)
 	if err != nil {

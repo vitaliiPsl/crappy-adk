@@ -56,7 +56,7 @@ func main() {
 	}
 
 	a, err := agent.New(model,
-		agent.WithInstruction("You are a helpful assistant. Use tools when needed."),
+		agent.WithSystemPrompt("You are a helpful assistant. Use tools when needed."),
 		agent.WithTools(getTime),
 	)
 	if err != nil {

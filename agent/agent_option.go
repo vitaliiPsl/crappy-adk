@@ -1,8 +1,6 @@
 package agent
 
 import (
-	"context"
-
 	"github.com/google/jsonschema-go/jsonschema"
 
 	"github.com/vitaliiPsl/crappy-adk/kit"
@@ -40,11 +38,13 @@ func WithDescription(description string) Option {
 	}
 }
 
-// WithInstruction adds a static string to the agent's system prompt.
-func WithInstruction(text string) Option {
-	return WithInstructions(func(_ context.Context) (string, error) {
-		return text, nil
-	})
+// WithSystemPrompt sets a static string as the agent's system prompt.
+func WithSystemPrompt(text string) Option {
+	return func(a *Agent) error {
+		a.config.SystemPrompt = text
+
+		return nil
+	}
 }
 
 // WithInstructions appends one or more [kit.Instruction] values to the

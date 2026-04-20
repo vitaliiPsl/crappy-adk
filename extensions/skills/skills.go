@@ -47,13 +47,13 @@ type Store interface {
 	GetReference(ctx context.Context, skill string, reference string) (string, error)
 }
 
-// ReadArgs are the arguments for the read_skill tool.
-type ReadArgs struct {
+// ReadInput are the arguments for the read_skill tool.
+type ReadInput struct {
 	Skill string `json:"skill" jsonschema:"Name of the skill to load"`
 }
 
-// RefArgs are the arguments for the read_skill_reference tool.
-type RefArgs struct {
+// RefInput are the arguments for the read_skill_reference tool.
+type RefInput struct {
 	Skill     string `json:"skill" jsonschema:"Name of the skill"`
 	Reference string `json:"reference" jsonschema:"Name of the reference document"`
 }
@@ -66,7 +66,7 @@ func WithSkills(store Store) []agent.Option {
 	readSkill := tool.MustFunction(
 		readName,
 		readDescription,
-		func(ctx context.Context, args ReadArgs) (string, error) {
+		func(ctx context.Context, args ReadInput) (string, error) {
 			s, err := store.Get(ctx, args.Skill)
 			if err != nil {
 				return "", err
@@ -79,7 +79,7 @@ func WithSkills(store Store) []agent.Option {
 	readRef := tool.MustFunction(
 		readReferenceName,
 		readReferenceDescription,
-		func(ctx context.Context, args RefArgs) (string, error) {
+		func(ctx context.Context, args RefInput) (string, error) {
 			return store.GetReference(ctx, args.Skill, args.Reference)
 		},
 	)

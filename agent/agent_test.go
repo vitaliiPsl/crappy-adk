@@ -454,12 +454,12 @@ func (c *stubCompactor) Compact(_ context.Context, _ []kit.Message) ([]kit.Messa
 	return c.compacted, c.summary, c.err
 }
 
-func TestAgent_Run_Instruction(t *testing.T) {
+func TestAgent_Run_SystemPrompt(t *testing.T) {
 	model := kittest.NewModel(t,
 		kittest.ModelTurn{Text: "I am a helpful bot."},
 	)
 
-	agent, err := agent.New(model, agent.WithInstruction("You are a helpful bot."))
+	agent, err := agent.New(model, agent.WithSystemPrompt("You are a helpful bot."))
 	if err != nil {
 		t.Fatalf("NewAgent: %v", err)
 	}

@@ -51,7 +51,7 @@ if err != nil {
 }
 
 a, err := agent.New(model,
-    agent.WithInstruction("You are a helpful assistant."),
+    agent.WithSystemPrompt("You are a helpful assistant."),
     agent.WithTools(filesystem.NewReadFile(), filesystem.NewListDirectory()),
 )
 if err != nil {
@@ -279,15 +279,24 @@ a, err := agent.New(model,
 
 ## Subagents
 
-`WithSubAgents` in `extensions/subagents` registers a `delegate` tool on the parent agent. When called, it runs the target subagent's full ReAct loop and returns its output.
+`WithSubAgents` in `extensions/subagents` registers an `agent` delegation tool on the parent agent. When called, it runs the selected subagent's full ReAct loop and returns its output.
 
 ```go
+researcher, err := agent.New(model,
+    agent.WithName("researcher"),
+    agent.WithDescription("Explores the codebase and answers factual questions."),
+    agent.WithSystemPrompt("You are a code researcher."),
+)
+
+writer, err := agent.New(model,
+    agent.WithName("writer"),
+    agent.WithDescription("Turns findings into clear markdown documentation."),
+    agent.WithSystemPrompt("You are a technical writer."),
+)
+
 orchestrator, err := agent.New(model,
-    agent.WithInstruction("You are an orchestrator. Always delegate — never answer directly."),
-    subagents.WithSubAgents(
-        subagents.SubAgent{Name: "researcher", Description: "...", Agent: researcher},
-        subagents.SubAgent{Name: "writer",     Description: "...", Agent: writer},
-    ),
+    agent.WithSystemPrompt("You are an orchestrator. Always delegate — never answer directly."),
+    agent.WithExtension(subagents.WithSubAgents(researcher, writer)),
 )
 ```
 
@@ -298,7 +307,8 @@ Everything is an interface. If something doesn't fit, replace it.
 - **Model** — `kit.Model`. Point at any inference backend via a provider package or implement your own.
 - **Tool** — `kit.Tool`, or use `tool.NewFunction[T]` from `x/tool` for auto-schema from a Go struct.
 - **Middleware** — `func(Model) Model`. Built-in middleware lives in `x/middleware`.
-- **Instruction** — `func(ctx) (string, error)`. Evaluated fresh each run; built-in instruction sources live in `x/instructions`.
+- **System prompt** — a static prompt set with `agent.WithSystemPrompt(...)`.
+- **Instruction** — `func(ctx) (string, error)`. Dynamic prompt source evaluated fresh each run; built-in instruction sources live in `x/instructions`.
 - **Compactor** — `kit.Compactor`. Built-in compactor implementations live in `x/compactors`.
 - **Extension** — `agent.WithExtension([]Option)` bundles options into a reusable capability.
 
@@ -318,7 +328,7 @@ type ReleaseNotes struct {
 }
 
 a, err := agent.New(model,
-    agent.WithInstruction("Extract release notes into JSON. Include 2 or 3 highlights."),
+    agent.WithSystemPrompt("Extract release notes into JSON. Include 2 or 3 highlights."),
     agent.WithResponseSchemaFor[ReleaseNotes](),
 )
 if err != nil {

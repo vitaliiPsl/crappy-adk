@@ -33,7 +33,7 @@ func main() {
 	}
 
 	a, err := agent.New(model,
-		agent.WithInstruction("You are a concise assistant. Answer in one or two sentences."),
+		agent.WithSystemPrompt("You are a concise assistant. Answer in one or two sentences."),
 	)
 	if err != nil {
 		log.Fatal(err)

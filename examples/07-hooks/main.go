@@ -41,7 +41,7 @@ func main() {
 	toolStartTimes := map[string]time.Time{}
 
 	a, err := agent.New(model,
-		agent.WithInstruction("You are a helpful coding assistant with access to the filesystem."),
+		agent.WithSystemPrompt("You are a helpful coding assistant with access to the filesystem."),
 		agent.WithTools(
 			filesystem.NewReadFile(),
 			filesystem.NewListDirectory(),

@@ -6,6 +6,7 @@ import (
 
 	"github.com/vitaliiPsl/crappy-adk/agent"
 	"github.com/vitaliiPsl/crappy-adk/kit"
+	"github.com/vitaliiPsl/crappy-adk/x/instructions"
 )
 
 const baseInstructionTemplate = `# Memory
@@ -96,7 +97,7 @@ func WithMemory(store Store, opts ...Option) []agent.Option {
 	}
 
 	options := []agent.Option{
-		agent.WithInstructions(func(_ context.Context) (string, error) { return cfg.instruction(), nil }),
+		agent.WithInstructions(instructions.Static(cfg.instruction())),
 		agent.WithOnModelRequest(state.hook()),
 	}
 

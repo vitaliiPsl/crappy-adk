@@ -5,18 +5,15 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 
-	"gopkg.in/yaml.v3"
-
 	"github.com/vitaliiPsl/crappy-adk/extensions/skills"
+	"github.com/vitaliiPsl/crappy-adk/utils/frontmatter"
 )
 
 const (
-	skillFile        = "skill.md"
-	referencesDir    = "references"
-	frontmatterDelim = "---"
+	skillFile     = "skill.md"
+	referencesDir = "references"
 )
 
 // Frontmatter holds the YAML metadata parsed from the top of a skill.md file.
@@ -113,7 +110,7 @@ func (fs *FileStore) prepareIndex() error {
 				continue
 			}
 
-			fm, _, err := parseFrontmatter(string(data))
+			fm, _, err := frontmatter.Unmarshal[Frontmatter](string(data))
 			if err != nil || fm.Name == "" {
 				continue
 			}
@@ -133,7 +130,7 @@ func (fs *FileStore) loadSkill(dir string) (*skills.Skill, error) {
 		return nil, fmt.Errorf("read skill file: %w", err)
 	}
 
-	fm, content, err := parseFrontmatter(string(data))
+	fm, content, err := frontmatter.Unmarshal[Frontmatter](string(data))
 	if err != nil {
 		return nil, err
 	}
@@ -153,24 +150,4 @@ func (fs *FileStore) loadSkill(dir string) (*skills.Skill, error) {
 		Content:     content,
 		References:  refs,
 	}, nil
-}
-
-func parseFrontmatter(content string) (*Frontmatter, string, error) {
-	if !strings.HasPrefix(content, frontmatterDelim) {
-		return &Frontmatter{}, content, nil
-	}
-
-	end := strings.Index(content[3:], frontmatterDelim)
-	if end == -1 {
-		return &Frontmatter{}, content, nil
-	}
-
-	var fm Frontmatter
-	if err := yaml.Unmarshal([]byte(content[3:3+end]), &fm); err != nil {
-		return nil, "", fmt.Errorf("parse frontmatter: %w", err)
-	}
-
-	body := strings.TrimSpace(content[3+end+3:])
-
-	return &fm, body, nil
 }

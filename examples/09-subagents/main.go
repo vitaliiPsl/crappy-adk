@@ -17,7 +17,7 @@ import (
 /*
 Example 09 — Subagents
 
-WithSubAgents registers a delegate tool on the parent agent. When called,
+WithSubAgents registers an "agent" delegation tool on the parent agent. When called,
 it runs the target subagent's full ReAct loop and returns its output.
 
 Each subagent has its own instruction set and tool access. The orchestrator
@@ -45,7 +45,9 @@ func main() {
 	}
 
 	researcher, err := agent.New(model,
-		agent.WithInstruction(`You are a code researcher.
+		agent.WithName("researcher"),
+		agent.WithDescription("Explores the codebase and answers factual questions about code structure, types, and logic."),
+		agent.WithSystemPrompt(`You are a code researcher.
 Explore the codebase using the tools available and answer questions with detailed, factual findings.
 Always cite specific files and line numbers when relevant.`),
 		agent.WithInstructions(instructions.Env(workdir)),
@@ -59,7 +61,9 @@ Always cite specific files and line numbers when relevant.`),
 	}
 
 	writer, err := agent.New(model,
-		agent.WithInstruction(`You are a technical writer.
+		agent.WithName("writer"),
+		agent.WithDescription("Takes raw findings or notes and turns them into well-structured markdown documentation."),
+		agent.WithSystemPrompt(`You are a technical writer.
 Given raw findings or notes, produce clear and well-structured documentation.
 Use markdown with headers, bullet points, and code blocks where appropriate.`),
 	)
@@ -68,20 +72,9 @@ Use markdown with headers, bullet points, and code blocks where appropriate.`),
 	}
 
 	orchestrator, err := agent.New(model,
-		agent.WithInstruction(`You are an orchestrator. You must always delegate — never answer directly.
+		agent.WithSystemPrompt(`You are an orchestrator. You must always delegate — never answer directly.
 Always follow this sequence: first delegate research tasks to the researcher, then pass the findings to the writer to produce the final output.`),
-		subagents.WithSubAgents(
-			subagents.SubAgent{
-				Name:        "researcher",
-				Description: "Explores the codebase and answers factual questions about code structure, types, and logic.",
-				Agent:       researcher,
-			},
-			subagents.SubAgent{
-				Name:        "writer",
-				Description: "Takes raw findings or notes and turns them into well-structured markdown documentation.",
-				Agent:       writer,
-			},
-		),
+		agent.WithExtension(subagents.WithSubAgents(researcher, writer)),
 	)
 	if err != nil {
 		log.Fatal(err)
@@ -115,13 +108,13 @@ Always follow this sequence: first delegate research tasks to the researcher, th
 			case kit.ContentTypeText:
 				fmt.Print("\n")
 			case kit.ContentTypeToolCall:
-				if event.ContentPart.Name == "delegate" {
-					fmt.Printf("[delegate → %s]\n", event.ContentPart.Arguments["agent"])
-					fmt.Printf("[delegate requested]\n")
+				if event.ContentPart.Name == "agent" {
+					fmt.Printf("[agent → %s]\n", event.ContentPart.Arguments["subagent_type"])
+					fmt.Printf("[agent requested]\n")
 				}
 			case kit.ContentTypeToolResult:
-				if event.ContentPart.Name == "delegate" {
-					fmt.Printf("[delegate ← done]\n")
+				if event.ContentPart.Name == "agent" {
+					fmt.Printf("[agent ← done]\n")
 				}
 			}
 		}
