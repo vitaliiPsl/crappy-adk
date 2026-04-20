@@ -16,6 +16,13 @@ const (
 
 // Config holds configuration for an [Agent].
 type Config struct {
+	// Name is the agent's identifier, used in catalogs and logs.
+	Name string
+
+	// Description explains what this agent does and when to use it.
+	// Used by parent agents to decide which subagent to delegate to.
+	Description string
+
 	// Instructions are composed into the system prompt on each run.
 	Instructions []kit.Instruction
 
@@ -76,6 +83,21 @@ func New(model kit.Model, options ...Option) (*Agent, error) {
 
 	return agent, nil
 }
+
+// Name returns the agent's name.
+func (a *Agent) Name() string { return a.config.Name }
+
+// Description returns the agent's description.
+func (a *Agent) Description() string { return a.config.Description }
+
+// Model returns the model backing this agent.
+func (a *Agent) Model() kit.Model { return a.model }
+
+// Tools returns the agent's registered tools keyed by name.
+func (a *Agent) Tools() map[string]kit.Tool { return a.tools }
+
+// ToolDefinitions returns the ordered list of tool definitions sent to the model.
+func (a *Agent) ToolDefinitions() []kit.ToolDefinition { return a.toolDefinitions }
 
 func (a *Agent) modelRunner() modelRunner {
 	return modelRunner{

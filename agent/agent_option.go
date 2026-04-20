@@ -21,6 +21,25 @@ const (
 // Option is a functional option for configuring an [Agent].
 type Option func(*Agent) error
 
+// WithName sets the agent's name, used in catalogs and logs.
+func WithName(name string) Option {
+	return func(a *Agent) error {
+		a.config.Name = name
+
+		return nil
+	}
+}
+
+// WithDescription sets the agent's description explaining what it does and when
+// to use it. Used by parent agents to decide which subagent to delegate to.
+func WithDescription(description string) Option {
+	return func(a *Agent) error {
+		a.config.Description = description
+
+		return nil
+	}
+}
+
 // WithInstruction adds a static string to the agent's system prompt.
 func WithInstruction(text string) Option {
 	return WithInstructions(func(_ context.Context) (string, error) {
