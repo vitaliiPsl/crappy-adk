@@ -10,6 +10,7 @@ import (
 	"sync"
 
 	"github.com/vitaliiPsl/crappy-adk/extensions/memory"
+	pathutil "github.com/vitaliiPsl/crappy-adk/utils/path"
 )
 
 const storeFile = "memories.json"
@@ -27,6 +28,7 @@ func NewFileStore(dir string) (*FileStore, error) {
 		return nil, fmt.Errorf("memory dir is required")
 	}
 
+	dir = pathutil.ExpandHome(dir)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, fmt.Errorf("create memory dir: %w", err)
 	}

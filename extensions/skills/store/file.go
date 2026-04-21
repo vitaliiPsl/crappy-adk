@@ -9,6 +9,7 @@ import (
 
 	"github.com/vitaliiPsl/crappy-adk/extensions/skills"
 	"github.com/vitaliiPsl/crappy-adk/utils/frontmatter"
+	pathutil "github.com/vitaliiPsl/crappy-adk/utils/path"
 )
 
 const (
@@ -35,8 +36,14 @@ type FileStore struct {
 }
 
 // NewFileStore creates a [FileStore] rooted at the given directory.
-func NewFileStore(dir string) *FileStore {
-	return &FileStore{dir: dir}
+func NewFileStore(dir string) (*FileStore, error) {
+	if dir == "" {
+		return nil, fmt.Errorf("skills dir is required")
+	}
+
+	dir = pathutil.ExpandHome(dir)
+
+	return &FileStore{dir: dir}, nil
 }
 
 func (fs *FileStore) List(_ context.Context) ([]skills.Skill, error) {
@@ -91,6 +98,12 @@ func (fs *FileStore) GetReference(_ context.Context, skill string, reference str
 func (fs *FileStore) prepareIndex() error {
 	fs.once.Do(func() {
 		entries, err := os.ReadDir(fs.dir)
+		if os.IsNotExist(err) {
+			fs.index = map[string]string{}
+
+			return
+		}
+
 		if err != nil {
 			fs.indexErr = fmt.Errorf("read skills dir: %w", err)
 

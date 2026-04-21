@@ -2,6 +2,8 @@ package store
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -87,5 +89,24 @@ func TestFileStorePersistsAcrossReload(t *testing.T) {
 
 	if memories[0].Content != "Lead with bugs." {
 		t.Fatalf("memory content = %q, want %q", memories[0].Content, "Lead with bugs.")
+	}
+}
+
+func TestNewFileStore_ExpandsHomePath(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	st, err := NewFileStore("~/memory")
+	if err != nil {
+		t.Fatalf("NewFileStore: %v", err)
+	}
+
+	want := filepath.Join(home, "memory")
+	if st.filePath != filepath.Join(want, storeFile) {
+		t.Fatalf("filePath = %q, want %q", st.filePath, filepath.Join(want, storeFile))
+	}
+
+	if _, err := os.Stat(want); err != nil {
+		t.Fatalf("expected memory dir to exist: %v", err)
 	}
 }
