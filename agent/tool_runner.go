@@ -69,18 +69,26 @@ func (r *toolRunner) runParallel(
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	msgs := make([]kit.Message, 0, len(toolCalls))
+	msgs := make([]kit.Message, len(toolCalls))
 
-	results := make(chan kit.ToolResult, len(toolCalls))
+	type indexedResult struct {
+		index  int
+		result kit.ToolResult
+	}
 
-	for _, toolCall := range toolCalls {
-		go func() {
-			results <- r.call(ctx, toolCall)
-		}()
+	results := make(chan indexedResult, len(toolCalls))
+
+	for i, toolCall := range toolCalls {
+		go func(index int, call kit.ToolCall) {
+			results <- indexedResult{
+				index:  index,
+				result: r.call(ctx, call),
+			}
+		}(i, toolCall)
 	}
 
 	for range len(toolCalls) {
-		var result kit.ToolResult
+		var result indexedResult
 
 		select {
 		case result = <-results:
@@ -88,13 +96,13 @@ func (r *toolRunner) runParallel(
 			return msgs, false
 		}
 
-		part := kit.NewToolResultPart(result.Content, result.Call)
+		part := kit.NewToolResultPart(result.result.Content, result.result.Call)
 
 		if !yield(kit.NewContentPartStartedEvent(kit.ContentTypeToolResult), nil) {
 			return msgs, false
 		}
 
-		if !yield(kit.NewContentPartDeltaEvent(kit.ContentTypeToolResult, result.Content), nil) {
+		if !yield(kit.NewContentPartDeltaEvent(kit.ContentTypeToolResult, result.result.Content), nil) {
 			return msgs, false
 		}
 
@@ -102,13 +110,13 @@ func (r *toolRunner) runParallel(
 			return msgs, false
 		}
 
-		toolMsg := kit.NewToolMessage(result.Content, result.Call)
+		toolMsg := kit.NewToolMessage(result.result.Content, result.result.Call)
 
 		if !yield(kit.NewMessageEvent(toolMsg), nil) {
 			return msgs, false
 		}
 
-		msgs = append(msgs, toolMsg)
+		msgs[result.index] = toolMsg
 	}
 
 	return msgs, true

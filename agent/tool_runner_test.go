@@ -186,6 +186,79 @@ func TestToolRunner_RunParallel_YieldsAllResults(t *testing.T) {
 	}
 }
 
+func TestToolRunner_RunParallel_ReturnsMessagesInToolCallOrder(t *testing.T) {
+	searchStarted := make(chan struct{})
+	releaseSearch := make(chan struct{})
+
+	runner := toolRunner{
+		tools: map[string]kit.Tool{
+			"search": blockingTool{
+				result:  "result A",
+				started: searchStarted,
+				release: releaseSearch,
+			},
+			"read": blockingTool{
+				result: "result B",
+			},
+		},
+		config: &Config{ToolExecution: ToolExecutionParallel},
+		hooks:  &hooks{},
+	}
+
+	msgs, ok := runner.run(context.Background(), []kit.ToolCall{
+		{ID: "call-1", Name: "search", Arguments: map[string]any{"q": "A"}},
+		{ID: "call-2", Name: "read", Arguments: map[string]any{"path": "b.txt"}},
+	}, func(event kit.Event, err error) bool {
+		if err != nil {
+			t.Fatalf("unexpected yield error: %v", err)
+		}
+
+		if event.Type == kit.EventMessage {
+			part, ok := event.Message.ToolResult()
+			if !ok {
+				t.Fatal("expected tool result content part on message event")
+			}
+
+			if part.ID == "call-2" {
+				close(releaseSearch)
+			}
+		}
+
+		return true
+	})
+	if !ok {
+		t.Fatal("run returned ok=false")
+	}
+
+	select {
+	case <-searchStarted:
+	default:
+		t.Fatal("expected slow search tool to start")
+	}
+
+	if len(msgs) != 2 {
+		t.Fatalf("message count = %d, want %d", len(msgs), 2)
+	}
+
+	part0, ok := msgs[0].ToolResult()
+	if !ok {
+		t.Fatal("expected first tool result part")
+	}
+
+	part1, ok := msgs[1].ToolResult()
+	if !ok {
+		t.Fatal("expected second tool result part")
+	}
+
+	if part0.ID != "call-1" {
+		t.Fatalf("msgs[0] tool call id = %q, want %q", part0.ID, "call-1")
+	}
+
+	if part1.ID != "call-2" {
+		t.Fatalf("msgs[1] tool call id = %q, want %q", part1.ID, "call-2")
+	}
+}
+
 func TestToolRunner_Call_RecoversPanic(t *testing.T) {
 	runner := toolRunner{
 		tools: map[string]kit.Tool{
@@ -217,4 +290,30 @@ func (panicTool) Definition() kit.ToolDefinition {
 
 func (panicTool) Execute(context.Context, map[string]any) (string, error) {
 	panic("suprize mfch")
+}
+
+type blockingTool struct {
+	result  string
+	started chan struct{}
+	release chan struct{}
+}
+
+func (t blockingTool) Definition() kit.ToolDefinition {
+	return kit.ToolDefinition{Name: "blocking", Description: "Block until released"}
+}
+
+func (t blockingTool) Execute(ctx context.Context, _ map[string]any) (string, error) {
+	if t.started != nil {
+		close(t.started)
+	}
+
+	if t.release != nil {
+		select {
+		case <-t.release:
+		case <-ctx.Done():
+			return "", ctx.Err()
+		}
+	}
+
+	return t.result, nil
 }

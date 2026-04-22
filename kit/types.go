@@ -213,7 +213,7 @@ func (m Message) ToolResult() (ContentPart, bool) {
 
 // Output returns the first user-facing content part in the message.
 // Internal reasoning and tool-call parts are skipped.
-func (m Message) Output() (ContentPart) {
+func (m Message) Output() ContentPart {
 	for _, p := range m.Content {
 		switch p.Type {
 		case ContentTypeThinking, ContentTypeRedactedThinking, ContentTypeToolCall:
