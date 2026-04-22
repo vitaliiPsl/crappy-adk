@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/vitaliiPsl/crappy-adk/kit"
+	xstream "github.com/vitaliiPsl/crappy-adk/x/stream"
 )
 
 const (
@@ -95,7 +96,7 @@ func (r *retryModel) Generate(ctx context.Context, req kit.ModelRequest) (kit.Mo
 
 // GenerateStream retries on retryable errors before the first chunk. Mid-stream errors pass through.
 // Immediate errors from the underlying GenerateStream are returned directly, preserving the error contract.
-func (r *retryModel) GenerateStream(ctx context.Context, req kit.ModelRequest) (*kit.Stream[kit.ModelEvent, kit.ModelResponse], error) {
+func (r *retryModel) GenerateStream(ctx context.Context, req kit.ModelRequest) (*xstream.Stream[kit.ModelEvent, kit.ModelResponse], error) {
 	attempt := 0
 
 	stream, err := r.acquireStream(ctx, req, &attempt)
@@ -103,7 +104,7 @@ func (r *retryModel) GenerateStream(ctx context.Context, req kit.ModelRequest) (
 		return nil, err
 	}
 
-	return kit.NewStream(func(yield func(kit.ModelEvent, error) bool) kit.ModelResponse {
+	return xstream.New(func(yield func(kit.ModelEvent, error) bool) kit.ModelResponse {
 		var lastErr error
 
 		for {
@@ -160,7 +161,7 @@ func (r *retryModel) GenerateStream(ctx context.Context, req kit.ModelRequest) (
 
 // acquireStream attempts to get a stream from the underlying model, retrying
 // on retryable errors within the shared attempt budget.
-func (r *retryModel) acquireStream(ctx context.Context, req kit.ModelRequest, attempt *int) (*kit.Stream[kit.ModelEvent, kit.ModelResponse], error) {
+func (r *retryModel) acquireStream(ctx context.Context, req kit.ModelRequest, attempt *int) (*xstream.Stream[kit.ModelEvent, kit.ModelResponse], error) {
 	var lastErr error
 
 	for *attempt < r.maxAttempts {

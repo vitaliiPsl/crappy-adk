@@ -5,6 +5,8 @@ import (
 	"time"
 
 	"github.com/google/jsonschema-go/jsonschema"
+
+	"github.com/vitaliiPsl/crappy-adk/x/stream"
 )
 
 // ModelMiddleware wraps a [Model] to intercept and modify its behaviour.
@@ -21,7 +23,7 @@ type Model interface {
 	// GenerateStream sends a request to the model and streams the response as
 	// a sequence of chunks. The stream also exposes the final ModelResponse
 	// once iteration completes.
-	GenerateStream(ctx context.Context, req ModelRequest) (*Stream[ModelEvent, ModelResponse], error)
+	GenerateStream(ctx context.Context, req ModelRequest) (*stream.Stream[ModelEvent, ModelResponse], error)
 }
 
 // ModelConfig holds static metadata for a model.

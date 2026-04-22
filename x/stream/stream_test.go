@@ -1,4 +1,4 @@
-package kit
+package stream
 
 import (
 	"errors"
@@ -8,7 +8,7 @@ import (
 func TestStream_ResultDrainsUnstartedStream(t *testing.T) {
 	calls := 0
 
-	stream := NewStream(func(yield func(string, error) bool) int {
+	stream := New(func(yield func(string, error) bool) int {
 		calls++
 
 		total := 0
@@ -37,7 +37,7 @@ func TestStream_ResultDrainsUnstartedStream(t *testing.T) {
 }
 
 func TestStream_ResultAfterPartialIterationReturnsPartialState(t *testing.T) {
-	stream := NewStream(func(yield func(string, error) bool) int {
+	stream := New(func(yield func(string, error) bool) int {
 		total := 0
 
 		for _, n := range []int{1, 2, 3} {
@@ -73,7 +73,7 @@ func TestStream_ResultAfterPartialIterationReturnsPartialState(t *testing.T) {
 }
 
 func TestStream_IterCollectsEventsAndResultReturnsFinalState(t *testing.T) {
-	stream := NewStream(func(yield func(string, error) bool) int {
+	stream := New(func(yield func(string, error) bool) int {
 		total := 0
 
 		for _, n := range []int{1, 2, 3} {
@@ -112,7 +112,7 @@ func TestStream_IterCollectsEventsAndResultReturnsFinalState(t *testing.T) {
 func TestStream_ResultReturnsStreamError(t *testing.T) {
 	wantErr := errors.New("boom")
 
-	stream := NewStream(func(yield func(string, error) bool) int {
+	stream := New(func(yield func(string, error) bool) int {
 		if !yield("1", nil) {
 			return 1
 		}

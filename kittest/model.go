@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/vitaliiPsl/crappy-adk/kit"
+	"github.com/vitaliiPsl/crappy-adk/x/stream"
 )
 
 // ChunkResult represents a single yield from a model stream: either a
@@ -120,7 +121,7 @@ func (model *Model) Generate(_ context.Context, req kit.ModelRequest) (kit.Model
 // GenerateStream returns a stream that yields the next turn's chunks, then
 // exposes the assembled response. When [Turn.Stream] is set, those chunk
 // results are yielded.
-func (model *Model) GenerateStream(_ context.Context, req kit.ModelRequest) (*kit.Stream[kit.ModelEvent, kit.ModelResponse], error) {
+func (model *Model) GenerateStream(_ context.Context, req kit.ModelRequest) (*stream.Stream[kit.ModelEvent, kit.ModelResponse], error) {
 	turn := model.next(req)
 	if turn.Error != nil {
 		return nil, turn.Error
@@ -131,7 +132,7 @@ func (model *Model) GenerateStream(_ context.Context, req kit.ModelRequest) (*ki
 	if turn.Stream != nil {
 		results := turn.Stream
 
-		return kit.NewStream(func(yield func(kit.ModelEvent, error) bool) kit.ModelResponse {
+		return stream.New(func(yield func(kit.ModelEvent, error) bool) kit.ModelResponse {
 			for _, result := range results {
 				if !yield(result.Event, result.Err) {
 					break
@@ -144,7 +145,7 @@ func (model *Model) GenerateStream(_ context.Context, req kit.ModelRequest) (*ki
 
 	events := turn.events()
 
-	return kit.NewStream(func(yield func(kit.ModelEvent, error) bool) kit.ModelResponse {
+	return stream.New(func(yield func(kit.ModelEvent, error) bool) kit.ModelResponse {
 		for _, event := range events {
 			if !yield(event, nil) {
 				break

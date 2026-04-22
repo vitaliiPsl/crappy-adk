@@ -1,4 +1,4 @@
-package kit
+package stream
 
 import "iter"
 
@@ -14,8 +14,8 @@ type Stream[E, R any] struct {
 	done   bool
 }
 
-// NewStream constructs a Stream from fn, invoked lazily on first consumption.
-func NewStream[E, R any](fn func(yield func(E, error) bool) R) *Stream[E, R] {
+// New constructs a Stream from fn, invoked lazily on first consumption.
+func New[E, R any](fn func(yield func(E, error) bool) R) *Stream[E, R] {
 	s := &Stream[E, R]{}
 	s.iter = func(yield func(E, error) bool) {
 		s.result = fn(yield)

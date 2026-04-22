@@ -10,6 +10,7 @@ import (
 	"github.com/vitaliiPsl/crappy-adk/kit"
 	"github.com/vitaliiPsl/crappy-adk/kittest"
 	"github.com/vitaliiPsl/crappy-adk/x/middleware"
+	"github.com/vitaliiPsl/crappy-adk/x/stream"
 )
 
 func retryableErr(msg string) *kit.LLMError {
@@ -336,7 +337,7 @@ func TestRetry_GenerateStream_MixedImmediateAndPreChunkRetries(t *testing.T) {
 	model.AssertCallCount(t, 3)
 }
 
-func collectText(t *testing.T, stream *kit.Stream[kit.ModelEvent, kit.ModelResponse]) string {
+func collectText(t *testing.T, stream *stream.Stream[kit.ModelEvent, kit.ModelResponse]) string {
 	t.Helper()
 
 	var text strings.Builder

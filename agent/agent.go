@@ -9,6 +9,7 @@ import (
 
 	"github.com/vitaliiPsl/crappy-adk/kit"
 	"github.com/vitaliiPsl/crappy-adk/x/instructions"
+	"github.com/vitaliiPsl/crappy-adk/x/stream"
 )
 
 const (
@@ -158,7 +159,7 @@ func (a *Agent) Run(ctx context.Context, messages []kit.Message) (kit.Result, er
 // incremental [kit.Event] values — text deltas, thinking deltas, tool calls,
 // and tool results — as the agent works. Call [kit.Stream.Result] after
 // iteration to retrieve the accumulated [kit.Result].
-func (a *Agent) Stream(ctx context.Context, msgs []kit.Message) (*kit.Stream[kit.Event, kit.Result], error) {
+func (a *Agent) Stream(ctx context.Context, msgs []kit.Message) (*stream.Stream[kit.Event, kit.Result], error) {
 	instructions := append([]kit.Instruction{instructions.Static(a.config.SystemPrompt)}, a.config.Instructions...)
 
 	instruction, err := kit.ComposeInstructions(ctx, "\n\n", instructions...)
@@ -171,7 +172,7 @@ func (a *Agent) Stream(ctx context.Context, msgs []kit.Message) (*kit.Stream[kit
 		return nil, err
 	}
 
-	return kit.NewStream(func(yield func(kit.Event, error) bool) kit.Result {
+	return stream.New(func(yield func(kit.Event, error) bool) kit.Result {
 		response, runErr := a.runLoop(ctx, instruction, msgs, yield)
 
 		if _, hookErr := a.hooks.onRunEnd(ctx, response, runErr); hookErr != nil {

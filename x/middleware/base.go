@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/vitaliiPsl/crappy-adk/kit"
+	"github.com/vitaliiPsl/crappy-adk/x/stream"
 )
 
 // BaseModel is a pass-through implementation of [kit.Model], meant to be embedded in middleware structs.
@@ -20,7 +21,7 @@ func (b *BaseModel) Generate(ctx context.Context, req kit.ModelRequest) (kit.Mod
 	return b.Next.Generate(ctx, req)
 }
 
-func (b *BaseModel) GenerateStream(ctx context.Context, req kit.ModelRequest) (*kit.Stream[kit.ModelEvent, kit.ModelResponse], error) {
+func (b *BaseModel) GenerateStream(ctx context.Context, req kit.ModelRequest) (*stream.Stream[kit.ModelEvent, kit.ModelResponse], error) {
 	return b.Next.GenerateStream(ctx, req)
 }
 

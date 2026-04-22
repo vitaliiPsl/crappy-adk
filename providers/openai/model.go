@@ -15,6 +15,7 @@ import (
 	"github.com/openai/openai-go/v3/shared"
 
 	"github.com/vitaliiPsl/crappy-adk/kit"
+	xstream "github.com/vitaliiPsl/crappy-adk/x/stream"
 	"github.com/vitaliiPsl/crappy-adk/x/structuredoutput"
 )
 
@@ -57,7 +58,7 @@ func (m *model) Generate(ctx context.Context, req kit.ModelRequest) (kit.ModelRe
 	return out, nil
 }
 
-func (m *model) GenerateStream(ctx context.Context, req kit.ModelRequest) (*kit.Stream[kit.ModelEvent, kit.ModelResponse], error) {
+func (m *model) GenerateStream(ctx context.Context, req kit.ModelRequest) (*xstream.Stream[kit.ModelEvent, kit.ModelResponse], error) {
 	params, err := buildParams(req, m.config.ID)
 	if err != nil {
 		return nil, err
@@ -65,7 +66,7 @@ func (m *model) GenerateStream(ctx context.Context, req kit.ModelRequest) (*kit.
 
 	stream := m.client.Responses.NewStreaming(ctx, params)
 
-	return kit.NewStream(func(yield func(kit.ModelEvent, error) bool) kit.ModelResponse {
+	return xstream.New(func(yield func(kit.ModelEvent, error) bool) kit.ModelResponse {
 		defer func() { _ = stream.Close() }()
 
 		var (

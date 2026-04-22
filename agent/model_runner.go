@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/vitaliiPsl/crappy-adk/kit"
+	"github.com/vitaliiPsl/crappy-adk/x/stream"
 )
 
 type modelRunner struct {
@@ -61,7 +62,7 @@ func (r *modelRunner) run(
 }
 
 func (r *modelRunner) forwardEvents(
-	stream *kit.Stream[kit.ModelEvent, kit.ModelResponse],
+	stream *stream.Stream[kit.ModelEvent, kit.ModelResponse],
 	yield func(kit.Event, error) bool,
 ) error {
 	for ev, err := range stream.Iter() {
