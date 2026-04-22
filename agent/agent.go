@@ -282,10 +282,7 @@ func (a *Agent) tryExit(modelResp kit.ModelResponse, response *kit.Result) bool 
 		return false
 	}
 
-	if len(assistantMsg.Content) > 0 {
-		response.Output = assistantMsg.Content[0]
-	}
-
+	response.Output = assistantMsg.Output()
 	response.StructuredOutput = modelResp.StructuredOutput
 
 	return true

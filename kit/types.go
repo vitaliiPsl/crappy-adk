@@ -211,6 +211,25 @@ func (m Message) ToolResult() (ContentPart, bool) {
 	return ContentPart{}, false
 }
 
+// Output returns the first user-facing content part in the message.
+// Internal reasoning and tool-call parts are skipped.
+func (m Message) Output() (ContentPart) {
+	for _, p := range m.Content {
+		switch p.Type {
+		case ContentTypeThinking, ContentTypeRedactedThinking, ContentTypeToolCall:
+			continue
+		default:
+			return p
+		}
+	}
+
+	if len(m.Content) == 0 {
+		return ContentPart{}
+	}
+
+	return m.Content[0]
+}
+
 // NewUserMessage creates a user message with the given content parts.
 func NewUserMessage(parts ...ContentPart) Message {
 	return Message{

@@ -36,6 +36,50 @@ func TestAgent_Run_TextOnly(t *testing.T) {
 	model.AssertCallCount(t, 1)
 }
 
+func TestAgent_Run_FinalOutputSkipsThinkingPart(t *testing.T) {
+	model := kittest.NewModel(t,
+		kittest.ModelTurn{Text: "Final answer", Thinking: "internal reasoning"},
+	)
+
+	agent, err := agent.New(model)
+	if err != nil {
+		t.Fatalf("NewAgent: %v", err)
+	}
+
+	resp, err := agent.Run(context.Background(), []kit.Message{
+		kit.NewUserMessage(kit.NewTextPart("Hi")),
+	})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	if got := resp.Output.Type; got != kit.ContentTypeText {
+		t.Fatalf("output.type = %q, want %q", got, kit.ContentTypeText)
+	}
+
+	if got := resp.Output.Text; got != "Final answer" {
+		t.Fatalf("output.text = %q, want %q", got, "Final answer")
+	}
+}
+
+func TestMessage_Output_FallsBackToThinkingWhenItIsTheOnlyContent(t *testing.T) {
+	msg := kit.Message{
+		Role: kit.MessageRoleAssistant,
+		Content: []kit.ContentPart{
+			kit.NewThinkingPart("internal reasoning", ""),
+		},
+	}
+
+	output := msg.Output()
+	if got := output.Type; got != kit.ContentTypeThinking {
+		t.Fatalf("output.type = %q, want %q", got, kit.ContentTypeThinking)
+	}
+
+	if got := output.Text; got != "internal reasoning" {
+		t.Fatalf("output.text = %q, want %q", got, "internal reasoning")
+	}
+}
+
 func TestAgent_Run_WithResponseSchemaPassesSchemaAndReturnsStructuredOutput(t *testing.T) {
 	schema := &jsonschema.Schema{
 		Type: "object",
