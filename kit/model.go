@@ -29,63 +29,63 @@ type Model interface {
 // ModelConfig holds static metadata for a model.
 type ModelConfig struct {
 	// ID is the model identifier used when calling the provider API.
-	ID string
+	ID string `json:"id" yaml:"id"`
 
 	// Provider is the name of the provider that owns this model.
-	Provider string
+	Provider string `json:"provider,omitempty" yaml:"provider,omitempty"`
 
 	// ContextWindow is the total token budget (input + output).
-	ContextWindow int
+	ContextWindow int `json:"context_window,omitempty" yaml:"context_window,omitempty"`
 
 	// InputLimit is the maximum number of input tokens the model accepts.
-	InputLimit int
+	InputLimit int `json:"input_limit,omitempty" yaml:"input_limit,omitempty"`
 
 	// OutputLimit is the maximum number of tokens the model can generate.
-	OutputLimit int
+	OutputLimit int `json:"output_limit,omitempty" yaml:"output_limit,omitempty"`
 
 	// Cost holds the pricing information for this model.
-	Cost ModelCost
+	Cost ModelCost `json:"cost" yaml:"cost,omitempty"`
 
 	// Capabilities describes what the model can do.
-	Capabilities ModelCapabilities
+	Capabilities ModelCapabilities `json:"capabilities" yaml:"capabilities,omitempty"`
 
 	// KnowledgeCutoff is the date after which the model has no training data.
-	KnowledgeCutoff time.Time
+	KnowledgeCutoff time.Time `json:"knowledge_cutoff,omitzero" yaml:"knowledge_cutoff,omitempty"`
 
 	// ReleaseDate is when the model became publicly available.
-	ReleaseDate time.Time
+	ReleaseDate time.Time `json:"release_date,omitzero" yaml:"release_date,omitempty"`
 }
 
 // ModelCost holds the pricing information for a model in USD per million tokens.
 type ModelCost struct {
 	// Input is the cost per million input tokens.
-	Input float64
+	Input float64 `json:"input,omitempty" yaml:"input,omitempty"`
 
 	// Output is the cost per million output tokens.
-	Output float64
+	Output float64 `json:"output,omitempty" yaml:"output,omitempty"`
 
 	// CacheRead is the cost per million cache-read tokens. Zero if unsupported.
-	CacheRead float64
+	CacheRead float64 `json:"cache_read,omitempty" yaml:"cache_read,omitempty"`
 
 	// CacheWrite is the cost per million cache-write tokens. Zero if unsupported.
-	CacheWrite float64
+	CacheWrite float64 `json:"cache_write,omitempty" yaml:"cache_write,omitempty"`
 }
 
 // ModelCapabilities describes the input modalities and features a model supports.
 type ModelCapabilities struct {
 	// Input modalities
-	Text  bool
-	Image bool
-	Audio bool
-	Video bool
-	PDF   bool
+	Text  bool `json:"text,omitempty" yaml:"text,omitempty"`
+	Image bool `json:"image,omitempty" yaml:"image,omitempty"`
+	Audio bool `json:"audio,omitempty" yaml:"audio,omitempty"`
+	Video bool `json:"video,omitempty" yaml:"video,omitempty"`
+	PDF   bool `json:"pdf,omitempty" yaml:"pdf,omitempty"`
 
 	// Features
-	Tools     bool
-	Streaming bool
-	Reasoning bool // extended thinking / o1-style reasoning
-	Caching   bool
-	Batch     bool
+	Tools     bool `json:"tools,omitempty" yaml:"tools,omitempty"`
+	Streaming bool `json:"streaming,omitempty" yaml:"streaming,omitempty"`
+	Reasoning bool `json:"reasoning,omitempty" yaml:"reasoning,omitempty"` // extended thinking / o1-style reasoning
+	Caching   bool `json:"caching,omitempty" yaml:"caching,omitempty"`
+	Batch     bool `json:"batch,omitempty" yaml:"batch,omitempty"`
 }
 
 // ModelRequest is the input to a model generation call.
