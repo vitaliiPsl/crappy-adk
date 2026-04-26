@@ -13,7 +13,9 @@ import (
 )
 
 const (
-	defaultCompactionThreshold = 0.8
+	defaultCompactionThreshold    = 0.8
+	defaultToolLoopMaxRepetitions = 5
+	defaultToolLoopWindow         = 15
 )
 
 // Config holds configuration for an [Agent].
@@ -55,6 +57,14 @@ type Config struct {
 	// CompactionThreshold is the fraction of the context window that triggers
 	// compaction. Defaults to 0.8 when zero.
 	CompactionThreshold float64
+
+	// ToolLoopMaxRepetitions limits how many times the same tool may be called with
+	// identical arguments within the loop detection window. Zero disables the check.
+	ToolLoopMaxRepetitions int
+
+	// ToolLoopWindow is the number of recent tool calls considered when checking
+	// for loops. Defaults to 20 when zero.
+	ToolLoopWindow int
 }
 
 // Agent runs a ReAct loop: it calls the model, executes any requested tool
@@ -76,7 +86,9 @@ func New(model kit.Model, options ...Option) (*Agent, error) {
 		model: model,
 		tools: make(map[string]kit.Tool),
 		config: Config{
-			CompactionThreshold: defaultCompactionThreshold,
+			CompactionThreshold:    defaultCompactionThreshold,
+			ToolLoopMaxRepetitions: defaultToolLoopMaxRepetitions,
+			ToolLoopWindow:         defaultToolLoopWindow,
 		},
 	}
 
@@ -94,6 +106,14 @@ func New(model kit.Model, options ...Option) (*Agent, error) {
 func NewFromConfig(model kit.Model, cfg Config, options ...Option) (*Agent, error) {
 	if cfg.CompactionThreshold == 0 {
 		cfg.CompactionThreshold = defaultCompactionThreshold
+	}
+
+	if cfg.ToolLoopMaxRepetitions == 0 {
+		cfg.ToolLoopMaxRepetitions = defaultToolLoopMaxRepetitions
+	}
+
+	if cfg.ToolLoopWindow == 0 {
+		cfg.ToolLoopWindow = defaultToolLoopWindow
 	}
 
 	a := &Agent{
@@ -125,23 +145,6 @@ func (a *Agent) Tools() map[string]kit.Tool { return a.tools }
 
 // ToolDefinitions returns the ordered list of tool definitions sent to the model.
 func (a *Agent) ToolDefinitions() []kit.ToolDefinition { return a.toolDefinitions }
-
-func (a *Agent) modelRunner() modelRunner {
-	return modelRunner{
-		model:           a.model,
-		toolDefinitions: a.toolDefinitions,
-		hooks:           &a.hooks,
-		config:          &a.config,
-	}
-}
-
-func (a *Agent) toolRunner() toolRunner {
-	return toolRunner{
-		tools:  a.tools,
-		hooks:  &a.hooks,
-		config: &a.config,
-	}
-}
 
 // Run executes the ReAct loop and returns the accumulated [kit.Result] once the
 // agent reaches a final answer. Use [Agent.Stream] instead to receive
@@ -198,6 +201,9 @@ func (a *Agent) runLoop(
 	msgs []kit.Message,
 	yield func(kit.Event, error) bool,
 ) (response kit.Result, err error) {
+	mr := newModelRunner(a.model, a.toolDefinitions, &a.hooks, &a.config)
+	tr := newToolRunner(a.tools, &a.hooks, &a.config)
+
 	for {
 		if err := ctx.Err(); err != nil {
 			return response, err
@@ -208,7 +214,7 @@ func (a *Agent) runLoop(
 			return response, err
 		}
 
-		modelResp, ok, err := a.runModelTurn(ctx, instruction, msgs, &response, yield)
+		modelResp, ok, err := a.runModelTurn(ctx, instruction, msgs, &response, yield, mr)
 		if err != nil {
 			if errors.Is(err, kit.ErrContextLength) && a.compactor != nil {
 				var compacted bool
@@ -233,7 +239,7 @@ func (a *Agent) runLoop(
 			return response, nil
 		}
 
-		toolMsgs, ok := a.runToolTurn(ctx, modelResp.Message.ToolCalls(), &response, yield)
+		toolMsgs, ok := a.runToolTurn(ctx, modelResp.Message.ToolCalls(), &response, yield, tr)
 		if !ok {
 			return response, nil
 		}
@@ -258,10 +264,9 @@ func (a *Agent) runModelTurn(
 	msgs []kit.Message,
 	response *kit.Result,
 	yield func(kit.Event, error) bool,
+	mr *modelRunner,
 ) (kit.ModelResponse, bool, error) {
-	modelRunner := a.modelRunner()
-
-	modelResp, err := modelRunner.run(ctx, instruction, msgs, yield)
+	modelResp, err := mr.run(ctx, instruction, msgs, yield)
 	if err != nil {
 		return kit.ModelResponse{}, false, err
 	}
@@ -294,10 +299,9 @@ func (a *Agent) runToolTurn(
 	toolCalls []kit.ToolCall,
 	response *kit.Result,
 	yield func(kit.Event, error) bool,
+	tr *toolRunner,
 ) ([]kit.Message, bool) {
-	toolRunner := a.toolRunner()
-
-	toolMsgs, ok := toolRunner.run(ctx, toolCalls, yield)
+	toolMsgs, ok := tr.run(ctx, toolCalls, yield)
 	if !ok {
 		return nil, false
 	}

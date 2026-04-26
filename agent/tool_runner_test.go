@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"errors"
 	"reflect"
 	"slices"
 	"strings"
@@ -257,6 +258,178 @@ func TestToolRunner_RunParallel_ReturnsMessagesInToolCallOrder(t *testing.T) {
 	if part1.ID != "call-2" {
 		t.Fatalf("msgs[1] tool call id = %q, want %q", part1.ID, "call-2")
 	}
+}
+
+func TestToolRunner_Run_LoopDetected_Sequential(t *testing.T) {
+	searchTool := kittest.NewTool(t, "search", "Search",
+		kittest.ToolResponse{Result: "result"},
+		kittest.ToolResponse{Result: "result"},
+		kittest.ToolResponse{Result: "result"},
+	)
+
+	runner := toolRunner{
+		tools:  map[string]kit.Tool{"search": searchTool},
+		config: &Config{ToolExecution: ToolExecutionSequential, ToolLoopMaxRepetitions: 2, ToolLoopWindow: 10},
+		hooks:  &hooks{},
+	}
+
+	call := kit.ToolCall{ID: "c", Name: "search", Arguments: map[string]any{"q": "x"}}
+
+	for i := range 2 {
+		_, ok := runner.run(context.Background(), []kit.ToolCall{call}, func(_ kit.Event, err error) bool {
+			if err != nil {
+				t.Fatalf("turn %d: unexpected error: %v", i+1, err)
+			}
+
+			return true
+		})
+		if !ok {
+			t.Fatalf("turn %d: run returned ok=false, want true", i+1)
+		}
+	}
+
+	var gotErr error
+
+	_, ok := runner.run(context.Background(), []kit.ToolCall{call}, func(_ kit.Event, err error) bool {
+		if err != nil {
+			gotErr = err
+		}
+
+		return true
+	})
+
+	if ok {
+		t.Fatal("third run returned ok=true, want false")
+	}
+
+	if !errors.Is(gotErr, kit.ErrToolLoop) {
+		t.Errorf("error = %v, want kit.ErrToolLoop", gotErr)
+	}
+
+	searchTool.AssertCallCount(t, 2)
+}
+
+func TestToolRunner_Run_LoopDetected_Parallel(t *testing.T) {
+	searchTool := kittest.NewTool(t, "search", "Search",
+		kittest.ToolResponse{Result: "result"},
+		kittest.ToolResponse{Result: "result"},
+		kittest.ToolResponse{Result: "result"},
+	)
+
+	runner := toolRunner{
+		tools:  map[string]kit.Tool{"search": searchTool},
+		config: &Config{ToolExecution: ToolExecutionParallel, ToolLoopMaxRepetitions: 2, ToolLoopWindow: 10},
+		hooks:  &hooks{},
+	}
+
+	call := kit.ToolCall{ID: "c", Name: "search", Arguments: map[string]any{"q": "x"}}
+
+	for i := range 2 {
+		_, ok := runner.run(context.Background(), []kit.ToolCall{call}, func(_ kit.Event, err error) bool {
+			if err != nil {
+				t.Fatalf("turn %d: unexpected error: %v", i+1, err)
+			}
+
+			return true
+		})
+		if !ok {
+			t.Fatalf("turn %d: run returned ok=false, want true", i+1)
+		}
+	}
+
+	var gotErr error
+
+	_, ok := runner.run(context.Background(), []kit.ToolCall{call}, func(_ kit.Event, err error) bool {
+		if err != nil {
+			gotErr = err
+		}
+
+		return true
+	})
+
+	if ok {
+		t.Fatal("third run returned ok=true, want false")
+	}
+
+	if !errors.Is(gotErr, kit.ErrToolLoop) {
+		t.Errorf("error = %v, want kit.ErrToolLoop", gotErr)
+	}
+
+	searchTool.AssertCallCount(t, 2)
+}
+
+func TestToolRunner_Run_WindowEvictsOldCalls(t *testing.T) {
+	// Window=3, max=2: A A B A — after the interleaving B, the oldest A falls
+	// out of the window so the 4th call (A again) should pass where a global
+	// counter would have blocked it.
+	searchTool := kittest.NewTool(t, "search", "Search",
+		kittest.ToolResponse{Result: "r"},
+		kittest.ToolResponse{Result: "r"},
+		kittest.ToolResponse{Result: "r"},
+		kittest.ToolResponse{Result: "r"},
+	)
+
+	runner := toolRunner{
+		tools:  map[string]kit.Tool{"search": searchTool},
+		config: &Config{ToolExecution: ToolExecutionSequential, ToolLoopMaxRepetitions: 2, ToolLoopWindow: 3},
+		hooks:  &hooks{},
+	}
+
+	callA := kit.ToolCall{ID: "a", Name: "search", Arguments: map[string]any{"q": "a"}}
+	callB := kit.ToolCall{ID: "b", Name: "search", Arguments: map[string]any{"q": "b"}}
+
+	// A, A → window=[A,A], count(A)=2 ≤ 2
+	// B    → window=[A,A,B], count(B)=1 ≤ 2
+	// A    → window=[A,B,A] (oldest A evicted), count(A)=2 ≤ 2 — passes
+	for i, call := range []kit.ToolCall{callA, callA, callB, callA} {
+		_, ok := runner.run(context.Background(), []kit.ToolCall{call}, func(_ kit.Event, err error) bool {
+			if err != nil {
+				t.Fatalf("call %d: unexpected error: %v", i+1, err)
+			}
+
+			return true
+		})
+		if !ok {
+			t.Fatalf("call %d: run returned ok=false, want true", i+1)
+		}
+	}
+
+	searchTool.AssertCallCount(t, 4)
+}
+
+func TestToolRunner_Run_DifferentArgsDontTriggerLoop(t *testing.T) {
+	searchTool := kittest.NewTool(t, "search", "Search",
+		kittest.ToolResponse{Result: "a"},
+		kittest.ToolResponse{Result: "b"},
+		kittest.ToolResponse{Result: "c"},
+	)
+
+	runner := toolRunner{
+		tools:  map[string]kit.Tool{"search": searchTool},
+		config: &Config{ToolExecution: ToolExecutionSequential, ToolLoopMaxRepetitions: 1, ToolLoopWindow: 10},
+		hooks:  &hooks{},
+	}
+
+	calls := []kit.ToolCall{
+		{ID: "c1", Name: "search", Arguments: map[string]any{"q": "a"}},
+		{ID: "c2", Name: "search", Arguments: map[string]any{"q": "b"}},
+		{ID: "c3", Name: "search", Arguments: map[string]any{"q": "c"}},
+	}
+
+	for i, call := range calls {
+		_, ok := runner.run(context.Background(), []kit.ToolCall{call}, func(_ kit.Event, err error) bool {
+			if err != nil {
+				t.Fatalf("call %d: unexpected error: %v", i+1, err)
+			}
+
+			return true
+		})
+		if !ok {
+			t.Fatalf("call %d: run returned ok=false, want true", i+1)
+		}
+	}
+
+	searchTool.AssertCallCount(t, 3)
 }
 
 func TestToolRunner_Call_RecoversPanic(t *testing.T) {

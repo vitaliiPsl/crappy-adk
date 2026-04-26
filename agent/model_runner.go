@@ -15,6 +15,15 @@ type modelRunner struct {
 	config          *Config
 }
 
+func newModelRunner(model kit.Model, toolDefinitions []kit.ToolDefinition, hooks *hooks, config *Config) *modelRunner {
+	return &modelRunner{
+		model:           model,
+		toolDefinitions: toolDefinitions,
+		hooks:           hooks,
+		config:          config,
+	}
+}
+
 func (r *modelRunner) run(
 	ctx context.Context,
 	instruction string,

@@ -12,6 +12,7 @@ var (
 	ErrInvalidRequest   = errors.New("invalid request")
 	ErrServerError      = errors.New("server error")
 	ErrStructuredOutput = errors.New("structured output validation failed")
+	ErrToolLoop         = errors.New("tool loop detected")
 )
 
 // LLMError is a structured error returned by model providers.

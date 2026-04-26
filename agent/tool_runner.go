@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
 	"github.com/vitaliiPsl/crappy-adk/kit"
@@ -11,6 +12,16 @@ type toolRunner struct {
 	tools  map[string]kit.Tool
 	hooks  *hooks
 	config *Config
+
+	window [][]string // sliding window of turn batches for loop detection
+}
+
+func newToolRunner(tools map[string]kit.Tool, hooks *hooks, config *Config) *toolRunner {
+	return &toolRunner{
+		tools:  tools,
+		hooks:  hooks,
+		config: config,
+	}
 }
 
 func (r *toolRunner) run(
@@ -18,6 +29,12 @@ func (r *toolRunner) run(
 	toolCalls []kit.ToolCall,
 	yield func(kit.Event, error) bool,
 ) ([]kit.Message, bool) {
+	if err := r.checkLoops(toolCalls); err != nil {
+		yield(kit.Event{}, err)
+
+		return nil, false
+	}
+
 	// TODO: it is begging for a strategy
 	if r.config.ToolExecution == ToolExecutionSequential {
 		return r.runSequential(ctx, toolCalls, yield)
@@ -152,4 +169,42 @@ func (r *toolRunner) call(ctx context.Context, toolCall kit.ToolCall) (result ki
 	}
 
 	return result
+}
+
+func (r *toolRunner) checkLoops(calls []kit.ToolCall) error {
+	if r.config.ToolLoopMaxRepetitions <= 0 {
+		return nil
+	}
+
+	batch := make([]string, len(calls))
+	for i, call := range calls {
+		batch[i] = loopKey(call)
+	}
+
+	r.window = append(r.window, batch)
+	if len(r.window) > r.config.ToolLoopWindow {
+		r.window = r.window[len(r.window)-r.config.ToolLoopWindow:]
+	}
+
+	counts := make(map[string]int)
+	for _, turn := range r.window {
+		for _, k := range turn {
+			counts[k]++
+		}
+	}
+
+	for _, call := range calls {
+		if n := counts[loopKey(call)]; n > r.config.ToolLoopMaxRepetitions {
+			return fmt.Errorf("%w: %s called %d times within the last %d turns",
+				kit.ErrToolLoop, call.Name, n, r.config.ToolLoopWindow)
+		}
+	}
+
+	return nil
+}
+
+func loopKey(call kit.ToolCall) string {
+	b, _ := json.Marshal(call.Arguments)
+
+	return call.Name + "-" + string(b)
 }
