@@ -120,7 +120,17 @@ func TestWithSubAgents_RegistersToolAndInstruction(t *testing.T) {
 
 func TestWithSubAgents_ToolExecutesSelectedSubagent(t *testing.T) {
 	subagentModel := kittest.NewModel(t, kittest.ModelTurn{Text: "research result"})
-	parentModel := kittest.NewModel(t)
+	parentModel := kittest.NewModel(t,
+		kittest.ModelTurn{ToolCalls: []kit.ToolCall{{
+			ID:   "call_1",
+			Name: "agent",
+			Arguments: map[string]any{
+				"agent":  "researcher",
+				"prompt": "inspect the codebase",
+			},
+		}}},
+		kittest.ModelTurn{Text: "parent result"},
+	)
 
 	researcher, err := agent.New(
 		subagentModel,
@@ -136,21 +146,15 @@ func TestWithSubAgents_ToolExecutesSelectedSubagent(t *testing.T) {
 		t.Fatalf("New parent: %v", err)
 	}
 
-	delegateTool, ok := parent.Tools()["agent"]
-	if !ok {
-		t.Fatal("agent tool not found")
-	}
-
-	got, err := delegateTool.Execute(context.Background(), map[string]any{
-		"agent":  "researcher",
-		"prompt": "inspect the codebase",
+	got, err := parent.Run(context.Background(), []kit.Message{
+		kit.NewUserMessage(kit.NewTextPart("delegate this")),
 	})
 	if err != nil {
-		t.Fatalf("Execute: %v", err)
+		t.Fatalf("Run: %v", err)
 	}
 
-	if got != "research result" {
-		t.Fatalf("result = %q, want %q", got, "research result")
+	if got.Output.Text != "parent result" {
+		t.Fatalf("result = %q, want %q", got.Output.Text, "parent result")
 	}
 
 	req := subagentModel.CallAt(0)
@@ -160,5 +164,14 @@ func TestWithSubAgents_ToolExecutesSelectedSubagent(t *testing.T) {
 
 	if req.Messages[0].Text() != "inspect the codebase" {
 		t.Fatalf("prompt = %q, want %q", req.Messages[0].Text(), "inspect the codebase")
+	}
+
+	parentReq := parentModel.CallAt(1)
+	if len(parentReq.Messages) != 3 {
+		t.Fatalf("len(parent messages) = %d, want 3", len(parentReq.Messages))
+	}
+
+	if got := parentReq.Messages[2].Text(); got != "research result" {
+		t.Fatalf("tool result = %q, want %q", got, "research result")
 	}
 }
