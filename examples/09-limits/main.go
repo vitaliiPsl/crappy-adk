@@ -56,6 +56,7 @@ func main() {
 		agent.WithTools(lookup),
 		limits.WithMaxTurns(1),
 		limits.WithMaxToolCalls(3),
+		limits.WithToolLoopDetection(2, 15),
 	)
 	if err != nil {
 		log.Fatal(err)
@@ -67,6 +68,12 @@ func main() {
 	if err != nil {
 		if errors.Is(err, kit.ErrLimitExceeded) {
 			fmt.Printf("Limits stopped the run after %d generated message(s): %v\n", len(result.Messages), err)
+
+			return
+		}
+
+		if errors.Is(err, kit.ErrToolLoop) {
+			fmt.Printf("Tool loop stopped the run after %d generated message(s): %v\n", len(result.Messages), err)
 
 			return
 		}

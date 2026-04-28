@@ -13,9 +13,7 @@ import (
 )
 
 const (
-	defaultCompactionThreshold    = 0.8
-	defaultToolLoopMaxRepetitions = 5
-	defaultToolLoopWindow         = 15
+	defaultCompactionThreshold = 0.8
 )
 
 // Config holds configuration for an [Agent].
@@ -57,14 +55,6 @@ type Config struct {
 	// CompactionThreshold is the fraction of the context window that triggers
 	// compaction. Defaults to 0.8 when zero.
 	CompactionThreshold float64
-
-	// ToolLoopMaxRepetitions limits how many times the same tool may be called with
-	// identical arguments within the loop detection window. Zero disables the check.
-	ToolLoopMaxRepetitions int
-
-	// ToolLoopWindow is the number of recent tool calls considered when checking
-	// for loops. Defaults to 20 when zero.
-	ToolLoopWindow int
 }
 
 // Agent runs a ReAct loop: it calls the model, executes any requested tool
@@ -86,9 +76,7 @@ func New(model kit.Model, options ...Option) (*Agent, error) {
 		model: model,
 		tools: make(map[string]kit.Tool),
 		config: Config{
-			CompactionThreshold:    defaultCompactionThreshold,
-			ToolLoopMaxRepetitions: defaultToolLoopMaxRepetitions,
-			ToolLoopWindow:         defaultToolLoopWindow,
+			CompactionThreshold: defaultCompactionThreshold,
 		},
 	}
 
@@ -106,14 +94,6 @@ func New(model kit.Model, options ...Option) (*Agent, error) {
 func NewFromConfig(model kit.Model, cfg Config, options ...Option) (*Agent, error) {
 	if cfg.CompactionThreshold == 0 {
 		cfg.CompactionThreshold = defaultCompactionThreshold
-	}
-
-	if cfg.ToolLoopMaxRepetitions == 0 {
-		cfg.ToolLoopMaxRepetitions = defaultToolLoopMaxRepetitions
-	}
-
-	if cfg.ToolLoopWindow == 0 {
-		cfg.ToolLoopWindow = defaultToolLoopWindow
 	}
 
 	a := &Agent{

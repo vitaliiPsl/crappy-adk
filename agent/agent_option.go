@@ -170,26 +170,6 @@ func registerTool(a *Agent, tool kit.Tool) {
 	a.toolDefinitions = append(a.toolDefinitions, def)
 }
 
-// WithToolLoopMaxRepetitions limits how many times the same tool may be called with
-// identical arguments within the loop detection window. Zero disables the check.
-func WithToolLoopMaxRepetitions(n int) Option {
-	return func(a *Agent) error {
-		a.config.ToolLoopMaxRepetitions = n
-
-		return nil
-	}
-}
-
-// WithToolLoopWindow sets the number of recent turns considered when
-// checking for loops. Defaults to 15 when zero.
-func WithToolLoopWindow(n int) Option {
-	return func(a *Agent) error {
-		a.config.ToolLoopWindow = n
-
-		return nil
-	}
-}
-
 // WithCompactor sets the [kit.Compactor] and optional compaction threshold.
 func WithCompactor(c kit.Compactor, threshold ...float64) Option {
 	return func(a *Agent) error {

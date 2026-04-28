@@ -498,44 +498,6 @@ func (c *stubCompactor) Compact(_ context.Context, _ []kit.Message) ([]kit.Messa
 	return c.compacted, c.summary, c.err
 }
 
-func TestAgent_Run_ToolLoopDetected(t *testing.T) {
-	searchTool := kittest.NewTool(t, "search", "Search",
-		kittest.ToolResponse{Result: "same result"},
-		kittest.ToolResponse{Result: "same result"},
-		kittest.ToolResponse{Result: "same result"},
-	)
-
-	sameCall := kit.ToolCall{ID: "c", Name: "search", Arguments: map[string]any{"q": "crappy"}}
-
-	model := kittest.NewModel(t,
-		kittest.ModelTurn{ToolCalls: []kit.ToolCall{sameCall}},
-		kittest.ModelTurn{ToolCalls: []kit.ToolCall{sameCall}},
-		kittest.ModelTurn{ToolCalls: []kit.ToolCall{sameCall}},
-	)
-
-	a, err := agent.New(model,
-		agent.WithTools(searchTool),
-		agent.WithToolLoopMaxRepetitions(2),
-		agent.WithSequentialToolExecution(),
-	)
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
-
-	_, err = a.Run(context.Background(), []kit.Message{
-		kit.NewUserMessage(kit.NewTextPart("Search for crappy")),
-	})
-	if err == nil {
-		t.Fatal("expected error from loop detection, got nil")
-	}
-
-	if !errors.Is(err, kit.ErrToolLoop) {
-		t.Errorf("error = %v, want kit.ErrToolLoop", err)
-	}
-
-	searchTool.AssertCallCount(t, 2)
-}
-
 func TestAgent_Run_SystemPrompt(t *testing.T) {
 	model := kittest.NewModel(t,
 		kittest.ModelTurn{Text: "I am a helpful bot."},

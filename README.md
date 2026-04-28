@@ -291,10 +291,11 @@ a, err := agent.New(model,
     limits.WithMaxUsage(limits.UsageLimits{
         OutputTokens: 20_000,
     }),
+    limits.WithToolLoopDetection(3, 15),
 )
 ```
 
-Usage is accumulated after each model response and is checked along with tool-call limits before starting the next turn.
+Usage is accumulated after each model response and is checked along with tool-call limits before starting the next turn. Tool loop detection stops repeated identical tool calls within the configured turn window.
 
 ## Structured output
 
