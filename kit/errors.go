@@ -13,6 +13,7 @@ var (
 	ErrServerError      = errors.New("server error")
 	ErrStructuredOutput = errors.New("structured output validation failed")
 	ErrToolLoop         = errors.New("tool loop detected")
+	ErrLimitExceeded    = errors.New("agent limit exceeded")
 )
 
 // LLMError is a structured error returned by model providers.

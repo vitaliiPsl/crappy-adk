@@ -15,7 +15,7 @@ import (
 )
 
 /*
-Example 09 — Subagents
+Example 11 — Subagents
 
 WithSubAgents registers an "agent" delegation tool on the parent agent. When called,
 it runs the target subagent's full ReAct loop and returns its output.
@@ -25,7 +25,7 @@ decides which subagent to call and in what order based on the task.
 
 Run:
 
-	go run ./examples/09-subagents
+	go run ./examples/11-subagents
 
 Prerequisites:
 

@@ -24,9 +24,10 @@ Felt bored while on vacation, so decided to learn more about AI agents and build
 - [Multi-turn conversations](#multi-turn-conversations)
 - [Hooks](#hooks)
 - [Middleware](#middleware)
-- [Subagents](#subagents)
-- [Extending](#extending)
+- [Limits](#limits)
 - [Structured output](#structured-output)
+- [Extending](#extending)
+- [Subagents](#subagents)
 - [Examples](#examples)
 - [License](#license)
 
@@ -277,40 +278,23 @@ a, err := agent.New(model,
 )
 ```
 
-## Subagents
+## Limits
 
-`WithSubAgents` in `extensions/subagents` registers an `agent` delegation tool on the parent agent. When called, it runs the selected subagent's full ReAct loop and returns its output.
+The guards in `x/limits` limit how much work one agent run can do.
+Each guard is an agent option that uses hooks to observe turns, model usage, or
+tool calls.
 
 ```go
-researcher, err := agent.New(model,
-    agent.WithName("researcher"),
-    agent.WithDescription("Explores the codebase and answers factual questions."),
-    agent.WithSystemPrompt("You are a code researcher."),
-)
-
-writer, err := agent.New(model,
-    agent.WithName("writer"),
-    agent.WithDescription("Turns findings into clear markdown documentation."),
-    agent.WithSystemPrompt("You are a technical writer."),
-)
-
-orchestrator, err := agent.New(model,
-    agent.WithSystemPrompt("You are an orchestrator. Always delegate — never answer directly."),
-    agent.WithExtension(subagents.WithSubAgents(researcher, writer)),
+a, err := agent.New(model,
+    limits.WithMaxTurns(10),
+    limits.WithMaxToolCalls(25),
+    limits.WithMaxUsage(limits.UsageLimits{
+        OutputTokens: 20_000,
+    }),
 )
 ```
 
-## Extending
-
-Everything is an interface. If something doesn't fit, replace it.
-
-- **Model** — `kit.Model`. Point at any inference backend via a provider package or implement your own.
-- **Tool** — `kit.Tool`, or use `tool.NewFunction[T]` from `x/tool` for auto-schema from a Go struct.
-- **Middleware** — `func(Model) Model`. Built-in middleware lives in `x/middleware`.
-- **System prompt** — a static prompt set with `agent.WithSystemPrompt(...)`.
-- **Instruction** — `func(ctx) (string, error)`. Dynamic prompt source evaluated fresh each run; built-in instruction sources live in `x/instructions`.
-- **Compactor** — `kit.Compactor`. Built-in compactor implementations live in `x/compactors`.
-- **Extension** — `agent.WithExtension([]Option)` bundles options into a reusable capability.
+Usage is accumulated after each model response and is checked along with tool-call limits before starting the next turn.
 
 ## Structured output
 
@@ -351,6 +335,41 @@ if err := json.Unmarshal(result.StructuredOutput.JSON, &notes); err != nil {
 If you need full manual control, use `agent.WithResponseSchema(schema)` with a
 `*jsonschema.Schema` instead.
 
+## Extending
+
+Everything is an interface. If something doesn't fit, replace it.
+
+- **Model** — `kit.Model`. Point at any inference backend via a provider package or implement your own.
+- **Tool** — `kit.Tool`, or use `tool.NewFunction[T]` from `x/tool` for auto-schema from a Go struct.
+- **Middleware** — `func(Model) Model`. Built-in middleware lives in `x/middleware`.
+- **System prompt** — a static prompt set with `agent.WithSystemPrompt(...)`.
+- **Instruction** — `func(ctx) (string, error)`. Dynamic prompt source evaluated fresh each run; built-in instruction sources live in `x/instructions`.
+- **Compactor** — `kit.Compactor`. Built-in compactor implementations live in `x/compactors`.
+- **Extension** — `agent.WithExtension([]Option)` bundles options into a reusable capability.
+
+## Subagents
+
+`WithSubAgents` in `extensions/subagents` registers an `agent` delegation tool on the parent agent. When called, it runs the selected subagent's full ReAct loop and returns its output.
+
+```go
+researcher, err := agent.New(model,
+    agent.WithName("researcher"),
+    agent.WithDescription("Explores the codebase and answers factual questions."),
+    agent.WithSystemPrompt("You are a code researcher."),
+)
+
+writer, err := agent.New(model,
+    agent.WithName("writer"),
+    agent.WithDescription("Turns findings into clear markdown documentation."),
+    agent.WithSystemPrompt("You are a technical writer."),
+)
+
+orchestrator, err := agent.New(model,
+    agent.WithSystemPrompt("You are an orchestrator. Always delegate — never answer directly."),
+    agent.WithExtension(subagents.WithSubAgents(researcher, writer)),
+)
+```
+
 ## Examples
 
 | Example | What it shows |
@@ -363,8 +382,9 @@ If you need full manual control, use `agent.WithResponseSchema(schema)` with a
 | `examples/06-multiturn` | Stateless multi-turn conversation pattern |
 | `examples/07-hooks` | Token logging and tool timing |
 | `examples/08-middleware` | Retry middleware with custom backoff |
-| `examples/09-subagents` | Orchestrator with researcher and writer subagents |
+| `examples/09-limits` | Run limits with limit guards |
 | `examples/10-structured-output` | Typed structured final output with `WithResponseSchemaFor[T]()` |
+| `examples/11-subagents` | Orchestrator with researcher and writer subagents |
 
 Run any example from the repo root:
 
