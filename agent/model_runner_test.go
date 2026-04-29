@@ -23,7 +23,7 @@ func TestModelRunner_Run_AppliesHooksAndForwardsEvents(t *testing.T) {
 		toolDefinitions: []kit.ToolDefinition{
 			tool.Definition(),
 		},
-		config: &Config{
+		config: &kit.AgentConfig{
 			SystemPrompt: "base instruction",
 			Thinking:     kit.ThinkingLevelHigh,
 		},

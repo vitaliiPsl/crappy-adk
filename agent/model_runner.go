@@ -12,10 +12,10 @@ type modelRunner struct {
 	model           kit.Model
 	toolDefinitions []kit.ToolDefinition
 	hooks           *hooks
-	config          *Config
+	config          *kit.AgentConfig
 }
 
-func newModelRunner(model kit.Model, toolDefinitions []kit.ToolDefinition, hooks *hooks, config *Config) *modelRunner {
+func newModelRunner(model kit.Model, toolDefinitions []kit.ToolDefinition, hooks *hooks, config *kit.AgentConfig) *modelRunner {
 	return &modelRunner{
 		model:           model,
 		toolDefinitions: toolDefinitions,

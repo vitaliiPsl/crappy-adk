@@ -5,8 +5,6 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/google/jsonschema-go/jsonschema"
-
 	"github.com/vitaliiPsl/crappy-adk/kit"
 	"github.com/vitaliiPsl/crappy-adk/x/stream"
 )
@@ -15,48 +13,10 @@ const (
 	defaultCompactionThreshold = 0.8
 )
 
-// Config holds configuration for an [Agent].
-type Config struct {
-	// Name is the agent's identifier, used in catalogs and logs.
-	Name string
-
-	// Description explains what this agent does and when to use it.
-	// Used by parent agents to decide which subagent to delegate to.
-	Description string
-
-	// SystemPrompt is a static system prompt used as-is on every run.
-	SystemPrompt string
-
-	// Temperature controls randomness. Nil uses the model default.
-	Temperature *float32
-
-	// TopP limits sampling to the smallest set of tokens whose cumulative
-	// probability meets this threshold. Nil uses the model default.
-	TopP *float32
-
-	// MaxOutputTokens limits the number of tokens the model can generate.
-	// Nil uses the model default.
-	MaxOutputTokens *int32
-
-	// ResponseSchema constrains the final assistant answer to JSON matching this schema.
-	ResponseSchema *jsonschema.Schema
-
-	// Thinking controls extended thinking. Empty disables it.
-	Thinking kit.ThinkingLevel
-
-	// ToolExecution controls whether tool calls run in parallel or sequentially.
-	// Defaults to ToolExecutionParallel.
-	ToolExecution ToolExecutionMode
-
-	// CompactionThreshold is the fraction of the context window that triggers
-	// compaction. Defaults to 0.8 when zero.
-	CompactionThreshold float64
-}
-
 // Agent runs a ReAct loop: it calls the model, executes any requested tool
 // calls, and feeds the results back until the model returns a final response.
 type Agent struct {
-	config Config
+	config kit.AgentConfig
 	model  kit.Model
 
 	tools           map[string]kit.Tool
@@ -74,34 +34,9 @@ func New(model kit.Model, options ...Option) (*Agent, error) {
 	a := &Agent{
 		model: model,
 		tools: make(map[string]kit.Tool),
-		config: Config{
+		config: kit.AgentConfig{
 			CompactionThreshold: defaultCompactionThreshold,
 		},
-	}
-
-	for _, opt := range options {
-		if err := opt(a); err != nil {
-			return nil, err
-		}
-	}
-
-	a.modelRunner = newModelRunner(a.model, a.toolDefinitions, &a.hooks, &a.config)
-	a.toolRunner = newToolRunner(a.tools, &a.hooks, &a.config)
-
-	return a, nil
-}
-
-// NewFromConfig creates an agent seeded from cfg. Additional options are applied
-// on top, allowing callers to extend the config (e.g. attach resolved tools).
-func NewFromConfig(model kit.Model, cfg Config, options ...Option) (*Agent, error) {
-	if cfg.CompactionThreshold == 0 {
-		cfg.CompactionThreshold = defaultCompactionThreshold
-	}
-
-	a := &Agent{
-		model:  model,
-		tools:  make(map[string]kit.Tool),
-		config: cfg,
 	}
 
 	for _, opt := range options {

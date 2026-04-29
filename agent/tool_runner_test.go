@@ -22,7 +22,7 @@ func TestToolRunner_RunSequential_AppliesHooksAndYieldsMessages(t *testing.T) {
 		tools: map[string]kit.Tool{
 			"read": readTool,
 		},
-		config: &Config{ToolExecution: ToolExecutionSequential},
+		config: &kit.AgentConfig{ToolExecution: kit.ToolExecutionSequential},
 		hooks: &hooks{
 			toolCall: []kit.OnToolCall{
 				func(ctx context.Context, call kit.ToolCall) (context.Context, kit.ToolCall, error) {
@@ -95,7 +95,7 @@ func TestToolRunner_RunParallel_YieldsAllResults(t *testing.T) {
 			"search": searchTool,
 			"read":   readTool,
 		},
-		config: &Config{ToolExecution: ToolExecutionParallel},
+		config: &kit.AgentConfig{ToolExecution: kit.ToolExecutionParallel},
 		hooks:  &hooks{},
 	}
 
@@ -195,7 +195,7 @@ func TestToolRunner_RunParallel_ReturnsMessagesInToolCallOrder(t *testing.T) {
 				result: "result B",
 			},
 		},
-		config: &Config{ToolExecution: ToolExecutionParallel},
+		config: &kit.AgentConfig{ToolExecution: kit.ToolExecutionParallel},
 		hooks:  &hooks{},
 	}
 
@@ -268,7 +268,7 @@ func TestToolRunner_RunParallel_ConsumerStopCancelsBlockingTools(t *testing.T) {
 				canceled: slowCanceled,
 			},
 		},
-		config: &Config{ToolExecution: ToolExecutionParallel},
+		config: &kit.AgentConfig{ToolExecution: kit.ToolExecutionParallel},
 		hooks:  &hooks{},
 	}
 
@@ -301,7 +301,7 @@ func TestToolRunner_Call_RecoversPanic(t *testing.T) {
 			"panic": panicTool{},
 		},
 		hooks:  &hooks{},
-		config: &Config{},
+		config: &kit.AgentConfig{},
 	}
 
 	result := runner.call(context.Background(), kit.ToolCall{

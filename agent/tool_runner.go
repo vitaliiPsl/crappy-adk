@@ -11,10 +11,10 @@ import (
 type toolRunner struct {
 	tools  map[string]kit.Tool
 	hooks  *hooks
-	config *Config
+	config *kit.AgentConfig
 }
 
-func newToolRunner(tools map[string]kit.Tool, hooks *hooks, config *Config) *toolRunner {
+func newToolRunner(tools map[string]kit.Tool, hooks *hooks, config *kit.AgentConfig) *toolRunner {
 	return &toolRunner{
 		tools:  tools,
 		hooks:  hooks,
@@ -28,7 +28,7 @@ func (r *toolRunner) run(
 	e *stream.Emitter[kit.Event],
 ) ([]kit.Message, error) {
 	// TODO: it is begging for a strategy
-	if r.config.ToolExecution == ToolExecutionSequential {
+	if r.config.ToolExecution == kit.ToolExecutionSequential {
 		return r.runSequential(ctx, toolCalls, e)
 	}
 

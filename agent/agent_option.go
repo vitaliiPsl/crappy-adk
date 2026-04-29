@@ -7,16 +7,6 @@ import (
 	"github.com/vitaliiPsl/crappy-adk/x/instructions"
 )
 
-// ToolExecutionMode controls how multiple tool calls in a single turn are executed.
-type ToolExecutionMode string
-
-const (
-	// ToolExecutionParallel executes tool calls concurrently. This is the default.
-	ToolExecutionParallel ToolExecutionMode = "parallel"
-	// ToolExecutionSequential executes tool calls one at a time, in order.
-	ToolExecutionSequential ToolExecutionMode = "sequential"
-)
-
 // Option is a functional option for configuring an [Agent].
 type Option func(*Agent) error
 
@@ -68,7 +58,7 @@ func WithInstructions(sources ...kit.Instruction) Option {
 // WithParallelToolExecution sets tool execution to the parallel mode.
 func WithParallelToolExecution() Option {
 	return func(a *Agent) error {
-		a.config.ToolExecution = ToolExecutionParallel
+		a.config.ToolExecution = kit.ToolExecutionParallel
 
 		return nil
 	}
@@ -77,7 +67,7 @@ func WithParallelToolExecution() Option {
 // WithSequentialToolExecution sets tool execution to the sequential mode.
 func WithSequentialToolExecution() Option {
 	return func(a *Agent) error {
-		a.config.ToolExecution = ToolExecutionSequential
+		a.config.ToolExecution = kit.ToolExecutionSequential
 
 		return nil
 	}
