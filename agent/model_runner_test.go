@@ -24,7 +24,8 @@ func TestModelRunner_Run_AppliesHooksAndForwardsEvents(t *testing.T) {
 			tool.Definition(),
 		},
 		config: &Config{
-			Thinking: kit.ThinkingLevelHigh,
+			SystemPrompt: "base instruction",
+			Thinking:     kit.ThinkingLevelHigh,
 		},
 		hooks: &hooks{
 			modelRequest: []kit.OnModelRequest{
@@ -47,7 +48,7 @@ func TestModelRunner_Run_AppliesHooksAndForwardsEvents(t *testing.T) {
 
 	var gotEvents []kit.Event
 
-	resp, err := runner.run(context.Background(), "base instruction", []kit.Message{
+	resp, err := runner.run(context.Background(), []kit.Message{
 		kit.NewUserMessage(kit.NewTextPart("hello")),
 	}, stream.NewEmitter[kit.Event](func(event kit.Event) bool {
 		gotEvents = append(gotEvents, event)

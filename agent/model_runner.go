@@ -26,12 +26,11 @@ func newModelRunner(model kit.Model, toolDefinitions []kit.ToolDefinition, hooks
 
 func (r *modelRunner) run(
 	ctx context.Context,
-	instruction string,
 	msgs []kit.Message,
 	e *stream.Emitter[kit.Event],
 ) (kit.ModelResponse, error) {
 	req := kit.ModelRequest{
-		Instruction:    instruction,
+		Instruction:    r.config.SystemPrompt,
 		Messages:       msgs,
 		Tools:          r.toolDefinitions,
 		ResponseSchema: r.config.ResponseSchema,

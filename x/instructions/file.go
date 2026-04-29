@@ -1,7 +1,6 @@
 package instructions
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"strings"
@@ -9,10 +8,10 @@ import (
 	"github.com/vitaliiPsl/crappy-adk/kit"
 )
 
-// File returns a [kit.Instruction] that reads the file at path each run.
+// File returns a [kit.Instruction] that reads the file at path.
 // If the file does not exist the instruction contributes an empty string.
 func File(path string) kit.Instruction {
-	return func(_ context.Context) (string, error) {
+	return func() (string, error) {
 		data, err := os.ReadFile(path)
 		if os.IsNotExist(err) {
 			return "", nil

@@ -4,6 +4,7 @@ import (
 	"github.com/google/jsonschema-go/jsonschema"
 
 	"github.com/vitaliiPsl/crappy-adk/kit"
+	"github.com/vitaliiPsl/crappy-adk/x/instructions"
 )
 
 // ToolExecutionMode controls how multiple tool calls in a single turn are executed.
@@ -48,10 +49,17 @@ func WithSystemPrompt(text string) Option {
 }
 
 // WithInstructions appends one or more [kit.Instruction] values to the
-// agent's system prompt. Sources are evaluated in order on each [Agent.Run].
+// agent's system prompt. Sources are evaluated once when the option is applied.
 func WithInstructions(sources ...kit.Instruction) Option {
 	return func(a *Agent) error {
-		a.config.Instructions = append(a.config.Instructions, sources...)
+		instructions := append([]kit.Instruction{instructions.Static(a.config.SystemPrompt)}, sources...)
+
+		text, err := kit.ComposeInstructions("\n\n", instructions...)
+		if err != nil {
+			return err
+		}
+
+		a.config.SystemPrompt = text
 
 		return nil
 	}

@@ -1,7 +1,6 @@
 package instructions
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"runtime"
@@ -12,7 +11,7 @@ import (
 
 // Env returns a [kit.Instruction] that describes the runtime environment.
 func Env(workdir string) kit.Instruction {
-	return func(_ context.Context) (string, error) {
+	return func() (string, error) {
 		hostname, _ := os.Hostname()
 
 		shell := os.Getenv("SHELL")

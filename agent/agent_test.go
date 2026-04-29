@@ -521,6 +521,81 @@ func TestAgent_Run_SystemPrompt(t *testing.T) {
 	}
 }
 
+func TestAgent_New_WithInstructionsAppendsToSystemPrompt(t *testing.T) {
+	model := kittest.NewModel(t,
+		kittest.ModelTurn{Text: "I am a helpful bot."},
+	)
+
+	agent, err := agent.New(model,
+		agent.WithSystemPrompt("You are a helpful bot."),
+		agent.WithInstructions(
+			func() (string, error) {
+				return "Use concise answers.", nil
+			},
+			func() (string, error) {
+				return "Prefer Go examples.", nil
+			},
+		),
+	)
+	if err != nil {
+		t.Fatalf("NewAgent: %v", err)
+	}
+
+	_, err = agent.Run(context.Background(), []kit.Message{
+		kit.NewUserMessage(kit.NewTextPart("Who are you?")),
+	})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	req := model.CallAt(0)
+
+	want := "You are a helpful bot.\n\nUse concise answers.\n\nPrefer Go examples."
+	if req.Instruction != want {
+		t.Errorf("instruction = %q, want %q", req.Instruction, want)
+	}
+}
+
+func TestAgent_New_WithInstructionsEvaluatesOnce(t *testing.T) {
+	model := kittest.NewModel(t,
+		kittest.ModelTurn{Text: "First."},
+		kittest.ModelTurn{Text: "Second."},
+	)
+
+	calls := 0
+
+	agent, err := agent.New(model,
+		agent.WithInstructions(func() (string, error) {
+			calls++
+
+			return "Stable instruction.", nil
+		}),
+	)
+	if err != nil {
+		t.Fatalf("NewAgent: %v", err)
+	}
+
+	for range 2 {
+		_, err = agent.Run(context.Background(), []kit.Message{
+			kit.NewUserMessage(kit.NewTextPart("Hi")),
+		})
+		if err != nil {
+			t.Fatalf("Run: %v", err)
+		}
+	}
+
+	if calls != 1 {
+		t.Fatalf("instruction calls = %d, want 1", calls)
+	}
+
+	for i := range 2 {
+		req := model.CallAt(i)
+		if req.Instruction != "Stable instruction." {
+			t.Fatalf("call %d instruction = %q, want %q", i, req.Instruction, "Stable instruction.")
+		}
+	}
+}
+
 func TestAgent_Run_UsageAccumulated(t *testing.T) {
 	model := kittest.NewModel(t,
 		kittest.ModelTurn{

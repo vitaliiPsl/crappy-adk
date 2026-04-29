@@ -86,8 +86,8 @@ func WithSkills(store Store) []agent.Option {
 
 	return []agent.Option{
 		agent.WithTools(readSkill, readRef),
-		agent.WithInstructions(func(ctx context.Context) (string, error) {
-			skills, err := store.List(ctx)
+		agent.WithInstructions(func() (string, error) {
+			skills, err := store.List(context.Background())
 			if err != nil {
 				return "", err
 			}

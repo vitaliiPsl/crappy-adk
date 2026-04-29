@@ -8,7 +8,6 @@ import (
 	"github.com/google/jsonschema-go/jsonschema"
 
 	"github.com/vitaliiPsl/crappy-adk/kit"
-	"github.com/vitaliiPsl/crappy-adk/x/instructions"
 	"github.com/vitaliiPsl/crappy-adk/x/stream"
 )
 
@@ -27,9 +26,6 @@ type Config struct {
 
 	// SystemPrompt is a static system prompt used as-is on every run.
 	SystemPrompt string
-
-	// Instructions are dynamic sources composed into the system prompt on each run.
-	Instructions []kit.Instruction
 
 	// Temperature controls randomness. Nil uses the model default.
 	Temperature *float32
@@ -143,20 +139,13 @@ func (a *Agent) Run(ctx context.Context, messages []kit.Message) (kit.Result, er
 // and tool results — as the agent works. Call [kit.Stream.Result] after
 // iteration to retrieve the accumulated [kit.Result].
 func (a *Agent) Stream(ctx context.Context, msgs []kit.Message) (*stream.Stream[kit.Event, kit.Result], error) {
-	instructions := append([]kit.Instruction{instructions.Static(a.config.SystemPrompt)}, a.config.Instructions...)
-
-	instruction, err := kit.ComposeInstructions(ctx, "\n\n", instructions...)
-	if err != nil {
-		return nil, err
-	}
-
 	return stream.New(func(e *stream.Emitter[kit.Event]) (kit.Result, error) {
 		ctx, msgs, err := a.hooks.onRunStart(ctx, msgs)
 		if err != nil {
 			return kit.Result{}, err
 		}
 
-		response, runErr := a.runLoop(ctx, instruction, msgs, e)
+		response, runErr := a.runLoop(ctx, msgs, e)
 
 		_, hookErr := a.hooks.onRunEnd(ctx, response, runErr)
 		if hookErr != nil {
@@ -172,7 +161,6 @@ func (a *Agent) Stream(ctx context.Context, msgs []kit.Message) (*stream.Stream[
 // Also don't like the response mutation.
 func (a *Agent) runLoop(
 	ctx context.Context,
-	instruction string,
 	msgs []kit.Message,
 	e *stream.Emitter[kit.Event],
 ) (response kit.Result, err error) {
@@ -186,7 +174,7 @@ func (a *Agent) runLoop(
 			return response, err
 		}
 
-		modelResp, err := a.runModelTurn(ctx, instruction, msgs, &response, e)
+		modelResp, err := a.runModelTurn(ctx, msgs, &response, e)
 		if err != nil {
 			if errors.Is(err, kit.ErrContextLength) && a.compactor != nil {
 				msgs, err = a.compact(ctx, msgs, &response, e)
@@ -228,12 +216,11 @@ func (a *Agent) runLoop(
 
 func (a *Agent) runModelTurn(
 	ctx context.Context,
-	instruction string,
 	msgs []kit.Message,
 	response *kit.Result,
 	e *stream.Emitter[kit.Event],
 ) (kit.ModelResponse, error) {
-	modelResp, err := a.modelRunner.run(ctx, instruction, msgs, e)
+	modelResp, err := a.modelRunner.run(ctx, msgs, e)
 	if err != nil {
 		return kit.ModelResponse{}, err
 	}
