@@ -89,6 +89,9 @@ func New(model kit.Model, options ...Option) (*Agent, error) {
 		}
 	}
 
+	a.modelRunner = newModelRunner(a.model, a.toolDefinitions, &a.hooks, &a.config)
+	a.toolRunner = newToolRunner(a.tools, &a.hooks, &a.config)
+
 	return a, nil
 }
 
@@ -110,6 +113,9 @@ func NewFromConfig(model kit.Model, cfg Config, options ...Option) (*Agent, erro
 			return nil, err
 		}
 	}
+
+	a.modelRunner = newModelRunner(a.model, a.toolDefinitions, &a.hooks, &a.config)
+	a.toolRunner = newToolRunner(a.tools, &a.hooks, &a.config)
 
 	return a, nil
 }
@@ -144,25 +150,20 @@ func (a *Agent) Stream(ctx context.Context, msgs []kit.Message) (*stream.Stream[
 		return nil, err
 	}
 
-	ctx, msgs, err = a.hooks.onRunStart(ctx, msgs)
-	if err != nil {
-		return nil, err
-	}
-
-	return stream.New(func(yield func(kit.Event, error) bool) kit.Result {
-		response, runErr := a.runLoop(ctx, instruction, msgs, yield)
-
-		if _, hookErr := a.hooks.onRunEnd(ctx, response, runErr); hookErr != nil {
-			yield(kit.Event{}, hookErr)
-
-			return response
+	return stream.New(func(e *stream.Emitter[kit.Event]) (kit.Result, error) {
+		ctx, msgs, err := a.hooks.onRunStart(ctx, msgs)
+		if err != nil {
+			return kit.Result{}, err
 		}
 
-		if runErr != nil {
-			yield(kit.Event{}, runErr)
+		response, runErr := a.runLoop(ctx, instruction, msgs, e)
+
+		_, hookErr := a.hooks.onRunEnd(ctx, response, runErr)
+		if hookErr != nil {
+			return response, hookErr
 		}
 
-		return response
+		return response, runErr
 	}), nil
 }
 
@@ -173,7 +174,7 @@ func (a *Agent) runLoop(
 	ctx context.Context,
 	instruction string,
 	msgs []kit.Message,
-	yield func(kit.Event, error) bool,
+	e *stream.Emitter[kit.Event],
 ) (response kit.Result, err error) {
 	for {
 		if err := ctx.Err(); err != nil {
@@ -185,22 +186,18 @@ func (a *Agent) runLoop(
 			return response, err
 		}
 
-		modelResp, ok, err := a.runModelTurn(ctx, instruction, msgs, &response, yield)
+		modelResp, err := a.runModelTurn(ctx, instruction, msgs, &response, e)
 		if err != nil {
 			if errors.Is(err, kit.ErrContextLength) && a.compactor != nil {
-				var compacted bool
-
-				msgs, compacted = a.compact(ctx, msgs, &response, yield)
-				if compacted {
-					continue
+				msgs, err = a.compact(ctx, msgs, &response, e)
+				if err != nil {
+					return response, err
 				}
+
+				continue
 			}
 
 			return response, err
-		}
-
-		if !ok {
-			return response, nil
 		}
 
 		msgs = append(msgs, modelResp.Message)
@@ -210,16 +207,16 @@ func (a *Agent) runLoop(
 			return response, nil
 		}
 
-		toolMsgs, ok := a.runToolTurn(ctx, modelResp.Message.ToolCalls(), &response, yield)
-		if !ok {
-			return response, nil
+		toolMsgs, err := a.runToolTurn(ctx, modelResp.Message.ToolCalls(), &response, e)
+		if err != nil {
+			return response, err
 		}
 
 		msgs = append(msgs, toolMsgs...)
 
-		msgs, ok = a.runCompactionTurn(ctx, msgs, modelResp.Usage, &response, yield)
-		if !ok {
-			return response, nil
+		msgs, err = a.runCompactionTurn(ctx, msgs, modelResp.Usage, &response, e)
+		if err != nil {
+			return response, err
 		}
 
 		ctx, err = a.hooks.onTurnEnd(ctx, msgs)
@@ -234,22 +231,22 @@ func (a *Agent) runModelTurn(
 	instruction string,
 	msgs []kit.Message,
 	response *kit.Result,
-	yield func(kit.Event, error) bool,
-) (kit.ModelResponse, bool, error) {
-	modelResp, err := a.modelRunner.run(ctx, instruction, msgs, yield)
+	e *stream.Emitter[kit.Event],
+) (kit.ModelResponse, error) {
+	modelResp, err := a.modelRunner.run(ctx, instruction, msgs, e)
 	if err != nil {
-		return kit.ModelResponse{}, false, err
+		return kit.ModelResponse{}, err
 	}
 
 	response.Messages = append(response.Messages, modelResp.Message)
 	response.Usage.Add(modelResp.Usage)
 	response.LastUsage = modelResp.Usage
 
-	if !yield(kit.NewMessageEvent(modelResp.Message), nil) {
-		return kit.ModelResponse{}, false, nil
+	if err := e.Emit(kit.NewMessageEvent(modelResp.Message)); err != nil {
+		return kit.ModelResponse{}, err
 	}
 
-	return modelResp, true, nil
+	return modelResp, nil
 }
 
 func (a *Agent) tryExit(modelResp kit.ModelResponse, response *kit.Result) bool {
@@ -268,16 +265,16 @@ func (a *Agent) runToolTurn(
 	ctx context.Context,
 	toolCalls []kit.ToolCall,
 	response *kit.Result,
-	yield func(kit.Event, error) bool,
-) ([]kit.Message, bool) {
-	toolMsgs, ok := a.toolRunner.run(ctx, toolCalls, yield)
-	if !ok {
-		return nil, false
+	e *stream.Emitter[kit.Event],
+) ([]kit.Message, error) {
+	toolMsgs, err := a.toolRunner.run(ctx, toolCalls, e)
+	if err != nil {
+		return nil, err
 	}
 
 	response.Messages = append(response.Messages, toolMsgs...)
 
-	return toolMsgs, true
+	return toolMsgs, nil
 }
 
 func (a *Agent) runCompactionTurn(
@@ -285,13 +282,13 @@ func (a *Agent) runCompactionTurn(
 	msgs []kit.Message,
 	usage kit.Usage,
 	response *kit.Result,
-	yield func(kit.Event, error) bool,
-) ([]kit.Message, bool) {
+	e *stream.Emitter[kit.Event],
+) ([]kit.Message, error) {
 	if !a.needsCompaction(usage) {
-		return msgs, true
+		return msgs, nil
 	}
 
-	return a.compact(ctx, msgs, response, yield)
+	return a.compact(ctx, msgs, response, e)
 }
 
 func (a *Agent) needsCompaction(lastUsage kit.Usage) bool {
@@ -313,30 +310,28 @@ func (a *Agent) compact(
 	ctx context.Context,
 	msgs []kit.Message,
 	response *kit.Result,
-	yield func(kit.Event, error) bool,
-) ([]kit.Message, bool) {
+	e *stream.Emitter[kit.Event],
+) ([]kit.Message, error) {
 	compacted, summary, err := a.compactor.Compact(ctx, msgs)
 	if err != nil {
-		yield(kit.Event{}, fmt.Errorf("compactor failed: %w", err))
-
-		return msgs, false
+		return msgs, fmt.Errorf("compactor failed: %w", err)
 	}
 
 	if summary == "" {
-		return msgs, true
+		return msgs, nil
 	}
 
 	summaryMsg := kit.NewSummaryMessage(summary)
 
-	if !yield(kit.NewCompactionDoneEvent(summary), nil) {
-		return msgs, false
+	if err := e.Emit(kit.NewCompactionDoneEvent(summary)); err != nil {
+		return msgs, err
 	}
 
-	if !yield(kit.NewMessageEvent(summaryMsg), nil) {
-		return msgs, false
+	if err := e.Emit(kit.NewMessageEvent(summaryMsg)); err != nil {
+		return msgs, err
 	}
 
 	response.Messages = append(response.Messages, summaryMsg)
 
-	return compacted, true
+	return compacted, nil
 }

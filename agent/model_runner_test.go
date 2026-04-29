@@ -7,6 +7,7 @@ import (
 
 	"github.com/vitaliiPsl/crappy-adk/kit"
 	"github.com/vitaliiPsl/crappy-adk/kittest"
+	"github.com/vitaliiPsl/crappy-adk/x/stream"
 )
 
 func TestModelRunner_Run_AppliesHooksAndForwardsEvents(t *testing.T) {
@@ -48,15 +49,11 @@ func TestModelRunner_Run_AppliesHooksAndForwardsEvents(t *testing.T) {
 
 	resp, err := runner.run(context.Background(), "base instruction", []kit.Message{
 		kit.NewUserMessage(kit.NewTextPart("hello")),
-	}, func(event kit.Event, err error) bool {
-		if err != nil {
-			t.Fatalf("unexpected yield error: %v", err)
-		}
-
+	}, stream.NewEmitter[kit.Event](func(event kit.Event) bool {
 		gotEvents = append(gotEvents, event)
 
 		return true
-	})
+	}))
 	if err != nil {
 		t.Fatalf("run: %v", err)
 	}

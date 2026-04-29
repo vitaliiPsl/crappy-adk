@@ -132,27 +132,31 @@ func (model *Model) GenerateStream(_ context.Context, req kit.ModelRequest) (*st
 	if turn.Stream != nil {
 		results := turn.Stream
 
-		return stream.New(func(yield func(kit.ModelEvent, error) bool) kit.ModelResponse {
+		return stream.New(func(e *stream.Emitter[kit.ModelEvent]) (kit.ModelResponse, error) {
 			for _, result := range results {
-				if !yield(result.Event, result.Err) {
-					break
+				if result.Err != nil {
+					return resp, result.Err
+				}
+
+				if err := e.Emit(result.Event); err != nil {
+					return resp, nil
 				}
 			}
 
-			return resp
+			return resp, nil
 		}), nil
 	}
 
 	events := turn.events()
 
-	return stream.New(func(yield func(kit.ModelEvent, error) bool) kit.ModelResponse {
+	return stream.New(func(e *stream.Emitter[kit.ModelEvent]) (kit.ModelResponse, error) {
 		for _, event := range events {
-			if !yield(event, nil) {
-				break
+			if err := e.Emit(event); err != nil {
+				return resp, nil
 			}
 		}
 
-		return resp
+		return resp, nil
 	}), nil
 }
 

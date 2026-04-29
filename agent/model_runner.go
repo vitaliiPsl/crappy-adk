@@ -28,7 +28,7 @@ func (r *modelRunner) run(
 	ctx context.Context,
 	instruction string,
 	msgs []kit.Message,
-	yield func(kit.Event, error) bool,
+	e *stream.Emitter[kit.Event],
 ) (kit.ModelResponse, error) {
 	req := kit.ModelRequest{
 		Instruction:    instruction,
@@ -53,7 +53,7 @@ func (r *modelRunner) run(
 		return kit.ModelResponse{}, err
 	}
 
-	if err := r.forwardEvents(stream, yield); err != nil {
+	if err := r.forwardEvents(stream, e); err != nil {
 		return kit.ModelResponse{}, err
 	}
 
@@ -71,21 +71,17 @@ func (r *modelRunner) run(
 }
 
 func (r *modelRunner) forwardEvents(
-	stream *stream.Stream[kit.ModelEvent, kit.ModelResponse],
-	yield func(kit.Event, error) bool,
+	modelStream *stream.Stream[kit.ModelEvent, kit.ModelResponse],
+	e *stream.Emitter[kit.Event],
 ) error {
-	for ev, err := range stream.Iter() {
-		if err != nil {
-			return err
-		}
-
+	for ev := range modelStream.Iter() {
 		event, ok := eventFromModelEvent(ev)
 		if !ok {
 			continue
 		}
 
-		if !yield(event, nil) {
-			return nil
+		if err := e.Emit(event); err != nil {
+			return err
 		}
 	}
 

@@ -585,12 +585,12 @@ func TestAgent_Stream_Events(t *testing.T) {
 
 	var eventTypes []kit.EventType
 
-	for event, err := range stream.Iter() {
-		if err != nil {
-			t.Fatalf("stream error: %v", err)
-		}
-
+	for event := range stream.Iter() {
 		eventTypes = append(eventTypes, event.Type)
+	}
+
+	if _, err := stream.Result(); err != nil {
+		t.Fatalf("stream error: %v", err)
 	}
 
 	expected := []kit.EventType{
@@ -656,12 +656,12 @@ func TestAgent_Stream_ToolCallEvents(t *testing.T) {
 
 	var eventTypes []kit.EventType
 
-	for event, err := range stream.Iter() {
-		if err != nil {
-			t.Fatalf("stream error: %v", err)
-		}
-
+	for event := range stream.Iter() {
 		eventTypes = append(eventTypes, event.Type)
+	}
+
+	if _, err := stream.Result(); err != nil {
+		t.Fatalf("stream error: %v", err)
 	}
 
 	// Turn 1: thinking lifecycle, tool call lifecycle, assistant message, tool result, tool message
@@ -691,6 +691,52 @@ func TestAgent_Stream_ToolCallEvents(t *testing.T) {
 		if got != expected[idx] {
 			t.Errorf("event[%d] = %q, want %q", idx, got, expected[idx])
 		}
+	}
+}
+
+func TestAgent_Stream_ConsumerStopMidIteration(t *testing.T) {
+	model := kittest.NewModel(t,
+		kittest.ModelTurn{
+			Text: "Hello world",
+			Stream: []kittest.ChunkResult{
+				{Event: kit.NewModelContentPartStartedEvent(kit.ContentTypeText)},
+				{Event: kit.NewModelContentPartDeltaEvent(kit.ContentTypeText, "Hello ")},
+				{Event: kit.NewModelContentPartDeltaEvent(kit.ContentTypeText, "world")},
+				{Event: kit.NewModelContentPartDoneEvent(kit.NewTextPart("Hello world"))},
+			},
+		},
+	)
+
+	agent, err := agent.New(model)
+	if err != nil {
+		t.Fatalf("NewAgent: %v", err)
+	}
+
+	stream, err := agent.Stream(context.Background(), []kit.Message{
+		kit.NewUserMessage(kit.NewTextPart("Hi")),
+	})
+	if err != nil {
+		t.Fatalf("Stream: %v", err)
+	}
+
+	count := 0
+	for range stream.Iter() {
+		count++
+
+		break
+	}
+
+	result, err := stream.Result()
+	if err != nil {
+		t.Fatalf("Result: %v", err)
+	}
+
+	if count != 1 {
+		t.Fatalf("event count = %d, want 1", count)
+	}
+
+	if len(result.Messages) != 0 {
+		t.Fatalf("result messages = %d, want partial empty result", len(result.Messages))
 	}
 }
 

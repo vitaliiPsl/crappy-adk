@@ -87,11 +87,7 @@ Always follow this sequence: first delegate research tasks to the researcher, th
 		log.Fatal(err)
 	}
 
-	for event, err := range stream.Iter() {
-		if err != nil {
-			log.Fatal(err)
-		}
-
+	for event := range stream.Iter() {
 		switch event.Type {
 		case kit.EventContentPartStarted:
 			if event.ContentPartType == kit.ContentTypeText {

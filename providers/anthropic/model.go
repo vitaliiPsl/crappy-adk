@@ -64,7 +64,7 @@ func (m *model) GenerateStream(ctx context.Context, req kit.ModelRequest) (*xstr
 
 	stream := m.client.Messages.NewStreaming(ctx, params)
 
-	return xstream.New(func(yield func(kit.ModelEvent, error) bool) kit.ModelResponse {
+	return xstream.New(func(emit *xstream.Emitter[kit.ModelEvent]) (kit.ModelResponse, error) {
 		defer func() { _ = stream.Close() }()
 
 		var (
@@ -79,9 +79,7 @@ func (m *model) GenerateStream(ctx context.Context, req kit.ModelRequest) (*xstr
 			event := stream.Current()
 
 			if err := message.Accumulate(event); err != nil {
-				yield(kit.ModelEvent{}, fmt.Errorf("anthropic: accumulate message: %w", err))
-
-				return kit.ModelResponse{}
+				return kit.ModelResponse{}, fmt.Errorf("anthropic: accumulate message: %w", err)
 			}
 
 			switch e := event.AsAny().(type) {
@@ -98,15 +96,15 @@ func (m *model) GenerateStream(ctx context.Context, req kit.ModelRequest) (*xstr
 					part := kit.NewTextPart("")
 					currentPart = &part
 
-					if !yield(kit.NewModelContentPartStartedEvent(kit.ContentTypeText), nil) {
-						return kit.ModelResponse{}
+					if err := emit.Emit(kit.NewModelContentPartStartedEvent(kit.ContentTypeText)); err != nil {
+						return kit.ModelResponse{}, nil
 					}
 				case anthropic.ThinkingBlock:
 					part := kit.NewThinkingPart("", block.Signature)
 					currentPart = &part
 
-					if !yield(kit.NewModelContentPartStartedEvent(kit.ContentTypeThinking), nil) {
-						return kit.ModelResponse{}
+					if err := emit.Emit(kit.NewModelContentPartStartedEvent(kit.ContentTypeThinking)); err != nil {
+						return kit.ModelResponse{}, nil
 					}
 				case anthropic.ToolUseBlock:
 					toolStartInput = strings.TrimSpace(string(block.Input))
@@ -116,8 +114,8 @@ func (m *model) GenerateStream(ctx context.Context, req kit.ModelRequest) (*xstr
 					})
 					currentPart = &part
 
-					if !yield(kit.NewModelContentPartStartedEvent(kit.ContentTypeToolCall), nil) {
-						return kit.ModelResponse{}
+					if err := emit.Emit(kit.NewModelContentPartStartedEvent(kit.ContentTypeToolCall)); err != nil {
+						return kit.ModelResponse{}, nil
 					}
 				}
 
@@ -130,15 +128,15 @@ func (m *model) GenerateStream(ctx context.Context, req kit.ModelRequest) (*xstr
 				case anthropic.TextDelta:
 					builder.WriteString(d.Text)
 
-					if !yield(kit.NewModelContentPartDeltaEvent(kit.ContentTypeText, d.Text), nil) {
-						return kit.ModelResponse{}
+					if err := emit.Emit(kit.NewModelContentPartDeltaEvent(kit.ContentTypeText, d.Text)); err != nil {
+						return kit.ModelResponse{}, nil
 					}
 
 				case anthropic.ThinkingDelta:
 					builder.WriteString(d.Thinking)
 
-					if !yield(kit.NewModelContentPartDeltaEvent(kit.ContentTypeThinking, d.Thinking), nil) {
-						return kit.ModelResponse{}
+					if err := emit.Emit(kit.NewModelContentPartDeltaEvent(kit.ContentTypeThinking, d.Thinking)); err != nil {
+						return kit.ModelResponse{}, nil
 					}
 
 				case anthropic.InputJSONDelta:
@@ -157,16 +155,14 @@ func (m *model) GenerateStream(ctx context.Context, req kit.ModelRequest) (*xstr
 				case kit.ContentTypeToolCall:
 					args, err := parseToolUseInput(builder.String(), toolStartInput)
 					if err != nil {
-						yield(kit.ModelEvent{}, err)
-
-						return kit.ModelResponse{}
+						return kit.ModelResponse{}, err
 					}
 
 					currentPart.Arguments = args
 				}
 
-				if !yield(kit.NewModelContentPartDoneEvent(*currentPart), nil) {
-					return kit.ModelResponse{}
+				if err := emit.Emit(kit.NewModelContentPartDoneEvent(*currentPart)); err != nil {
+					return kit.ModelResponse{}, nil
 				}
 
 				currentPart = nil
@@ -174,27 +170,23 @@ func (m *model) GenerateStream(ctx context.Context, req kit.ModelRequest) (*xstr
 		}
 
 		if err := stream.Err(); err != nil {
-			yield(kit.ModelEvent{}, convertError(err))
-
-			return kit.ModelResponse{}
+			return kit.ModelResponse{}, convertError(err)
 		}
 
 		resp := convertResponse(&message)
 
 		resp.StructuredOutput, err = structuredoutput.Validate(resp.Message.Text(), req.ResponseSchema)
 		if err != nil {
-			yield(kit.ModelEvent{}, &kit.LLMError{
+			return kit.ModelResponse{}, &kit.LLMError{
 				Kind:      kit.ErrStructuredOutput,
 				Message:   err.Error(),
 				Retryable: false,
 				Provider:  ProviderID,
 				Cause:     err,
-			})
-
-			return kit.ModelResponse{}
+			}
 		}
 
-		return resp
+		return resp, nil
 	}), nil
 }
 

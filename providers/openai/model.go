@@ -66,7 +66,7 @@ func (m *model) GenerateStream(ctx context.Context, req kit.ModelRequest) (*xstr
 
 	stream := m.client.Responses.NewStreaming(ctx, params)
 
-	return xstream.New(func(yield func(kit.ModelEvent, error) bool) kit.ModelResponse {
+	return xstream.New(func(emit *xstream.Emitter[kit.ModelEvent]) (kit.ModelResponse, error) {
 		defer func() { _ = stream.Close() }()
 
 		var (
@@ -83,26 +83,26 @@ func (m *model) GenerateStream(ctx context.Context, req kit.ModelRequest) (*xstr
 				if !contentPartStarted {
 					contentPartStarted = true
 
-					if !yield(kit.NewModelContentPartStartedEvent(kit.ContentTypeText), nil) {
-						return kit.ModelResponse{}
+					if err := emit.Emit(kit.NewModelContentPartStartedEvent(kit.ContentTypeText)); err != nil {
+						return kit.ModelResponse{}, nil
 					}
 				}
 
-				if !yield(kit.NewModelContentPartDeltaEvent(kit.ContentTypeText, e.Delta), nil) {
-					return kit.ModelResponse{}
+				if err := emit.Emit(kit.NewModelContentPartDeltaEvent(kit.ContentTypeText, e.Delta)); err != nil {
+					return kit.ModelResponse{}, nil
 				}
 
 			case responses.ResponseReasoningTextDeltaEvent:
 				if !thinkingStarted {
 					thinkingStarted = true
 
-					if !yield(kit.NewModelContentPartStartedEvent(kit.ContentTypeThinking), nil) {
-						return kit.ModelResponse{}
+					if err := emit.Emit(kit.NewModelContentPartStartedEvent(kit.ContentTypeThinking)); err != nil {
+						return kit.ModelResponse{}, nil
 					}
 				}
 
-				if !yield(kit.NewModelContentPartDeltaEvent(kit.ContentTypeThinking, e.Delta), nil) {
-					return kit.ModelResponse{}
+				if err := emit.Emit(kit.NewModelContentPartDeltaEvent(kit.ContentTypeThinking, e.Delta)); err != nil {
+					return kit.ModelResponse{}, nil
 				}
 
 			case responses.ResponseOutputItemDoneEvent:
@@ -112,19 +112,17 @@ func (m *model) GenerateStream(ctx context.Context, req kit.ModelRequest) (*xstr
 
 				tc, err := convertFunctionCall(e.Item)
 				if err != nil {
-					yield(kit.ModelEvent{}, err)
-
-					return kit.ModelResponse{}
+					return kit.ModelResponse{}, err
 				}
 
 				toolPart := kit.NewToolCallPart(tc)
 
-				if !yield(kit.NewModelContentPartStartedEvent(kit.ContentTypeToolCall), nil) {
-					return kit.ModelResponse{}
+				if err := emit.Emit(kit.NewModelContentPartStartedEvent(kit.ContentTypeToolCall)); err != nil {
+					return kit.ModelResponse{}, nil
 				}
 
-				if !yield(kit.NewModelContentPartDoneEvent(toolPart), nil) {
-					return kit.ModelResponse{}
+				if err := emit.Emit(kit.NewModelContentPartDoneEvent(toolPart)); err != nil {
+					return kit.ModelResponse{}, nil
 				}
 
 			case responses.ResponseCompletedEvent:
@@ -133,28 +131,24 @@ func (m *model) GenerateStream(ctx context.Context, req kit.ModelRequest) (*xstr
 		}
 
 		if err := stream.Err(); err != nil {
-			yield(kit.ModelEvent{}, convertError(err))
-
-			return kit.ModelResponse{}
+			return kit.ModelResponse{}, convertError(err)
 		}
 
 		if response == nil {
-			return kit.ModelResponse{}
+			return kit.ModelResponse{}, nil
 		}
 
 		resp := convertResponse(response)
 
 		resp.StructuredOutput, err = structuredoutput.Validate(resp.Message.Text(), req.ResponseSchema)
 		if err != nil {
-			yield(kit.ModelEvent{}, &kit.LLMError{
+			return kit.ModelResponse{}, &kit.LLMError{
 				Kind:      kit.ErrStructuredOutput,
 				Message:   err.Error(),
 				Retryable: false,
 				Provider:  ProviderID,
 				Cause:     err,
-			})
-
-			return kit.ModelResponse{}
+			}
 		}
 
 		for _, part := range resp.Message.Content {
@@ -162,12 +156,12 @@ func (m *model) GenerateStream(ctx context.Context, req kit.ModelRequest) (*xstr
 				continue
 			}
 
-			if !yield(kit.NewModelContentPartDoneEvent(part), nil) {
-				return resp
+			if err := emit.Emit(kit.NewModelContentPartDoneEvent(part)); err != nil {
+				return resp, nil
 			}
 		}
 
-		return resp
+		return resp, nil
 	}), nil
 }
 

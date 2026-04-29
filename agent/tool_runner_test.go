@@ -6,9 +6,11 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/vitaliiPsl/crappy-adk/kit"
 	"github.com/vitaliiPsl/crappy-adk/kittest"
+	"github.com/vitaliiPsl/crappy-adk/x/stream"
 )
 
 func TestToolRunner_RunSequential_AppliesHooksAndYieldsMessages(t *testing.T) {
@@ -41,19 +43,15 @@ func TestToolRunner_RunSequential_AppliesHooksAndYieldsMessages(t *testing.T) {
 
 	var gotEvents []kit.Event
 
-	msgs, ok := runner.run(context.Background(), []kit.ToolCall{
+	msgs, err := runner.run(context.Background(), []kit.ToolCall{
 		{ID: "call-1", Name: "read", Arguments: map[string]any{"path": "main.go"}},
-	}, func(event kit.Event, err error) bool {
-		if err != nil {
-			t.Fatalf("unexpected yield error: %v", err)
-		}
-
+	}, stream.NewEmitter[kit.Event](func(event kit.Event) bool {
 		gotEvents = append(gotEvents, event)
 
 		return true
-	})
-	if !ok {
-		t.Fatal("run returned ok=false")
+	}))
+	if err != nil {
+		t.Fatalf("run: %v", err)
 	}
 
 	readTool.AssertCalledWith(t, 0, map[string]any{"path": "MAIN.GO"})
@@ -103,20 +101,16 @@ func TestToolRunner_RunParallel_YieldsAllResults(t *testing.T) {
 
 	var gotEvents []kit.Event
 
-	msgs, ok := runner.run(context.Background(), []kit.ToolCall{
+	msgs, err := runner.run(context.Background(), []kit.ToolCall{
 		{ID: "call-1", Name: "search", Arguments: map[string]any{"q": "A"}},
 		{ID: "call-2", Name: "read", Arguments: map[string]any{"path": "b.txt"}},
-	}, func(event kit.Event, err error) bool {
-		if err != nil {
-			t.Fatalf("unexpected yield error: %v", err)
-		}
-
+	}, stream.NewEmitter[kit.Event](func(event kit.Event) bool {
 		gotEvents = append(gotEvents, event)
 
 		return true
-	})
-	if !ok {
-		t.Fatal("run returned ok=false")
+	}))
+	if err != nil {
+		t.Fatalf("run: %v", err)
 	}
 
 	searchTool.AssertCalledWith(t, 0, map[string]any{"q": "A"})
@@ -205,14 +199,10 @@ func TestToolRunner_RunParallel_ReturnsMessagesInToolCallOrder(t *testing.T) {
 		hooks:  &hooks{},
 	}
 
-	msgs, ok := runner.run(context.Background(), []kit.ToolCall{
+	msgs, err := runner.run(context.Background(), []kit.ToolCall{
 		{ID: "call-1", Name: "search", Arguments: map[string]any{"q": "A"}},
 		{ID: "call-2", Name: "read", Arguments: map[string]any{"path": "b.txt"}},
-	}, func(event kit.Event, err error) bool {
-		if err != nil {
-			t.Fatalf("unexpected yield error: %v", err)
-		}
-
+	}, stream.NewEmitter[kit.Event](func(event kit.Event) bool {
 		if event.Type == kit.EventMessage {
 			part, ok := event.Message.ToolResult()
 			if !ok {
@@ -225,9 +215,9 @@ func TestToolRunner_RunParallel_ReturnsMessagesInToolCallOrder(t *testing.T) {
 		}
 
 		return true
-	})
-	if !ok {
-		t.Fatal("run returned ok=false")
+	}))
+	if err != nil {
+		t.Fatalf("run: %v", err)
 	}
 
 	select {
@@ -256,6 +246,52 @@ func TestToolRunner_RunParallel_ReturnsMessagesInToolCallOrder(t *testing.T) {
 
 	if part1.ID != "call-2" {
 		t.Fatalf("msgs[1] tool call id = %q, want %q", part1.ID, "call-2")
+	}
+}
+
+func TestToolRunner_RunParallel_ConsumerStopCancelsBlockingTools(t *testing.T) {
+	slowStarted := make(chan struct{})
+	slowCanceled := make(chan struct{})
+	releaseFast := make(chan struct{})
+	close(releaseFast)
+
+	runner := toolRunner{
+		tools: map[string]kit.Tool{
+			"fast": blockingTool{
+				result:  "result A",
+				release: releaseFast,
+			},
+			"slow": blockingTool{
+				result:   "result B",
+				started:  slowStarted,
+				release:  make(chan struct{}),
+				canceled: slowCanceled,
+			},
+		},
+		config: &Config{ToolExecution: ToolExecutionParallel},
+		hooks:  &hooks{},
+	}
+
+	_, err := runner.run(context.Background(), []kit.ToolCall{
+		{ID: "call-1", Name: "fast", Arguments: map[string]any{}},
+		{ID: "call-2", Name: "slow", Arguments: map[string]any{}},
+	}, stream.NewEmitter[kit.Event](func(event kit.Event) bool {
+		return event.Type != kit.EventMessage
+	}))
+	if !stream.IsStopped(err) {
+		t.Fatalf("run error = %v, want stream stopped", err)
+	}
+
+	select {
+	case <-slowStarted:
+	case <-time.After(time.Second):
+		t.Fatal("expected slow tool to start")
+	}
+
+	select {
+	case <-slowCanceled:
+	case <-time.After(time.Second):
+		t.Fatal("expected slow tool to observe context cancellation")
 	}
 }
 
@@ -293,9 +329,10 @@ func (panicTool) Execute(context.Context, map[string]any) (string, error) {
 }
 
 type blockingTool struct {
-	result  string
-	started chan struct{}
-	release chan struct{}
+	result   string
+	started  chan struct{}
+	release  chan struct{}
+	canceled chan struct{}
 }
 
 func (t blockingTool) Definition() kit.ToolDefinition {
@@ -311,6 +348,10 @@ func (t blockingTool) Execute(ctx context.Context, _ map[string]any) (string, er
 		select {
 		case <-t.release:
 		case <-ctx.Done():
+			if t.canceled != nil {
+				close(t.canceled)
+			}
+
 			return "", ctx.Err()
 		}
 	}

@@ -89,7 +89,7 @@ func (m *model) GenerateStream(ctx context.Context, req kit.ModelRequest) (*stre
 
 	iter := m.client.Models.GenerateContentStream(ctx, m.config.ID, contents, config)
 
-	return stream.New(func(yield func(kit.ModelEvent, error) bool) kit.ModelResponse {
+	return stream.New(func(emit *stream.Emitter[kit.ModelEvent]) (kit.ModelResponse, error) {
 		var (
 			lastResp           *genai.GenerateContentResponse
 			content            []kit.ContentPart
@@ -99,9 +99,7 @@ func (m *model) GenerateStream(ctx context.Context, req kit.ModelRequest) (*stre
 
 		for resp, err := range iter {
 			if err != nil {
-				yield(kit.ModelEvent{}, convertError(err))
-
-				return kit.ModelResponse{}
+				return kit.ModelResponse{}, convertError(err)
 			}
 
 			lastResp = resp
@@ -114,13 +112,13 @@ func (m *model) GenerateStream(ctx context.Context, req kit.ModelRequest) (*stre
 						if !thinkingStarted {
 							thinkingStarted = true
 
-							if !yield(kit.NewModelContentPartStartedEvent(kit.ContentTypeThinking), nil) {
-								return kit.ModelResponse{}
+							if err := emit.Emit(kit.NewModelContentPartStartedEvent(kit.ContentTypeThinking)); err != nil {
+								return kit.ModelResponse{}, nil
 							}
 						}
 
-						if !yield(kit.NewModelContentPartDeltaEvent(kit.ContentTypeThinking, p.Text), nil) {
-							return kit.ModelResponse{}
+						if err := emit.Emit(kit.NewModelContentPartDeltaEvent(kit.ContentTypeThinking, p.Text)); err != nil {
+							return kit.ModelResponse{}, nil
 						}
 					} else if p.Text != "" {
 						content = appendTextDelta(content, p.Text)
@@ -128,13 +126,13 @@ func (m *model) GenerateStream(ctx context.Context, req kit.ModelRequest) (*stre
 						if !contentPartStarted {
 							contentPartStarted = true
 
-							if !yield(kit.NewModelContentPartStartedEvent(kit.ContentTypeText), nil) {
-								return kit.ModelResponse{}
+							if err := emit.Emit(kit.NewModelContentPartStartedEvent(kit.ContentTypeText)); err != nil {
+								return kit.ModelResponse{}, nil
 							}
 						}
 
-						if !yield(kit.NewModelContentPartDeltaEvent(kit.ContentTypeText, p.Text), nil) {
-							return kit.ModelResponse{}
+						if err := emit.Emit(kit.NewModelContentPartDeltaEvent(kit.ContentTypeText, p.Text)); err != nil {
+							return kit.ModelResponse{}, nil
 						}
 					} else if part, ok := convertResponsePart(p); ok {
 						content = append(content, part)
@@ -144,12 +142,12 @@ func (m *model) GenerateStream(ctx context.Context, req kit.ModelRequest) (*stre
 						toolPart := toolCallPart(p)
 						content = append(content, toolPart)
 
-						if !yield(kit.NewModelContentPartStartedEvent(kit.ContentTypeToolCall), nil) {
-							return kit.ModelResponse{}
+						if err := emit.Emit(kit.NewModelContentPartStartedEvent(kit.ContentTypeToolCall)); err != nil {
+							return kit.ModelResponse{}, nil
 						}
 
-						if !yield(kit.NewModelContentPartDoneEvent(toolPart), nil) {
-							return kit.ModelResponse{}
+						if err := emit.Emit(kit.NewModelContentPartDoneEvent(toolPart)); err != nil {
+							return kit.ModelResponse{}, nil
 						}
 					}
 				}
@@ -157,7 +155,7 @@ func (m *model) GenerateStream(ctx context.Context, req kit.ModelRequest) (*stre
 		}
 
 		if lastResp == nil {
-			return kit.ModelResponse{}
+			return kit.ModelResponse{}, nil
 		}
 
 		var finishReason genai.FinishReason
@@ -187,25 +185,23 @@ func (m *model) GenerateStream(ctx context.Context, req kit.ModelRequest) (*stre
 				continue
 			}
 
-			if !yield(kit.NewModelContentPartDoneEvent(part), nil) {
-				return result
+			if err := emit.Emit(kit.NewModelContentPartDoneEvent(part)); err != nil {
+				return result, nil
 			}
 		}
 
 		result.StructuredOutput, err = structuredoutput.Validate(result.Message.Text(), req.ResponseSchema)
 		if err != nil {
-			yield(kit.ModelEvent{}, &kit.LLMError{
+			return kit.ModelResponse{}, &kit.LLMError{
 				Kind:      kit.ErrStructuredOutput,
 				Message:   err.Error(),
 				Retryable: false,
 				Provider:  ProviderID,
 				Cause:     err,
-			})
-
-			return kit.ModelResponse{}
+			}
 		}
 
-		return result
+		return result, nil
 	}), nil
 }
 

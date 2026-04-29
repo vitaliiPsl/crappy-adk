@@ -252,14 +252,13 @@ func TestRetry_GenerateStream_PreChunkRetriesExhausted(t *testing.T) {
 		t.Fatalf("GenerateStream: %v", err)
 	}
 
-	// Error surfaces through the stream iterator.
-	for _, iterErr := range stream.Iter() {
-		if iterErr != nil && errors.Is(iterErr, kit.ErrRateLimit) {
-			return // expected
-		}
+	for range stream.Iter() {
+		_ = ""
 	}
 
-	t.Fatal("expected ErrRateLimit from stream iteration")
+	if _, err := stream.Result(); !errors.Is(err, kit.ErrRateLimit) {
+		t.Fatalf("stream error = %v, want ErrRateLimit", err)
+	}
 }
 
 func TestRetry_GenerateStream_MidStreamPassesThrough(t *testing.T) {
@@ -279,21 +278,10 @@ func TestRetry_GenerateStream_MidStreamPassesThrough(t *testing.T) {
 	}
 
 	var (
-		sawText  bool
-		sawError bool
+		sawText bool
 	)
 
-	for event, iterErr := range stream.Iter() {
-		if iterErr != nil {
-			sawError = true
-
-			if !errors.Is(iterErr, kit.ErrRateLimit) {
-				t.Errorf("stream error = %v, want ErrRateLimit", iterErr)
-			}
-
-			break
-		}
-
+	for event := range stream.Iter() {
 		if event.Type == kit.ModelEventContentPartDelta && event.ContentPartType == kit.ContentTypeText {
 			sawText = true
 		}
@@ -303,8 +291,8 @@ func TestRetry_GenerateStream_MidStreamPassesThrough(t *testing.T) {
 		t.Error("expected text chunk before error")
 	}
 
-	if !sawError {
-		t.Error("expected mid-stream error to pass through")
+	if _, err := stream.Result(); !errors.Is(err, kit.ErrRateLimit) {
+		t.Fatalf("stream error = %v, want ErrRateLimit", err)
 	}
 
 	model.AssertCallCount(t, 1)
@@ -342,14 +330,14 @@ func collectText(t *testing.T, stream *stream.Stream[kit.ModelEvent, kit.ModelRe
 
 	var text strings.Builder
 
-	for event, err := range stream.Iter() {
-		if err != nil {
-			t.Fatalf("unexpected stream error: %v", err)
-		}
-
+	for event := range stream.Iter() {
 		if event.Type == kit.ModelEventContentPartDelta && event.ContentPartType == kit.ContentTypeText {
 			text.WriteString(event.Text)
 		}
+	}
+
+	if _, err := stream.Result(); err != nil {
+		t.Fatalf("unexpected stream error: %v", err)
 	}
 
 	return text.String()

@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/vitaliiPsl/crappy-adk/kit"
+	"github.com/vitaliiPsl/crappy-adk/x/stream"
 )
 
 type toolRunner struct {
@@ -24,56 +25,56 @@ func newToolRunner(tools map[string]kit.Tool, hooks *hooks, config *Config) *too
 func (r *toolRunner) run(
 	ctx context.Context,
 	toolCalls []kit.ToolCall,
-	yield func(kit.Event, error) bool,
-) ([]kit.Message, bool) {
+	e *stream.Emitter[kit.Event],
+) ([]kit.Message, error) {
 	// TODO: it is begging for a strategy
 	if r.config.ToolExecution == ToolExecutionSequential {
-		return r.runSequential(ctx, toolCalls, yield)
+		return r.runSequential(ctx, toolCalls, e)
 	}
 
-	return r.runParallel(ctx, toolCalls, yield)
+	return r.runParallel(ctx, toolCalls, e)
 }
 
 func (r *toolRunner) runSequential(
 	ctx context.Context,
 	toolCalls []kit.ToolCall,
-	yield func(kit.Event, error) bool,
-) ([]kit.Message, bool) {
+	e *stream.Emitter[kit.Event],
+) ([]kit.Message, error) {
 	msgs := make([]kit.Message, 0, len(toolCalls))
 
 	for _, toolCall := range toolCalls {
 		result := r.call(ctx, toolCall)
 		part := kit.NewToolResultPart(result.Content, result.Call)
 
-		if !yield(kit.NewContentPartStartedEvent(kit.ContentTypeToolResult), nil) {
-			return msgs, false
+		if err := e.Emit(kit.NewContentPartStartedEvent(kit.ContentTypeToolResult)); err != nil {
+			return msgs, err
 		}
 
-		if !yield(kit.NewContentPartDeltaEvent(kit.ContentTypeToolResult, result.Content), nil) {
-			return msgs, false
+		if err := e.Emit(kit.NewContentPartDeltaEvent(kit.ContentTypeToolResult, result.Content)); err != nil {
+			return msgs, err
 		}
 
-		if !yield(kit.NewContentPartDoneEvent(part), nil) {
-			return msgs, false
+		if err := e.Emit(kit.NewContentPartDoneEvent(part)); err != nil {
+			return msgs, err
 		}
 
 		toolMsg := kit.NewToolMessage(result.Content, result.Call)
 
-		if !yield(kit.NewMessageEvent(toolMsg), nil) {
-			return msgs, false
+		if err := e.Emit(kit.NewMessageEvent(toolMsg)); err != nil {
+			return msgs, err
 		}
 
 		msgs = append(msgs, toolMsg)
 	}
 
-	return msgs, true
+	return msgs, nil
 }
 
 func (r *toolRunner) runParallel(
 	ctx context.Context,
 	toolCalls []kit.ToolCall,
-	yield func(kit.Event, error) bool,
-) ([]kit.Message, bool) {
+	e *stream.Emitter[kit.Event],
+) ([]kit.Message, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -101,33 +102,33 @@ func (r *toolRunner) runParallel(
 		select {
 		case result = <-results:
 		case <-ctx.Done():
-			return msgs, false
+			return msgs, ctx.Err()
 		}
 
 		part := kit.NewToolResultPart(result.result.Content, result.result.Call)
 
-		if !yield(kit.NewContentPartStartedEvent(kit.ContentTypeToolResult), nil) {
-			return msgs, false
+		if err := e.Emit(kit.NewContentPartStartedEvent(kit.ContentTypeToolResult)); err != nil {
+			return msgs, err
 		}
 
-		if !yield(kit.NewContentPartDeltaEvent(kit.ContentTypeToolResult, result.result.Content), nil) {
-			return msgs, false
+		if err := e.Emit(kit.NewContentPartDeltaEvent(kit.ContentTypeToolResult, result.result.Content)); err != nil {
+			return msgs, err
 		}
 
-		if !yield(kit.NewContentPartDoneEvent(part), nil) {
-			return msgs, false
+		if err := e.Emit(kit.NewContentPartDoneEvent(part)); err != nil {
+			return msgs, err
 		}
 
 		toolMsg := kit.NewToolMessage(result.result.Content, result.result.Call)
 
-		if !yield(kit.NewMessageEvent(toolMsg), nil) {
-			return msgs, false
+		if err := e.Emit(kit.NewMessageEvent(toolMsg)); err != nil {
+			return msgs, err
 		}
 
 		msgs[result.index] = toolMsg
 	}
 
-	return msgs, true
+	return msgs, nil
 }
 
 func (r *toolRunner) call(ctx context.Context, toolCall kit.ToolCall) (result kit.ToolResult) {

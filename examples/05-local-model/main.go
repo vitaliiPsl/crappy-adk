@@ -55,11 +55,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	for event, err := range stream.Iter() {
-		if err != nil {
-			log.Fatal(err)
-		}
-
+	for event := range stream.Iter() {
 		switch event.Type {
 		case kit.EventContentPartStarted:
 			switch event.ContentPartType {

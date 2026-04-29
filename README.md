@@ -151,7 +151,7 @@ getTime, err := tool.NewFunction(
 ## Streaming
 
 `Stream` returns a lazy single-consumption iterator that yields fine-grained events as they arrive.
-Consume it once with `range stream.Iter()`. If you call `stream.Result()` before
+Consume it once with `range stream.Iter()`, then check `stream.Result()` for terminal errors. If you call `stream.Result()` before
 iteration starts, it drains the stream for you. If you stop iterating early,
 `stream.Result()` returns the partial result accumulated so far and does not resume.
 
@@ -166,10 +166,7 @@ if err != nil {
     log.Fatal(err)
 }
 
-for event, err := range stream.Iter() {
-    if err != nil {
-        log.Fatal(err)
-    }
+for event := range stream.Iter() {
     switch event.Type {
     case kit.EventContentPartStarted:
         switch event.ContentPartType {
@@ -195,6 +192,9 @@ for event, err := range stream.Iter() {
     case kit.EventMessage:
         fmt.Printf("[message %s complete]\n", event.Message.Role)
     }
+}
+if err := stream.Err(); err != nil {
+    log.Fatal(err)
 }
 
 result, err := stream.Result()
