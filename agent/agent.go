@@ -68,6 +68,9 @@ type Agent struct {
 
 	compactor kit.Compactor
 	hooks     hooks
+
+	modelRunner *modelRunner
+	toolRunner  *toolRunner
 }
 
 // New creates an agent backed by the given model. Options are applied in order.
@@ -172,9 +175,6 @@ func (a *Agent) runLoop(
 	msgs []kit.Message,
 	yield func(kit.Event, error) bool,
 ) (response kit.Result, err error) {
-	mr := newModelRunner(a.model, a.toolDefinitions, &a.hooks, &a.config)
-	tr := newToolRunner(a.tools, &a.hooks, &a.config)
-
 	for {
 		if err := ctx.Err(); err != nil {
 			return response, err
@@ -185,7 +185,7 @@ func (a *Agent) runLoop(
 			return response, err
 		}
 
-		modelResp, ok, err := a.runModelTurn(ctx, instruction, msgs, &response, yield, mr)
+		modelResp, ok, err := a.runModelTurn(ctx, instruction, msgs, &response, yield)
 		if err != nil {
 			if errors.Is(err, kit.ErrContextLength) && a.compactor != nil {
 				var compacted bool
@@ -210,7 +210,7 @@ func (a *Agent) runLoop(
 			return response, nil
 		}
 
-		toolMsgs, ok := a.runToolTurn(ctx, modelResp.Message.ToolCalls(), &response, yield, tr)
+		toolMsgs, ok := a.runToolTurn(ctx, modelResp.Message.ToolCalls(), &response, yield)
 		if !ok {
 			return response, nil
 		}
@@ -235,9 +235,8 @@ func (a *Agent) runModelTurn(
 	msgs []kit.Message,
 	response *kit.Result,
 	yield func(kit.Event, error) bool,
-	mr *modelRunner,
 ) (kit.ModelResponse, bool, error) {
-	modelResp, err := mr.run(ctx, instruction, msgs, yield)
+	modelResp, err := a.modelRunner.run(ctx, instruction, msgs, yield)
 	if err != nil {
 		return kit.ModelResponse{}, false, err
 	}
@@ -270,9 +269,8 @@ func (a *Agent) runToolTurn(
 	toolCalls []kit.ToolCall,
 	response *kit.Result,
 	yield func(kit.Event, error) bool,
-	tr *toolRunner,
 ) ([]kit.Message, bool) {
-	toolMsgs, ok := tr.run(ctx, toolCalls, yield)
+	toolMsgs, ok := a.toolRunner.run(ctx, toolCalls, yield)
 	if !ok {
 		return nil, false
 	}
