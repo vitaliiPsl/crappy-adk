@@ -460,6 +460,49 @@ func TestAgent_Run_ContextLengthErrorCompactsAndRetries(t *testing.T) {
 	}
 }
 
+func TestAgent_Run_ContextLengthErrorUsesCompactedMessagesWithoutSummary(t *testing.T) {
+	model := kittest.NewModel(t,
+		kittest.ModelTurn{Error: kit.ErrContextLength},
+		kittest.ModelTurn{Text: "Recovered after sliding window."},
+	)
+
+	compactor := &stubCompactor{
+		compacted: []kit.Message{
+			kit.NewUserMessage(kit.NewTextPart("Most recent message")),
+		},
+	}
+
+	agent, err := agent.New(model, agent.WithCompactor(compactor))
+	if err != nil {
+		t.Fatalf("NewAgent: %v", err)
+	}
+
+	resp, err := agent.Run(context.Background(), []kit.Message{
+		kit.NewUserMessage(kit.NewTextPart("Old message")),
+		kit.NewUserMessage(kit.NewTextPart("Most recent message")),
+	})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	if got := resp.Output.Text; got != "Recovered after sliding window." {
+		t.Fatalf("text = %q, want %q", got, "Recovered after sliding window.")
+	}
+
+	req := model.CallAt(1)
+	if len(req.Messages) != 1 {
+		t.Fatalf("len(messages) = %d, want %d", len(req.Messages), 1)
+	}
+
+	if got := req.Messages[0].Text(); got != "Most recent message" {
+		t.Fatalf("messages[0].text = %q, want %q", got, "Most recent message")
+	}
+
+	if len(resp.Messages) != 1 {
+		t.Fatalf("len(result.messages) = %d, want only final assistant message", len(resp.Messages))
+	}
+}
+
 func TestAgent_Run_ContextCancelled(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()

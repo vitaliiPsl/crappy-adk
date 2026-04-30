@@ -76,82 +76,105 @@ func (a *Agent) Stream(ctx context.Context, msgs []kit.Message) (*stream.Stream[
 			return kit.Result{}, err
 		}
 
-		response, runErr := a.runLoop(ctx, msgs, e)
+		result, runErr := a.runLoop(ctx, msgs, e)
 
-		_, hookErr := a.hooks.onRunEnd(ctx, response, runErr)
+		_, hookErr := a.hooks.onRunEnd(ctx, result, runErr)
 		if hookErr != nil {
-			return response, hookErr
+			return result, hookErr
 		}
 
-		return response, runErr
+		return result, runErr
 	}), nil
 }
 
-// TODO: really need to consider separate runner component with state,
-// so there is no need to carry so much data through input params.
-// Also don't like the response mutation.
 func (a *Agent) runLoop(
 	ctx context.Context,
 	msgs []kit.Message,
 	e *stream.Emitter[kit.Event],
-) (response kit.Result, err error) {
+) (kit.Result, error) {
+	var err error
+
+	state := newRunState(msgs)
+
 	for {
 		if err := ctx.Err(); err != nil {
-			return response, err
+			return state.result(), err
 		}
 
-		ctx, msgs, err = a.hooks.onTurnStart(ctx, msgs)
+		ctx, msgs, err = a.hooks.onTurnStart(ctx, state.messages())
 		if err != nil {
-			return response, err
+			return state.result(), err
 		}
 
-		modelResp, err := a.runModelTurn(ctx, msgs, &response, e)
+		state.setMessages(msgs)
+
+		modelResp, err := a.runModelTurn(ctx, state, e)
 		if err != nil {
 			if errors.Is(err, kit.ErrContextLength) && a.compactor != nil {
-				msgs, err = a.compact(ctx, msgs, &response, e)
-				if err != nil {
-					return response, err
+				if err := a.compact(ctx, state, e); err != nil {
+					return state.result(), err
 				}
 
 				continue
 			}
 
-			return response, err
+			return state.result(), err
 		}
 
-		msgs = append(msgs, modelResp.Message)
+		if isFinalResponse(modelResp) {
+			state.recordFinalResponse(modelResp)
 
-		done := a.tryExit(modelResp, &response)
-		if done {
-			return response, nil
+			return state.result(), nil
 		}
 
-		toolMsgs, err := a.runToolTurn(ctx, modelResp.Message.ToolCalls(), &response, e)
+		if err := a.runToolTurn(ctx, state, modelResp.Message.ToolCalls(), e); err != nil {
+			return state.result(), err
+		}
+
+		if err := a.runCompactionTurn(ctx, state, modelResp.Usage, e); err != nil {
+			return state.result(), err
+		}
+
+		ctx, err = a.hooks.onTurnEnd(ctx, state.messages())
 		if err != nil {
-			return response, err
-		}
-
-		msgs = append(msgs, toolMsgs...)
-
-		msgs, err = a.runCompactionTurn(ctx, msgs, modelResp.Usage, &response, e)
-		if err != nil {
-			return response, err
-		}
-
-		ctx, err = a.hooks.onTurnEnd(ctx, msgs)
-		if err != nil {
-			return response, err
+			return state.result(), err
 		}
 	}
 }
 
 func (a *Agent) runModelTurn(
 	ctx context.Context,
-	msgs []kit.Message,
-	response *kit.Result,
+	state *runState,
 	e *stream.Emitter[kit.Event],
 ) (kit.ModelResponse, error) {
-	req := kit.ModelRequest{
+	req := a.buildModelRequest(state.messages())
+
+	ctx, req, err := a.hooks.onModelRequest(ctx, req)
+	if err != nil {
+		return kit.ModelResponse{}, fmt.Errorf("model request hook failed: %w", err)
+	}
+
+	modelResp, err := a.generateModelResponse(ctx, req, e)
+	if err != nil {
+		return kit.ModelResponse{}, err
+	}
+
+	_, modelResp, err = a.hooks.onModelResponse(ctx, modelResp)
+	if err != nil {
+		return kit.ModelResponse{}, fmt.Errorf("model response hook failed: %w", err)
+	}
+
+	if err := e.Emit(kit.NewMessageEvent(modelResp.Message)); err != nil {
+		return kit.ModelResponse{}, err
+	}
+
+	state.recordModelResponse(modelResp)
+
+	return modelResp, nil
+}
+
+func (a *Agent) buildModelRequest(msgs []kit.Message) kit.ModelRequest {
+	return kit.ModelRequest{
 		Instruction:    a.config.SystemPrompt,
 		Messages:       msgs,
 		Tools:          a.registry.definitions(),
@@ -163,12 +186,13 @@ func (a *Agent) runModelTurn(
 			Thinking:        a.config.Thinking,
 		},
 	}
+}
 
-	ctx, req, err := a.hooks.onModelRequest(ctx, req)
-	if err != nil {
-		return kit.ModelResponse{}, fmt.Errorf("model request hook failed: %w", err)
-	}
-
+func (a *Agent) generateModelResponse(
+	ctx context.Context,
+	req kit.ModelRequest,
+	e *stream.Emitter[kit.Event],
+) (kit.ModelResponse, error) {
 	modelStream, err := a.model.GenerateStream(ctx, req)
 	if err != nil {
 		return kit.ModelResponse{}, err
@@ -185,62 +209,40 @@ func (a *Agent) runModelTurn(
 		return kit.ModelResponse{}, streamErr
 	}
 
-	_, modelResp, err = a.hooks.onModelResponse(ctx, modelResp)
-	if err != nil {
-		return kit.ModelResponse{}, fmt.Errorf("model response hook failed: %w", err)
-	}
-
-	if err := e.Emit(kit.NewMessageEvent(modelResp.Message)); err != nil {
-		return kit.ModelResponse{}, err
-	}
-
-	response.Messages = append(response.Messages, modelResp.Message)
-	response.Usage.Add(modelResp.Usage)
-	response.LastUsage = modelResp.Usage
-
 	return modelResp, nil
-}
-
-func (a *Agent) tryExit(modelResp kit.ModelResponse, response *kit.Result) bool {
-	assistantMsg := modelResp.Message
-	if len(assistantMsg.ToolCalls()) > 0 {
-		return false
-	}
-
-	response.Output = assistantMsg.Output()
-	response.StructuredOutput = modelResp.StructuredOutput
-
-	return true
 }
 
 func (a *Agent) runToolTurn(
 	ctx context.Context,
+	state *runState,
 	toolCalls []kit.ToolCall,
-	response *kit.Result,
 	e *stream.Emitter[kit.Event],
-) ([]kit.Message, error) {
+) error {
 	toolMsgs, err := a.toolExecutor.run(ctx, toolCalls, e)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	response.Messages = append(response.Messages, toolMsgs...)
+	state.recordToolMessages(toolMsgs)
 
-	return toolMsgs, nil
+	return nil
+}
+
+func isFinalResponse(resp kit.ModelResponse) bool {
+	return len(resp.Message.ToolCalls()) == 0
 }
 
 func (a *Agent) runCompactionTurn(
 	ctx context.Context,
-	msgs []kit.Message,
+	state *runState,
 	usage kit.Usage,
-	response *kit.Result,
 	e *stream.Emitter[kit.Event],
-) ([]kit.Message, error) {
+) error {
 	if !a.needsCompaction(usage) {
-		return msgs, nil
+		return nil
 	}
 
-	return a.compact(ctx, msgs, response, e)
+	return a.compact(ctx, state, e)
 }
 
 func (a *Agent) needsCompaction(lastUsage kit.Usage) bool {
@@ -260,30 +262,31 @@ func (a *Agent) needsCompaction(lastUsage kit.Usage) bool {
 
 func (a *Agent) compact(
 	ctx context.Context,
-	msgs []kit.Message,
-	response *kit.Result,
+	state *runState,
 	e *stream.Emitter[kit.Event],
-) ([]kit.Message, error) {
-	compacted, summary, err := a.compactor.Compact(ctx, msgs)
+) error {
+	compacted, summary, err := a.compactor.Compact(ctx, state.messages())
 	if err != nil {
-		return msgs, fmt.Errorf("compactor failed: %w", err)
+		return fmt.Errorf("compactor failed: %w", err)
 	}
 
 	if summary == "" {
-		return msgs, nil
+		state.recordCompaction(compacted, nil)
+
+		return nil
 	}
 
 	summaryMsg := kit.NewSummaryMessage(summary)
 
 	if err := e.Emit(kit.NewCompactionDoneEvent(summary)); err != nil {
-		return msgs, err
+		return err
 	}
 
 	if err := e.Emit(kit.NewMessageEvent(summaryMsg)); err != nil {
-		return msgs, err
+		return err
 	}
 
-	response.Messages = append(response.Messages, summaryMsg)
+	state.recordCompaction(compacted, &summaryMsg)
 
-	return compacted, nil
+	return nil
 }
