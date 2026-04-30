@@ -50,7 +50,7 @@ func TestModelRunner_Run_AppliesHooksAndForwardsEvents(t *testing.T) {
 
 	resp, err := runner.run(context.Background(), []kit.Message{
 		kit.NewUserMessage(kit.NewTextPart("hello")),
-	}, stream.NewEmitter[kit.Event](func(event kit.Event) bool {
+	}, stream.NewEmitter(func(event kit.Event) bool {
 		gotEvents = append(gotEvents, event)
 
 		return true
@@ -87,6 +87,7 @@ func TestModelRunner_Run_AppliesHooksAndForwardsEvents(t *testing.T) {
 		kit.NewContentPartStartedEvent(kit.ContentTypeText),
 		kit.NewContentPartDeltaEvent(kit.ContentTypeText, "original text"),
 		kit.NewContentPartDoneEvent(kit.NewTextPart("original text")),
+		kit.NewMessageEvent(kit.NewAssistantMessage("hooked text", "thinking", nil)),
 	}
 
 	if !reflect.DeepEqual(gotEvents, wantEvents) {

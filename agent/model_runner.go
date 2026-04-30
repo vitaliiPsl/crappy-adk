@@ -66,6 +66,10 @@ func (r *modelRunner) run(
 		return kit.ModelResponse{}, fmt.Errorf("model response hook failed: %w", err)
 	}
 
+	if err := e.Emit(kit.NewMessageEvent(resp.Message)); err != nil {
+		return kit.ModelResponse{}, err
+	}
+
 	return resp, nil
 }
 

@@ -164,10 +164,6 @@ func (a *Agent) runModelTurn(
 	response.Usage.Add(modelResp.Usage)
 	response.LastUsage = modelResp.Usage
 
-	if err := e.Emit(kit.NewMessageEvent(modelResp.Message)); err != nil {
-		return kit.ModelResponse{}, err
-	}
-
 	return modelResp, nil
 }
 
