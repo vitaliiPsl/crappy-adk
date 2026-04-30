@@ -58,7 +58,7 @@ func WithInstructions(sources ...kit.Instruction) Option {
 // WithParallelToolExecution sets tool execution to the parallel mode.
 func WithParallelToolExecution() Option {
 	return func(a *Agent) error {
-		a.config.ToolExecution = kit.ToolExecutionParallel
+		a.executionStrategy = parallelStrategy{}
 
 		return nil
 	}
@@ -67,7 +67,7 @@ func WithParallelToolExecution() Option {
 // WithSequentialToolExecution sets tool execution to the sequential mode.
 func WithSequentialToolExecution() Option {
 	return func(a *Agent) error {
-		a.config.ToolExecution = kit.ToolExecutionSequential
+		a.executionStrategy = sequentialStrategy{}
 
 		return nil
 	}

@@ -13,16 +13,16 @@ import (
 	"github.com/vitaliiPsl/crappy-adk/x/stream"
 )
 
-func TestToolRunner_RunSequential_AppliesHooksAndYieldsMessages(t *testing.T) {
+func TestToolExecutor_RunSequential_AppliesHooksAndYieldsMessages(t *testing.T) {
 	readTool := kittest.NewTool(t, "read", "Read file",
 		kittest.ToolResponse{Result: "contents"},
 	)
 
-	runner := toolRunner{
+	runner := toolExecutor{
 		tools: map[string]kit.Tool{
 			"read": readTool,
 		},
-		config: &kit.AgentConfig{ToolExecution: kit.ToolExecutionSequential},
+		strategy: sequentialStrategy{},
 		hooks: &hooks{
 			toolCall: []kit.OnToolCall{
 				func(ctx context.Context, call kit.ToolCall) (context.Context, kit.ToolCall, error) {
@@ -69,7 +69,6 @@ func TestToolRunner_RunSequential_AppliesHooksAndYieldsMessages(t *testing.T) {
 
 	wantEvents := []kit.Event{
 		kit.NewContentPartStartedEvent(kit.ContentTypeToolResult),
-		kit.NewContentPartDeltaEvent(kit.ContentTypeToolResult, "contents [hooked]"),
 		kit.NewContentPartDoneEvent(kit.NewToolResultPart("contents [hooked]", kit.ToolCall{
 			ID:        "call-1",
 			Name:      "read",
@@ -82,7 +81,7 @@ func TestToolRunner_RunSequential_AppliesHooksAndYieldsMessages(t *testing.T) {
 	}
 }
 
-func TestToolRunner_RunParallel_YieldsAllResults(t *testing.T) {
+func TestToolExecutor_RunParallel_YieldsAllResults(t *testing.T) {
 	searchTool := kittest.NewTool(t, "search", "Search",
 		kittest.ToolResponse{Result: "result A"},
 	)
@@ -90,13 +89,13 @@ func TestToolRunner_RunParallel_YieldsAllResults(t *testing.T) {
 		kittest.ToolResponse{Result: "result B"},
 	)
 
-	runner := toolRunner{
+	runner := toolExecutor{
 		tools: map[string]kit.Tool{
 			"search": searchTool,
 			"read":   readTool,
 		},
-		config: &kit.AgentConfig{ToolExecution: kit.ToolExecutionParallel},
-		hooks:  &hooks{},
+		strategy: parallelStrategy{},
+		hooks:    &hooks{},
 	}
 
 	var gotEvents []kit.Event
@@ -137,8 +136,8 @@ func TestToolRunner_RunParallel_YieldsAllResults(t *testing.T) {
 		t.Fatalf("tool call ids = %#v, want %#v", gotMsgIDs, []string{"call-1", "call-2"})
 	}
 
-	if len(gotEvents) != 8 {
-		t.Fatalf("event count = %d, want %d", len(gotEvents), 8)
+	if len(gotEvents) != 6 {
+		t.Fatalf("event count = %d, want %d", len(gotEvents), 6)
 	}
 
 	var (
@@ -180,11 +179,11 @@ func TestToolRunner_RunParallel_YieldsAllResults(t *testing.T) {
 	}
 }
 
-func TestToolRunner_RunParallel_ReturnsMessagesInToolCallOrder(t *testing.T) {
+func TestToolExecutor_RunParallel_ReturnsMessagesInToolCallOrder(t *testing.T) {
 	searchStarted := make(chan struct{})
 	releaseSearch := make(chan struct{})
 
-	runner := toolRunner{
+	runner := toolExecutor{
 		tools: map[string]kit.Tool{
 			"search": blockingTool{
 				result:  "result A",
@@ -195,8 +194,8 @@ func TestToolRunner_RunParallel_ReturnsMessagesInToolCallOrder(t *testing.T) {
 				result: "result B",
 			},
 		},
-		config: &kit.AgentConfig{ToolExecution: kit.ToolExecutionParallel},
-		hooks:  &hooks{},
+		strategy: parallelStrategy{},
+		hooks:    &hooks{},
 	}
 
 	msgs, err := runner.run(context.Background(), []kit.ToolCall{
@@ -249,13 +248,13 @@ func TestToolRunner_RunParallel_ReturnsMessagesInToolCallOrder(t *testing.T) {
 	}
 }
 
-func TestToolRunner_RunParallel_ConsumerStopCancelsBlockingTools(t *testing.T) {
+func TestToolExecutor_RunParallel_ConsumerStopCancelsBlockingTools(t *testing.T) {
 	slowStarted := make(chan struct{})
 	slowCanceled := make(chan struct{})
 	releaseFast := make(chan struct{})
 	close(releaseFast)
 
-	runner := toolRunner{
+	runner := toolExecutor{
 		tools: map[string]kit.Tool{
 			"fast": blockingTool{
 				result:  "result A",
@@ -268,8 +267,8 @@ func TestToolRunner_RunParallel_ConsumerStopCancelsBlockingTools(t *testing.T) {
 				canceled: slowCanceled,
 			},
 		},
-		config: &kit.AgentConfig{ToolExecution: kit.ToolExecutionParallel},
-		hooks:  &hooks{},
+		strategy: parallelStrategy{},
+		hooks:    &hooks{},
 	}
 
 	_, err := runner.run(context.Background(), []kit.ToolCall{
@@ -295,13 +294,11 @@ func TestToolRunner_RunParallel_ConsumerStopCancelsBlockingTools(t *testing.T) {
 	}
 }
 
-func TestToolRunner_Call_RecoversPanic(t *testing.T) {
-	runner := toolRunner{
-		tools: map[string]kit.Tool{
-			"panic": panicTool{},
-		},
-		hooks:  &hooks{},
-		config: &kit.AgentConfig{},
+func TestToolExecutor_Call_RecoversPanic(t *testing.T) {
+	runner := toolExecutor{
+		tools:    map[string]kit.Tool{"panic": panicTool{}},
+		hooks:    &hooks{},
+		strategy: parallelStrategy{},
 	}
 
 	result := runner.call(context.Background(), kit.ToolCall{

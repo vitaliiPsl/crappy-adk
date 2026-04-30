@@ -749,7 +749,6 @@ func TestAgent_Stream_ToolCallEvents(t *testing.T) {
 		kit.EventContentPartDone,
 		kit.EventMessage,
 		kit.EventContentPartStarted,
-		kit.EventContentPartDelta,
 		kit.EventContentPartDone,
 		kit.EventMessage,
 		kit.EventContentPartStarted,

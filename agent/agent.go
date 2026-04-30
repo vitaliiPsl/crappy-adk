@@ -22,11 +22,12 @@ type Agent struct {
 	tools           map[string]kit.Tool
 	toolDefinitions []kit.ToolDefinition
 
-	compactor kit.Compactor
-	hooks     hooks
+	compactor         kit.Compactor
+	hooks             hooks
+	executionStrategy toolExecutionStrategy
 
-	modelRunner *modelRunner
-	toolRunner  *toolRunner
+	modelRunner  *modelRunner
+	toolExecutor *toolExecutor
 }
 
 // New creates an agent backed by the given model. Options are applied in order.
@@ -45,8 +46,12 @@ func New(model kit.Model, options ...Option) (*Agent, error) {
 		}
 	}
 
+	if a.executionStrategy == nil {
+		a.executionStrategy = parallelStrategy{}
+	}
+
 	a.modelRunner = newModelRunner(a.model, a.toolDefinitions, &a.hooks, &a.config)
-	a.toolRunner = newToolRunner(a.tools, &a.hooks, &a.config)
+	a.toolExecutor = newToolExecutor(a.tools, &a.hooks, a.executionStrategy)
 
 	return a, nil
 }
@@ -185,7 +190,7 @@ func (a *Agent) runToolTurn(
 	response *kit.Result,
 	e *stream.Emitter[kit.Event],
 ) ([]kit.Message, error) {
-	toolMsgs, err := a.toolRunner.run(ctx, toolCalls, e)
+	toolMsgs, err := a.toolExecutor.run(ctx, toolCalls, e)
 	if err != nil {
 		return nil, err
 	}

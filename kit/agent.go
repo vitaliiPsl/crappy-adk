@@ -56,21 +56,7 @@ type AgentConfig struct {
 	// Thinking controls extended thinking. Empty disables it.
 	Thinking ThinkingLevel
 
-	// ToolExecution controls whether tool calls run in parallel or sequentially.
-	// Defaults to ToolExecutionParallel.
-	ToolExecution ToolExecutionMode
-
 	// CompactionThreshold is the fraction of the context window that triggers
 	// compaction.
 	CompactionThreshold float64
 }
-
-// ToolExecutionMode controls how multiple tool calls in a single turn are executed.
-type ToolExecutionMode string
-
-const (
-	// ToolExecutionParallel executes tool calls concurrently. This is the default.
-	ToolExecutionParallel ToolExecutionMode = "parallel"
-	// ToolExecutionSequential executes tool calls one at a time, in order.
-	ToolExecutionSequential ToolExecutionMode = "sequential"
-)
