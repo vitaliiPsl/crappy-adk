@@ -29,7 +29,7 @@ func TestAgent_Run_TextOnly(t *testing.T) {
 		t.Fatalf("Run: %v", err)
 	}
 
-	if got := resp.Output.Text; got != "Hello there!" {
+	if got := resp.Output.TextValue(); got != "Hello there!" {
 		t.Errorf("text = %q, want %q", got, "Hello there!")
 	}
 
@@ -57,7 +57,7 @@ func TestAgent_Run_FinalOutputSkipsThinkingPart(t *testing.T) {
 		t.Fatalf("output.type = %q, want %q", got, kit.ContentTypeText)
 	}
 
-	if got := resp.Output.Text; got != "Final answer" {
+	if got := resp.Output.TextValue(); got != "Final answer" {
 		t.Fatalf("output.text = %q, want %q", got, "Final answer")
 	}
 }
@@ -75,7 +75,7 @@ func TestMessage_Output_FallsBackToThinkingWhenItIsTheOnlyContent(t *testing.T) 
 		t.Fatalf("output.type = %q, want %q", got, kit.ContentTypeThinking)
 	}
 
-	if got := output.Text; got != "internal reasoning" {
+	if got := output.TextValue(); got != "internal reasoning" {
 		t.Fatalf("output.text = %q, want %q", got, "internal reasoning")
 	}
 }
@@ -192,7 +192,7 @@ func TestAgent_Run_ToolCall(t *testing.T) {
 		t.Fatalf("Run: %v", err)
 	}
 
-	if got := resp.Output.Text; got != "Crappy is not that crappy" {
+	if got := resp.Output.TextValue(); got != "Crappy is not that crappy" {
 		t.Errorf("text = %q, want %q", got, "Crappy is not that crappy")
 	}
 
@@ -285,7 +285,7 @@ func TestAgent_Run_MultipleToolCalls(t *testing.T) {
 		t.Fatalf("Run: %v", err)
 	}
 
-	if got := resp.Output.Text; got != "Got both results." {
+	if got := resp.Output.TextValue(); got != "Got both results." {
 		t.Errorf("text = %q, want %q", got, "Got both results.")
 	}
 
@@ -324,7 +324,7 @@ func TestAgent_Run_MultiTurn(t *testing.T) {
 		t.Fatalf("Run: %v", err)
 	}
 
-	if got := resp.Output.Text; got != "Done." {
+	if got := resp.Output.TextValue(); got != "Done." {
 		t.Errorf("text = %q, want %q", got, "Done.")
 	}
 
@@ -356,7 +356,7 @@ func TestAgent_Run_ToolNotFound(t *testing.T) {
 	// Agent should still complete, tool error is fed back to model as a tool message
 	model.AssertCallCount(t, 2)
 
-	if got := resp.Output.Text; got != "Sorry, that tool is unavailable." {
+	if got := resp.Output.TextValue(); got != "Sorry, that tool is unavailable." {
 		t.Errorf("text = %q, want %q", got, "Sorry, that tool is unavailable.")
 	}
 }
@@ -385,7 +385,7 @@ func TestAgent_Run_ToolError(t *testing.T) {
 		t.Fatalf("Run: %v", err)
 	}
 
-	if got := resp.Output.Text; got != "The tool failed." {
+	if got := resp.Output.TextValue(); got != "The tool failed." {
 		t.Errorf("text = %q, want %q", got, "The tool failed.")
 	}
 
@@ -440,7 +440,7 @@ func TestAgent_Run_ContextLengthErrorCompactsAndRetries(t *testing.T) {
 		t.Fatalf("Run: %v", err)
 	}
 
-	if got := resp.Output.Text; got != "Recovered after compaction." {
+	if got := resp.Output.TextValue(); got != "Recovered after compaction." {
 		t.Fatalf("text = %q, want %q", got, "Recovered after compaction.")
 	}
 
@@ -455,7 +455,7 @@ func TestAgent_Run_ContextLengthErrorCompactsAndRetries(t *testing.T) {
 		t.Fatalf("len(messages) = %d, want %d", len(req.Messages), 2)
 	}
 
-	if !req.Messages[0].IsSummary {
+	if req.Messages[0].Content[0].Type != kit.ContentTypeSummary {
 		t.Fatal("expected compacted history to start with summary message")
 	}
 }
@@ -485,7 +485,7 @@ func TestAgent_Run_ContextLengthErrorUsesCompactedMessagesWithoutSummary(t *test
 		t.Fatalf("Run: %v", err)
 	}
 
-	if got := resp.Output.Text; got != "Recovered after sliding window." {
+	if got := resp.Output.TextValue(); got != "Recovered after sliding window." {
 		t.Fatalf("text = %q, want %q", got, "Recovered after sliding window.")
 	}
 

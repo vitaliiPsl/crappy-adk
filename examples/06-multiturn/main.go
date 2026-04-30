@@ -65,7 +65,7 @@ func main() {
 			log.Fatal(err)
 		}
 
-		fmt.Printf("Agent: %s\n\n", result.Output.Text)
+		fmt.Printf("Agent: %s\n\n", result.Output.TextValue())
 
 		// Carry forward everything produced in this run before the next turn.
 		messages = append(messages, result.Messages...)

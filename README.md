@@ -66,7 +66,7 @@ if err != nil {
     log.Fatal(err)
 }
 
-fmt.Println(result.Output.Text)
+fmt.Println(result.Output.TextValue())
 fmt.Printf("messages produced: %d\n", len(result.Messages))
 fmt.Printf("tokens used: in=%d out=%d\n", result.Usage.InputTokens, result.Usage.OutputTokens)
 ```
@@ -202,7 +202,7 @@ if err != nil {
     log.Fatal(err)
 }
 
-fmt.Printf("final text: %s\n", result.Output.Text)
+fmt.Printf("final text: %s\n", result.Output.TextValue())
 fmt.Printf("messages produced: %d\n", len(result.Messages))
 ```
 

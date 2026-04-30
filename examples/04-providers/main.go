@@ -72,5 +72,5 @@ func run(ctx context.Context, label string, model kit.Model, prompt string) {
 		return
 	}
 
-	fmt.Printf("[%s]\n%s\n\n", label, result.Output.Text)
+	fmt.Printf("[%s]\n%s\n\n", label, result.Output.TextValue())
 }

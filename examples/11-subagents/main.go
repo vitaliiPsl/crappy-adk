@@ -104,12 +104,12 @@ Always follow this sequence: first delegate research tasks to the researcher, th
 			case kit.ContentTypeText:
 				fmt.Print("\n")
 			case kit.ContentTypeToolCall:
-				if event.ContentPart.Name == "agent" {
-					fmt.Printf("[agent → %s]\n", event.ContentPart.Arguments["subagent_type"])
+				if event.ContentPart.ToolCall.Name == "agent" {
+					fmt.Printf("[agent → %s]\n", event.ContentPart.ToolCall.Arguments["subagent_type"])
 					fmt.Printf("[agent requested]\n")
 				}
 			case kit.ContentTypeToolResult:
-				if event.ContentPart.Name == "agent" {
+				if event.ContentPart.ToolCall.Name == "agent" {
 					fmt.Printf("[agent ← done]\n")
 				}
 			}

@@ -77,6 +77,6 @@ func main() {
 	}
 
 	fmt.Println()
-	fmt.Println(result.Output.Text)
+	fmt.Println(result.Output.TextValue())
 	fmt.Printf("\n[total]  input=%d output=%d\n", result.Usage.InputTokens, result.Usage.OutputTokens)
 }

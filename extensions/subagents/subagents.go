@@ -52,7 +52,7 @@ func newAgentTool(registry map[string]*agent.Agent, names []string) kit.Tool {
 				return "", fmt.Errorf("subagent %q failed: %w", input.Agent, err)
 			}
 
-			return resp.Output.Text, nil
+			return resp.Output.TextValue(), nil
 		},
 	)
 }

@@ -75,9 +75,9 @@ func main() {
 			case kit.ContentTypeThinking, kit.ContentTypeText:
 				fmt.Print("\n")
 			case kit.ContentTypeToolCall:
-				fmt.Printf("[tool %s] requested\n", event.ContentPart.Name)
+				fmt.Printf("[tool %s] requested\n", event.ContentPart.ToolCall.Name)
 			case kit.ContentTypeToolResult:
-				fmt.Printf("[tool %s] done\n", event.ContentPart.Name)
+				fmt.Printf("[tool %s] done\n", event.ContentPart.ToolCall.Name)
 			}
 		}
 	}

@@ -81,5 +81,5 @@ func main() {
 		log.Fatal(err)
 	}
 
-	fmt.Println(result.Output.Text)
+	fmt.Println(result.Output.TextValue())
 }

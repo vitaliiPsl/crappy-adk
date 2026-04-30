@@ -76,9 +76,9 @@ func main() {
 			case kit.ContentTypeThinking, kit.ContentTypeText:
 				fmt.Print("\n")
 			case kit.ContentTypeToolCall:
-				fmt.Printf("[tool %s] requested\n", event.ContentPart.Name)
+				fmt.Printf("[tool %s] requested\n", event.ContentPart.ToolCall.Name)
 			case kit.ContentTypeToolResult:
-				fmt.Printf("[tool %s] done\n", event.ContentPart.Name)
+				fmt.Printf("[tool %s] done\n", event.ContentPart.ToolCall.Name)
 			}
 		case kit.EventMessage:
 			fmt.Printf("[message %s complete]\n", event.Message.Role)
@@ -91,6 +91,6 @@ func main() {
 	}
 
 	fmt.Println()
-	fmt.Printf("final text: %s\n", result.Output.Text)
+	fmt.Printf("final text: %s\n", result.Output.TextValue())
 	fmt.Printf("messages produced: %d\n", len(result.Messages))
 }

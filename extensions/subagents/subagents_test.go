@@ -153,8 +153,8 @@ func TestWithSubAgents_ToolExecutesSelectedSubagent(t *testing.T) {
 		t.Fatalf("Run: %v", err)
 	}
 
-	if got.Output.Text != "parent result" {
-		t.Fatalf("result = %q, want %q", got.Output.Text, "parent result")
+	if got.Output.TextValue() != "parent result" {
+		t.Fatalf("result = %q, want %q", got.Output.TextValue(), "parent result")
 	}
 
 	req := subagentModel.CallAt(0)

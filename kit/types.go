@@ -15,12 +15,9 @@ const (
 type ContentType string
 
 const (
-	// ContentTypeText is plain text content.
-	ContentTypeText ContentType = "text"
-	// ContentTypeImage is an image (JPEG, PNG, GIF, WebP).
-	ContentTypeImage ContentType = "image"
-	// ContentTypeDocument is a document such as a PDF.
-	ContentTypeDocument ContentType = "document"
+	// ContentTypeSummary is a compaction summary carried as normal text to
+	// providers, but identifiable by clients as a transcript boundary.
+	ContentTypeSummary ContentType = "summary"
 
 	// ContentTypeThinking is an extended-thinking / reasoning block. The Text
 	// field holds the reasoning text; Signature holds the provider-issued
@@ -38,6 +35,13 @@ const (
 	ContentTypeToolCall ContentType = "tool_call"
 	// ContentTypeToolResult is the content form of a tool response.
 	ContentTypeToolResult ContentType = "tool_result"
+
+	// ContentTypeText is plain text content.
+	ContentTypeText ContentType = "text"
+	// ContentTypeImage is an image (JPEG, PNG, GIF, WebP).
+	ContentTypeImage ContentType = "image"
+	// ContentTypeDocument is a document such as a PDF.
+	ContentTypeDocument ContentType = "document"
 )
 
 // ContentPart is a single typed piece of message content.
@@ -46,79 +50,102 @@ type ContentPart struct {
 	// Type indicates what kind of content this part carries.
 	Type ContentType `json:"type"`
 
-	// ID is the provider-issued identifier for this content part when one is
-	// available. Some providers require this exact ID to be preserved and sent
-	// back on subsequent turns.
-	ID string `json:"id,omitempty"`
+	Summary          *SummaryPart          `json:"summary,omitempty"`
+	Thinking         *ThinkingPart         `json:"thinking,omitempty"`
+	RedactedThinking *RedactedThinkingPart `json:"redacted_thinking,omitempty"`
+	ToolCall         *ToolCallPart         `json:"tool_call,omitempty"`
+	ToolResult       *ToolResultPart       `json:"tool_result,omitempty"`
 
-	// Text holds the text value for ContentTypeText parts.
+	Text     *TextPart `json:"text,omitempty"`
+	Image    *BlobPart `json:"image,omitempty"`
+	Document *BlobPart `json:"document,omitempty"`
+}
+
+type SummaryPart struct {
 	Text string `json:"text,omitempty"`
+}
 
-	// Name identifies a tool for tool_call/tool_result parts.
-	Name string `json:"name,omitempty"`
-
-	// Arguments holds parsed tool-call arguments for tool_call parts.
-	Arguments map[string]any `json:"arguments,omitempty"`
-
-	// MediaType is the MIME type for binary or URL-based parts
-	// (e.g. "image/png", "application/pdf").
-	MediaType string `json:"media_type,omitempty"`
-
-	// Data holds raw bytes for inline binary content.
-	// Mutually exclusive with URL.
-	Data []byte `json:"data,omitempty"`
-
-	// URL is a remote reference for URL-based content.
-	// Mutually exclusive with Data.
-	URL string `json:"url,omitempty"`
-
-	// Signature is provider-issued opaque carry-over data for this content part.
-	// Must be preserved verbatim and returned to the provider on subsequent
-	// turns when the provider exposes such a value.
+type ThinkingPart struct {
+	ID        string `json:"id,omitempty"`
+	Text      string `json:"text,omitempty"`
 	Signature string `json:"signature,omitempty"`
+}
+
+type RedactedThinkingPart struct {
+	Data []byte `json:"data,omitempty"`
+}
+
+type ToolCallPart struct {
+	ID        string         `json:"id,omitempty"`
+	Name      string         `json:"name,omitempty"`
+	Arguments map[string]any `json:"arguments,omitempty"`
+	Signature string         `json:"signature,omitempty"`
+}
+
+type ToolResultPart struct {
+	ID    string `json:"id,omitempty"`
+	Name  string `json:"name,omitempty"`
+	Text  string `json:"text,omitempty"`
+	Error string `json:"error,omitempty"`
+}
+
+type TextPart struct {
+	Text string `json:"text,omitempty"`
+}
+
+type BlobPart struct {
+	MediaType string `json:"media_type,omitempty"`
+	Data      []byte `json:"data,omitempty"`
+	URL       string `json:"url,omitempty"`
 }
 
 // NewTextPart creates a text content part.
 func NewTextPart(text string) ContentPart {
-	return ContentPart{Type: ContentTypeText, Text: text}
+	return ContentPart{Type: ContentTypeText, Text: &TextPart{Text: text}}
+}
+
+func NewSummaryPart(summary string) ContentPart {
+	return ContentPart{Type: ContentTypeSummary, Summary: &SummaryPart{Text: summary}}
 }
 
 // NewImageURLPart creates an image content part from a remote URL.
 func NewImageURLPart(url string) ContentPart {
-	return ContentPart{Type: ContentTypeImage, URL: url}
+	return ContentPart{Type: ContentTypeImage, Image: &BlobPart{URL: url}}
 }
 
 // NewImageDataPart creates an image content part from raw bytes.
 // mediaType must be a valid image MIME type (e.g. "image/png").
 func NewImageDataPart(data []byte, mediaType string) ContentPart {
-	return ContentPart{Type: ContentTypeImage, Data: data, MediaType: mediaType}
+	return ContentPart{Type: ContentTypeImage, Image: &BlobPart{Data: data, MediaType: mediaType}}
 }
 
 // NewDocumentURLPart creates a document content part from a remote URL.
 func NewDocumentURLPart(url string) ContentPart {
-	return ContentPart{Type: ContentTypeDocument, URL: url}
+	return ContentPart{Type: ContentTypeDocument, Document: &BlobPart{URL: url}}
 }
 
 // NewDocumentDataPart creates a document content part from raw bytes.
 // mediaType should be "application/pdf" or similar.
 func NewDocumentDataPart(data []byte, mediaType string) ContentPart {
-	return ContentPart{Type: ContentTypeDocument, Data: data, MediaType: mediaType}
+	return ContentPart{Type: ContentTypeDocument, Document: &BlobPart{Data: data, MediaType: mediaType}}
 }
 
 // NewThinkingPart creates a thinking content part. signature should be the
 // provider-issued signature when one is available; pass "" if the provider
 // does not supply one.
 func NewThinkingPart(text, signature string) ContentPart {
-	return ContentPart{Type: ContentTypeThinking, Text: text, Signature: signature}
+	return ContentPart{Type: ContentTypeThinking, Thinking: &ThinkingPart{Text: text, Signature: signature}}
 }
 
 // NewToolCallPart creates a tool-call content part from a tool call.
 func NewToolCallPart(call ToolCall) ContentPart {
 	return ContentPart{
-		Type:      ContentTypeToolCall,
-		ID:        call.ID,
-		Name:      call.Name,
-		Arguments: call.Arguments,
+		Type: ContentTypeToolCall,
+		ToolCall: &ToolCallPart{
+			ID:        call.ID,
+			Name:      call.Name,
+			Arguments: call.Arguments,
+		},
 	}
 }
 
@@ -126,16 +153,92 @@ func NewToolCallPart(call ToolCall) ContentPart {
 func NewToolResultPart(content string, toolCall ToolCall) ContentPart {
 	return ContentPart{
 		Type: ContentTypeToolResult,
-		ID:   toolCall.ID,
-		Name: toolCall.Name,
-		Text: content,
+		ToolResult: &ToolResultPart{
+			ID:   toolCall.ID,
+			Name: toolCall.Name,
+			Text: content,
+		},
 	}
 }
 
 // NewRedactedThinkingPart creates an opaque thinking content part carrying
 // provider-supplied encrypted data that must be echoed back verbatim.
 func NewRedactedThinkingPart(data []byte) ContentPart {
-	return ContentPart{Type: ContentTypeRedactedThinking, Data: data}
+	return ContentPart{Type: ContentTypeRedactedThinking, RedactedThinking: &RedactedThinkingPart{Data: data}}
+}
+
+func (p ContentPart) TextValue() string {
+	switch p.Type {
+	case ContentTypeText:
+		if p.Text != nil {
+			return p.Text.Text
+		}
+	case ContentTypeSummary:
+		if p.Summary != nil {
+			return p.Summary.Text
+		}
+	case ContentTypeThinking:
+		if p.Thinking != nil {
+			return p.Thinking.Text
+		}
+	case ContentTypeToolResult:
+		if p.ToolResult != nil {
+			return p.ToolResult.Text
+		}
+	}
+
+	return ""
+}
+
+func (p ContentPart) ToolCallValue() (ToolCall, bool) {
+	if p.Type != ContentTypeToolCall || p.ToolCall == nil {
+		return ToolCall{}, false
+	}
+
+	return ToolCall{
+		ID:        p.ToolCall.ID,
+		Name:      p.ToolCall.Name,
+		Arguments: p.ToolCall.Arguments,
+	}, true
+}
+
+func (p ContentPart) ToolResultValue() (ToolResultPart, bool) {
+	if p.Type != ContentTypeToolResult || p.ToolResult == nil {
+		return ToolResultPart{}, false
+	}
+
+	return *p.ToolResult, true
+}
+
+func (p ContentPart) BlobValue() (BlobPart, bool) {
+	switch p.Type {
+	case ContentTypeImage:
+		if p.Image != nil {
+			return *p.Image, true
+		}
+	case ContentTypeDocument:
+		if p.Document != nil {
+			return *p.Document, true
+		}
+	}
+
+	return BlobPart{}, false
+}
+
+func (p ContentPart) ThinkingValue() (ThinkingPart, bool) {
+	if p.Type != ContentTypeThinking || p.Thinking == nil {
+		return ThinkingPart{}, false
+	}
+
+	return *p.Thinking, true
+}
+
+func (p ContentPart) RedactedThinkingValue() (RedactedThinkingPart, bool) {
+	if p.Type != ContentTypeRedactedThinking || p.RedactedThinking == nil {
+		return RedactedThinkingPart{}, false
+	}
+
+	return *p.RedactedThinking, true
 }
 
 // Message is a single entry in the conversation history.
@@ -149,11 +252,6 @@ type Message struct {
 	// reasoning text and a provider-issued signature that must be preserved
 	// across turns for thinking-enabled models.
 	Content []ContentPart `json:"content,omitempty"`
-
-	// IsSummary marks this message as a compaction summary. When building
-	// input for the next run, clients can use the last summary message as
-	// the starting point — everything before it has been compacted away.
-	IsSummary bool `json:"is_summary,omitempty"`
 }
 
 // Text returns the concatenation of all text parts in the message.
@@ -161,8 +259,8 @@ type Message struct {
 func (m Message) Text() string {
 	var out strings.Builder
 	for _, p := range m.Content {
-		if p.Type == ContentTypeText || p.Type == ContentTypeToolResult {
-			out.WriteString(p.Text)
+		if p.Type == ContentTypeText || p.Type == ContentTypeSummary || p.Type == ContentTypeToolResult {
+			out.WriteString(p.TextValue())
 		}
 	}
 
@@ -175,7 +273,7 @@ func (m Message) Thinking() string {
 	var out strings.Builder
 	for _, p := range m.Content {
 		if p.Type == ContentTypeThinking {
-			out.WriteString(p.Text)
+			out.WriteString(p.TextValue())
 		}
 	}
 
@@ -190,25 +288,46 @@ func (m Message) ToolCalls() []ToolCall {
 			continue
 		}
 
-		calls = append(calls, ToolCall{
-			ID:        p.ID,
-			Name:      p.Name,
-			Arguments: p.Arguments,
-		})
+		call, ok := p.ToolCallValue()
+		if ok {
+			calls = append(calls, call)
+		}
 	}
 
 	return calls
 }
 
 // ToolResult returns the first embedded tool-result part, if present.
-func (m Message) ToolResult() (ContentPart, bool) {
+func (m Message) ToolResult() (ToolResultPart, bool) {
 	for _, p := range m.Content {
-		if p.Type == ContentTypeToolResult {
-			return p, true
+		if result, ok := p.ToolResultValue(); ok {
+			return result, true
 		}
 	}
 
-	return ContentPart{}, false
+	return ToolResultPart{}, false
+}
+
+// Summary returns the first summary part, if present.
+func (m Message) Summary() (SummaryPart, bool) {
+	for _, p := range m.Content {
+		if p.Type == ContentTypeSummary {
+			return *p.Summary, true
+		}
+	}
+
+	return SummaryPart{}, false
+}
+
+// IsSummary returns true if the message contains a summary part.
+func (m Message) IsSummary() bool {
+	for _, p := range m.Content {
+		if p.Type == ContentTypeSummary {
+			return true
+		}
+	}
+
+	return false
 }
 
 // Output returns the first user-facing content part in the message.
@@ -238,36 +357,11 @@ func NewUserMessage(parts ...ContentPart) Message {
 	}
 }
 
-// NewAssistantMessage creates a complete assistant message. When thinking is
-// non-empty a thinking part with no signature is prepended; providers that
-// preserve signatures should build the Message directly with the signed part.
-func NewAssistantMessage(content, thinking string, toolCalls []ToolCall) Message {
-	var parts []ContentPart
-	if thinking != "" {
-		parts = append(parts, NewThinkingPart(thinking, ""))
-	}
-
-	if content != "" {
-		parts = append(parts, NewTextPart(content))
-	}
-
-	for _, tc := range toolCalls {
-		parts = append(parts, NewToolCallPart(tc))
-	}
-
+// NewAssistantMessage creates an assistant message with the given content parts.
+func NewAssistantMessage(parts ...ContentPart) Message {
 	return Message{
 		Role:    MessageRoleAssistant,
 		Content: parts,
-	}
-}
-
-// NewSummaryMessage creates a user message that carries a compaction summary.
-// IsSummary is set to true so clients can identify the compaction boundary.
-func NewSummaryMessage(summary string) Message {
-	return Message{
-		Role:      MessageRoleUser,
-		Content:   []ContentPart{NewTextPart(summary)},
-		IsSummary: true,
 	}
 }
 
@@ -276,6 +370,14 @@ func NewToolMessage(content string, toolCall ToolCall) Message {
 	return Message{
 		Role:    MessageRoleTool,
 		Content: []ContentPart{NewToolResultPart(content, toolCall)},
+	}
+}
+
+// NewSummaryMessage creates a user message that carries a compaction summary.
+func NewSummaryMessage(summary string) Message {
+	return Message{
+		Role:    MessageRoleUser,
+		Content: []ContentPart{NewSummaryPart(summary)},
 	}
 }
 

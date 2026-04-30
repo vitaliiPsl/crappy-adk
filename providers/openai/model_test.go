@@ -155,12 +155,12 @@ func TestConvertAssistantMessage_PreservesTextAndToolCalls(t *testing.T) {
 	items := convertAssistantMessage(kit.Message{
 		Role: kit.MessageRoleAssistant,
 		Content: []kit.ContentPart{
-			{
-				Type:      kit.ContentTypeThinking,
-				ID:        "rs_123",
-				Text:      "chain",
-				Signature: "enc_sig",
-			},
+			func() kit.ContentPart {
+				part := kit.NewThinkingPart("chain", "enc_sig")
+				part.Thinking.ID = "rs_123"
+
+				return part
+			}(),
 			kit.NewTextPart("done"),
 			kit.NewToolCallPart(kit.ToolCall{
 				ID:        "call_1",
@@ -218,12 +218,9 @@ func TestConvertAssistantMessage_SkipsThinkingWithoutProviderID(t *testing.T) {
 }
 
 func TestConvertReasoningPart_PreservesSummaryAndOmitsSyntheticContent(t *testing.T) {
-	item := convertReasoningPart(kit.ContentPart{
-		Type:      kit.ContentTypeThinking,
-		ID:        "rs_123",
-		Text:      "chain",
-		Signature: "enc_sig",
-	})
+	part := kit.NewThinkingPart("chain", "enc_sig")
+	part.Thinking.ID = "rs_123"
+	item := convertReasoningPart(part)
 
 	if item.OfReasoning == nil {
 		t.Fatal("expected reasoning item")
@@ -311,20 +308,30 @@ func TestConvertResponse_PreservesThinkingToolCallsAndUsage(t *testing.T) {
 		t.Fatalf("content[0].type = %q, want %q", got.Message.Content[0].Type, kit.ContentTypeThinking)
 	}
 
-	if got.Message.Content[0].ID != "rs_123" {
-		t.Fatalf("content[0].id = %q, want %q", got.Message.Content[0].ID, "rs_123")
+	thinking, ok := got.Message.Content[0].ThinkingValue()
+	if !ok {
+		t.Fatal("expected content[0] thinking")
 	}
 
-	if got.Message.Content[0].Signature != "enc_sig" {
-		t.Fatalf("content[0].signature = %q, want %q", got.Message.Content[0].Signature, "enc_sig")
+	if thinking.ID != "rs_123" {
+		t.Fatalf("content[0].id = %q, want %q", thinking.ID, "rs_123")
+	}
+
+	if thinking.Signature != "enc_sig" {
+		t.Fatalf("content[0].signature = %q, want %q", thinking.Signature, "enc_sig")
 	}
 
 	if got.Message.Content[2].Type != kit.ContentTypeToolCall {
 		t.Fatalf("content[2].type = %q, want %q", got.Message.Content[2].Type, kit.ContentTypeToolCall)
 	}
 
-	if got.Message.Content[2].ID != "call_1" {
-		t.Fatalf("content[2].id = %q, want %q", got.Message.Content[2].ID, "call_1")
+	call, ok := got.Message.Content[2].ToolCallValue()
+	if !ok {
+		t.Fatal("expected content[2] tool call")
+	}
+
+	if call.ID != "call_1" {
+		t.Fatalf("content[2].id = %q, want %q", call.ID, "call_1")
 	}
 
 	if got.FinishReason != kit.FinishReasonToolCall {

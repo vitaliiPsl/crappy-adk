@@ -269,8 +269,9 @@ func convertAssistantMessage(msg kit.Message) []responses.ResponseInputItemUnion
 	seenToolCalls := make(map[string]struct{})
 
 	for _, part := range msg.Content {
-		if part.Type == kit.ContentTypeToolCall {
-			seenToolCalls[part.ID] = struct{}{}
+		if call, ok := part.ToolCallValue(); ok {
+			seenToolCalls[call.ID] = struct{}{}
+
 			items = append(items, convertToolCallPart(part))
 
 			continue
@@ -319,20 +320,21 @@ func convertToolMessage(msg kit.Message) []responses.ResponseInputItemUnionParam
 }
 
 func convertToolCallPart(part kit.ContentPart) responses.ResponseInputItemUnionParam {
-	args, _ := json.Marshal(part.Arguments)
+	call, _ := part.ToolCallValue()
+	args, _ := json.Marshal(call.Arguments)
 
 	return responses.ResponseInputItemUnionParam{
 		OfFunctionCall: &responses.ResponseFunctionToolCallParam{
-			CallID:    part.ID,
-			Name:      part.Name,
+			CallID:    call.ID,
+			Name:      call.Name,
 			Arguments: string(args),
 		},
 	}
 }
 
 func convertUserContent(parts []kit.ContentPart) responses.EasyInputMessageContentUnionParam {
-	if len(parts) == 1 && parts[0].Type == kit.ContentTypeText {
-		return responses.EasyInputMessageContentUnionParam{OfString: openaisdk.String(parts[0].Text)}
+	if len(parts) == 1 && (parts[0].Type == kit.ContentTypeText || parts[0].Type == kit.ContentTypeSummary) {
+		return responses.EasyInputMessageContentUnionParam{OfString: openaisdk.String(parts[0].TextValue())}
 	}
 
 	list := make(responses.ResponseInputMessageContentListParam, 0, len(parts))
@@ -347,29 +349,39 @@ func convertUserContent(parts []kit.ContentPart) responses.EasyInputMessageConte
 
 func convertUserContentPart(p kit.ContentPart) (responses.ResponseInputContentUnionParam, bool) {
 	switch p.Type {
-	case kit.ContentTypeText:
+	case kit.ContentTypeText, kit.ContentTypeSummary:
 		return responses.ResponseInputContentUnionParam{
-			OfInputText: &responses.ResponseInputTextParam{Text: p.Text},
+			OfInputText: &responses.ResponseInputTextParam{Text: p.TextValue()},
 		}, true
 	case kit.ContentTypeImage:
+		blob, ok := p.BlobValue()
+		if !ok {
+			return responses.ResponseInputContentUnionParam{}, false
+		}
+
 		img := &responses.ResponseInputImageParam{Detail: responses.ResponseInputImageDetailAuto}
-		if p.URL != "" {
-			img.ImageURL = openaisdk.String(p.URL)
-		} else if len(p.Data) > 0 {
-			img.ImageURL = openaisdk.String("data:" + p.MediaType + ";base64," + base64.StdEncoding.EncodeToString(p.Data))
+		if blob.URL != "" {
+			img.ImageURL = openaisdk.String(blob.URL)
+		} else if len(blob.Data) > 0 {
+			img.ImageURL = openaisdk.String("data:" + blob.MediaType + ";base64," + base64.StdEncoding.EncodeToString(blob.Data))
 		} else {
 			return responses.ResponseInputContentUnionParam{}, false
 		}
 
 		return responses.ResponseInputContentUnionParam{OfInputImage: img}, true
 	case kit.ContentTypeDocument:
+		blob, ok := p.BlobValue()
+		if !ok {
+			return responses.ResponseInputContentUnionParam{}, false
+		}
+
 		file := &responses.ResponseInputFileParam{Detail: responses.ResponseInputFileDetailHigh}
-		if p.URL != "" {
-			file.FileURL = openaisdk.String(p.URL)
-			file.Filename = openaisdk.String(filenameFromURL(p.URL))
-		} else if len(p.Data) > 0 {
-			file.FileData = openaisdk.String(base64.StdEncoding.EncodeToString(p.Data))
-			file.Filename = openaisdk.String(defaultFilename(p.MediaType))
+		if blob.URL != "" {
+			file.FileURL = openaisdk.String(blob.URL)
+			file.Filename = openaisdk.String(filenameFromURL(blob.URL))
+		} else if len(blob.Data) > 0 {
+			file.FileData = openaisdk.String(base64.StdEncoding.EncodeToString(blob.Data))
+			file.Filename = openaisdk.String(defaultFilename(blob.MediaType))
 		} else {
 			return responses.ResponseInputContentUnionParam{}, false
 		}
@@ -382,15 +394,16 @@ func convertUserContentPart(p kit.ContentPart) (responses.ResponseInputContentUn
 
 func convertAssistantContentPart(part kit.ContentPart) (responses.ResponseInputItemUnionParam, bool) {
 	switch part.Type {
-	case kit.ContentTypeText:
+	case kit.ContentTypeText, kit.ContentTypeSummary:
 		return responses.ResponseInputItemUnionParam{
 			OfMessage: &responses.EasyInputMessageParam{
 				Role:    responses.EasyInputMessageRoleAssistant,
-				Content: responses.EasyInputMessageContentUnionParam{OfString: openaisdk.String(part.Text)},
+				Content: responses.EasyInputMessageContentUnionParam{OfString: openaisdk.String(part.TextValue())},
 			},
 		}, true
 	case kit.ContentTypeThinking:
-		if part.ID == "" {
+		thinking, ok := part.ThinkingValue()
+		if !ok || thinking.ID == "" {
 			return responses.ResponseInputItemUnionParam{}, false
 		}
 
@@ -453,7 +466,7 @@ func convertTools(tools []kit.ToolDefinition) []responses.ToolUnionParam {
 
 func convertResponse(resp *responses.Response) kit.ModelResponse {
 	var (
-		content []kit.ContentPart
+		parts []kit.ContentPart
 	)
 
 	for _, item := range resp.Output {
@@ -462,7 +475,7 @@ func convertResponse(resp *responses.Response) kit.ModelResponse {
 			msg := item.AsMessage()
 			for _, part := range msg.Content {
 				if text := part.AsOutputText(); text.Text != "" {
-					content = append(content, kit.NewTextPart(text.Text))
+					parts = append(parts, kit.NewTextPart(text.Text))
 				}
 			}
 
@@ -472,28 +485,22 @@ func convertResponse(resp *responses.Response) kit.ModelResponse {
 				continue
 			}
 
-			content = append(content, kit.NewToolCallPart(tc))
+			parts = append(parts, kit.NewToolCallPart(tc))
 
 		case "reasoning":
 			reasoning := item.AsReasoning()
 
 			text := reasoningText(reasoning)
 			if text != "" || reasoning.EncryptedContent != "" {
-				content = append(content, kit.ContentPart{
-					Type:      kit.ContentTypeThinking,
-					ID:        reasoning.ID,
-					Text:      text,
-					Signature: reasoning.EncryptedContent,
-				})
+				part := kit.NewThinkingPart(text, reasoning.EncryptedContent)
+				part.Thinking.ID = reasoning.ID
+				parts = append(parts, part)
 			}
 		}
 	}
 
 	return kit.ModelResponse{
-		Message: kit.Message{
-			Role:    kit.MessageRoleAssistant,
-			Content: content,
-		},
+		Message:      kit.NewAssistantMessage(parts...),
 		FinishReason: convertStatus(resp),
 		Usage: kit.Usage{
 			InputTokens:     int32(resp.Usage.InputTokens),
@@ -505,12 +512,14 @@ func convertResponse(resp *responses.Response) kit.ModelResponse {
 }
 
 func convertReasoningPart(part kit.ContentPart) responses.ResponseInputItemUnionParam {
+	thinking, _ := part.ThinkingValue()
+
 	reasoning := &responses.ResponseReasoningItemParam{
-		ID:      part.ID,
-		Summary: []responses.ResponseReasoningItemSummaryParam{{Text: part.Text}},
+		ID:      thinking.ID,
+		Summary: []responses.ResponseReasoningItemSummaryParam{{Text: thinking.Text}},
 	}
-	if part.Signature != "" {
-		reasoning.EncryptedContent = param.NewOpt(part.Signature)
+	if thinking.Signature != "" {
+		reasoning.EncryptedContent = param.NewOpt(thinking.Signature)
 	}
 
 	return responses.ResponseInputItemUnionParam{OfReasoning: reasoning}

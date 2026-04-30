@@ -17,6 +17,12 @@ import (
 
 const defaultMaxOutputTokens int64 = 8192
 
+var thinkingBudgets = map[kit.ThinkingLevel]int64{
+	kit.ThinkingLevelLow:    1024,
+	kit.ThinkingLevelMedium: 8192,
+	kit.ThinkingLevelHigh:   16384,
+}
+
 // model implements [kit.Model] for an Anthropic model via the Messages API.
 type model struct {
 	client *anthropic.Client
@@ -150,7 +156,13 @@ func (m *model) GenerateStream(ctx context.Context, req kit.ModelRequest) (*xstr
 
 				switch currentPart.Type {
 				case kit.ContentTypeText, kit.ContentTypeThinking:
-					currentPart.Text = builder.String()
+					if currentPart.Type == kit.ContentTypeText && currentPart.Text != nil {
+						currentPart.Text.Text = builder.String()
+					}
+
+					if currentPart.Type == kit.ContentTypeThinking && currentPart.Thinking != nil {
+						currentPart.Thinking.Text = builder.String()
+					}
 
 				case kit.ContentTypeToolCall:
 					args, err := parseToolUseInput(builder.String(), toolStartInput)
@@ -158,7 +170,9 @@ func (m *model) GenerateStream(ctx context.Context, req kit.ModelRequest) (*xstr
 						return kit.ModelResponse{}, err
 					}
 
-					currentPart.Arguments = args
+					if currentPart.ToolCall != nil {
+						currentPart.ToolCall.Arguments = args
+					}
 				}
 
 				if err := emit.Emit(kit.NewContentPartDoneEvent(*currentPart)); err != nil {
@@ -264,12 +278,6 @@ func defaultMaxTokens(limit int) int64 {
 	return defaultMaxOutputTokens
 }
 
-var thinkingBudgets = map[kit.ThinkingLevel]int64{
-	kit.ThinkingLevelLow:    1024,
-	kit.ThinkingLevelMedium: 8192,
-	kit.ThinkingLevelHigh:   16384,
-}
-
 func thinkingBudget(level kit.ThinkingLevel) int64 {
 	if b, ok := thinkingBudgets[level]; ok {
 		return b
@@ -315,16 +323,22 @@ func convertAssistantMessage(msg kit.Message) anthropic.MessageParam {
 	for _, p := range msg.Content {
 		switch p.Type {
 		case kit.ContentTypeThinking:
-			blocks = append(blocks, anthropic.NewThinkingBlock(p.Signature, p.Text))
+			if thinking, ok := p.ThinkingValue(); ok {
+				blocks = append(blocks, anthropic.NewThinkingBlock(thinking.Signature, thinking.Text))
+			}
 		case kit.ContentTypeRedactedThinking:
-			blocks = append(blocks, anthropic.NewRedactedThinkingBlock(string(p.Data)))
-		case kit.ContentTypeText:
-			if p.Text != "" {
-				blocks = append(blocks, anthropic.NewTextBlock(p.Text))
+			if redacted, ok := p.RedactedThinkingValue(); ok {
+				blocks = append(blocks, anthropic.NewRedactedThinkingBlock(string(redacted.Data)))
+			}
+		case kit.ContentTypeText, kit.ContentTypeSummary:
+			if text := p.TextValue(); text != "" {
+				blocks = append(blocks, anthropic.NewTextBlock(text))
 			}
 		case kit.ContentTypeToolCall:
-			blocks = append(blocks, anthropic.NewToolUseBlock(p.ID, p.Arguments, p.Name))
-			seenToolCalls[p.ID] = struct{}{}
+			if call, ok := p.ToolCallValue(); ok {
+				blocks = append(blocks, anthropic.NewToolUseBlock(call.ID, call.Arguments, call.Name))
+				seenToolCalls[call.ID] = struct{}{}
+			}
 		}
 	}
 
@@ -367,23 +381,33 @@ func convertUserContentParts(parts []kit.ContentPart) []anthropic.ContentBlockPa
 
 func convertUserContentPart(p kit.ContentPart) (anthropic.ContentBlockParamUnion, bool) {
 	switch p.Type {
-	case kit.ContentTypeText:
-		return anthropic.NewTextBlock(p.Text), true
+	case kit.ContentTypeText, kit.ContentTypeSummary:
+		return anthropic.NewTextBlock(p.TextValue()), true
 	case kit.ContentTypeImage:
-		if len(p.Data) > 0 {
-			return anthropic.NewImageBlockBase64(p.MediaType, base64.StdEncoding.EncodeToString(p.Data)), true
+		blob, ok := p.BlobValue()
+		if !ok {
+			return anthropic.ContentBlockParamUnion{}, false
 		}
 
-		if p.URL != "" {
-			return anthropic.NewImageBlock(anthropic.URLImageSourceParam{URL: p.URL}), true
+		if len(blob.Data) > 0 {
+			return anthropic.NewImageBlockBase64(blob.MediaType, base64.StdEncoding.EncodeToString(blob.Data)), true
+		}
+
+		if blob.URL != "" {
+			return anthropic.NewImageBlock(anthropic.URLImageSourceParam{URL: blob.URL}), true
 		}
 	case kit.ContentTypeDocument:
-		if len(p.Data) > 0 {
-			return anthropic.NewDocumentBlock(anthropic.Base64PDFSourceParam{Data: base64.StdEncoding.EncodeToString(p.Data)}), true
+		blob, ok := p.BlobValue()
+		if !ok {
+			return anthropic.ContentBlockParamUnion{}, false
 		}
 
-		if p.URL != "" {
-			return anthropic.NewDocumentBlock(anthropic.URLPDFSourceParam{URL: p.URL}), true
+		if len(blob.Data) > 0 {
+			return anthropic.NewDocumentBlock(anthropic.Base64PDFSourceParam{Data: base64.StdEncoding.EncodeToString(blob.Data)}), true
+		}
+
+		if blob.URL != "" {
+			return anthropic.NewDocumentBlock(anthropic.URLPDFSourceParam{URL: blob.URL}), true
 		}
 	}
 
@@ -454,10 +478,7 @@ func convertResponse(resp *anthropic.Message) kit.ModelResponse {
 	}
 
 	return kit.ModelResponse{
-		Message: kit.Message{
-			Role:    kit.MessageRoleAssistant,
-			Content: parts,
-		},
+		Message:      kit.NewAssistantMessage(parts...),
 		FinishReason: convertStopReason(resp.StopReason),
 		Usage: kit.Usage{
 			InputTokens:      int32(resp.Usage.InputTokens),

@@ -13,7 +13,7 @@ import (
 )
 
 // encodeSignature base64-encodes a Gemini thought signature so the raw binary
-// bytes survive JSON round-trips through [kit.ContentPart.Signature].
+// bytes survive JSON round-trips through typed parts-part signatures.
 func encodeSignature(sig []byte) string {
 	if len(sig) == 0 {
 		return ""
@@ -36,6 +36,12 @@ func decodeSignature(sig string) []byte {
 	}
 
 	return decoded
+}
+
+var thinkingBudgets = map[kit.ThinkingLevel]int32{
+	kit.ThinkingLevelLow:    1024,
+	kit.ThinkingLevelMedium: 8192,
+	kit.ThinkingLevelHigh:   24576,
 }
 
 // model implements [kit.Model] for a Gemini model.
@@ -92,7 +98,7 @@ func (m *model) GenerateStream(ctx context.Context, req kit.ModelRequest) (*stre
 	return stream.New(func(emit *stream.Emitter[kit.Event]) (kit.ModelResponse, error) {
 		var (
 			lastResp           *genai.GenerateContentResponse
-			content            []kit.ContentPart
+			parts              []kit.ContentPart
 			thinkingStarted    bool
 			contentPartStarted bool
 		)
@@ -107,7 +113,7 @@ func (m *model) GenerateStream(ctx context.Context, req kit.ModelRequest) (*stre
 			if len(resp.Candidates) > 0 && resp.Candidates[0].Content != nil {
 				for _, p := range resp.Candidates[0].Content.Parts {
 					if p.Thought {
-						content = appendThinkingDelta(content, p.Text, p.ThoughtSignature)
+						parts = appendThinkingDelta(parts, p.Text, p.ThoughtSignature)
 
 						if !thinkingStarted {
 							thinkingStarted = true
@@ -121,7 +127,7 @@ func (m *model) GenerateStream(ctx context.Context, req kit.ModelRequest) (*stre
 							return kit.ModelResponse{}, nil
 						}
 					} else if p.Text != "" {
-						content = appendTextDelta(content, p.Text)
+						parts = appendTextDelta(parts, p.Text)
 
 						if !contentPartStarted {
 							contentPartStarted = true
@@ -135,12 +141,12 @@ func (m *model) GenerateStream(ctx context.Context, req kit.ModelRequest) (*stre
 							return kit.ModelResponse{}, nil
 						}
 					} else if part, ok := convertResponsePart(p); ok {
-						content = append(content, part)
+						parts = append(parts, part)
 					}
 
 					if p.FunctionCall != nil {
 						toolPart := toolCallPart(p)
-						content = append(content, toolPart)
+						parts = append(parts, toolPart)
 
 						if err := emit.Emit(kit.NewContentPartStartedEvent(kit.ContentTypeToolCall)); err != nil {
 							return kit.ModelResponse{}, nil
@@ -164,11 +170,8 @@ func (m *model) GenerateStream(ctx context.Context, req kit.ModelRequest) (*stre
 		}
 
 		result := kit.ModelResponse{
-			Message: kit.Message{
-				Role:    kit.MessageRoleAssistant,
-				Content: content,
-			},
-			FinishReason: convertFinishReason(finishReason, content),
+			Message:      kit.NewAssistantMessage(parts...),
+			FinishReason: convertFinishReason(finishReason, parts),
 		}
 
 		if lastResp.UsageMetadata != nil {
@@ -212,23 +215,25 @@ func toolCallPart(p *genai.Part) kit.ContentPart {
 	}
 
 	part := kit.ContentPart{
-		Type:      kit.ContentTypeToolCall,
-		ID:        id,
-		Name:      p.FunctionCall.Name,
-		Arguments: p.FunctionCall.Args,
+		Type: kit.ContentTypeToolCall,
+		ToolCall: &kit.ToolCallPart{
+			ID:        id,
+			Name:      p.FunctionCall.Name,
+			Arguments: p.FunctionCall.Args,
+		},
 	}
 	if len(p.ThoughtSignature) > 0 {
-		part.Signature = encodeSignature(p.ThoughtSignature)
+		part.ToolCall.Signature = encodeSignature(p.ThoughtSignature)
 	}
 
 	return part
 }
 
 func appendThinkingDelta(parts []kit.ContentPart, text string, signature []byte) []kit.ContentPart {
-	if len(parts) > 0 && parts[len(parts)-1].Type == kit.ContentTypeThinking {
-		parts[len(parts)-1].Text += text
+	if len(parts) > 0 && parts[len(parts)-1].Type == kit.ContentTypeThinking && parts[len(parts)-1].Thinking != nil {
+		parts[len(parts)-1].Thinking.Text += text
 		if len(signature) > 0 {
-			parts[len(parts)-1].Signature = encodeSignature(signature)
+			parts[len(parts)-1].Thinking.Signature = encodeSignature(signature)
 		}
 
 		return parts
@@ -238,19 +243,13 @@ func appendThinkingDelta(parts []kit.ContentPart, text string, signature []byte)
 }
 
 func appendTextDelta(parts []kit.ContentPart, text string) []kit.ContentPart {
-	if len(parts) > 0 && parts[len(parts)-1].Type == kit.ContentTypeText {
-		parts[len(parts)-1].Text += text
+	if len(parts) > 0 && parts[len(parts)-1].Type == kit.ContentTypeText && parts[len(parts)-1].Text != nil {
+		parts[len(parts)-1].Text.Text += text
 
 		return parts
 	}
 
 	return append(parts, kit.NewTextPart(text))
-}
-
-var thinkingBudgets = map[kit.ThinkingLevel]int32{
-	kit.ThinkingLevelLow:    1024,
-	kit.ThinkingLevelMedium: 8192,
-	kit.ThinkingLevelHigh:   24576,
 }
 
 func buildConfig(req kit.ModelRequest) (*genai.GenerateContentConfig, error) {
@@ -283,8 +282,8 @@ func buildConfig(req kit.ModelRequest) (*genai.GenerateContentConfig, error) {
 func convertMessages(msgs []kit.Message) []*genai.Content {
 	result := make([]*genai.Content, 0, len(msgs))
 	for _, msg := range msgs {
-		if content := convertMessage(msg); content != nil {
-			result = append(result, content)
+		if parts := convertMessage(msg); parts != nil {
+			result = append(result, parts)
 		}
 	}
 
@@ -317,18 +316,23 @@ func convertUserMessage(msg kit.Message) *genai.Content {
 
 func convertUserContentPart(p kit.ContentPart) *genai.Part {
 	switch p.Type {
-	case kit.ContentTypeText:
-		return &genai.Part{Text: p.Text}
+	case kit.ContentTypeText, kit.ContentTypeSummary:
+		return &genai.Part{Text: p.TextValue()}
 	case kit.ContentTypeImage, kit.ContentTypeDocument:
-		if len(p.Data) > 0 {
+		blob, ok := p.BlobValue()
+		if !ok {
+			return nil
+		}
+
+		if len(blob.Data) > 0 {
 			return &genai.Part{
-				InlineData: &genai.Blob{Data: p.Data, MIMEType: p.MediaType},
+				InlineData: &genai.Blob{Data: blob.Data, MIMEType: blob.MediaType},
 			}
 		}
 
-		if p.URL != "" {
+		if blob.URL != "" {
 			return &genai.Part{
-				FileData: &genai.FileData{FileURI: p.URL, MIMEType: p.MediaType},
+				FileData: &genai.FileData{FileURI: blob.URL, MIMEType: blob.MediaType},
 			}
 		}
 	}
@@ -337,36 +341,40 @@ func convertUserContentPart(p kit.ContentPart) *genai.Part {
 }
 
 func convertAssistantMessage(msg kit.Message) *genai.Content {
-	content := &genai.Content{
+	parts := &genai.Content{
 		Role:  genai.RoleModel,
 		Parts: make([]*genai.Part, 0, len(msg.Content)),
 	}
 
 	for _, part := range msg.Content {
 		if part.Type == kit.ContentTypeToolCall {
-			content.Parts = append(content.Parts, toolCallPartToGenai(part))
+			parts.Parts = append(parts.Parts, toolCallPartToGenai(part))
 
 			continue
 		}
 
 		if converted := convertAssistantContentPart(part); converted != nil {
-			content.Parts = append(content.Parts, converted)
+			parts.Parts = append(parts.Parts, converted)
 		}
 	}
 
-	return content
+	return parts
 }
 
 func toolCallPartToGenai(part kit.ContentPart) *genai.Part {
+	call, _ := part.ToolCallValue()
+
 	p := &genai.Part{
 		FunctionCall: &genai.FunctionCall{
-			ID:   part.ID,
-			Name: part.Name,
-			Args: part.Arguments,
+			ID:   call.ID,
+			Name: call.Name,
+			Args: call.Arguments,
 		},
 	}
-	if sig := decodeSignature(part.Signature); len(sig) > 0 {
-		p.ThoughtSignature = sig
+	if part.ToolCall != nil {
+		if sig := decodeSignature(part.ToolCall.Signature); len(sig) > 0 {
+			p.ThoughtSignature = sig
+		}
 	}
 
 	return p
@@ -375,23 +383,29 @@ func toolCallPartToGenai(part kit.ContentPart) *genai.Part {
 func convertAssistantContentPart(part kit.ContentPart) *genai.Part {
 	switch part.Type {
 	case kit.ContentTypeThinking:
+		thinking, ok := part.ThinkingValue()
+		if !ok {
+			return nil
+		}
+
 		p := &genai.Part{
-			Text:    part.Text,
+			Text:    thinking.Text,
 			Thought: true,
 		}
-		if sig := decodeSignature(part.Signature); len(sig) > 0 {
+		if sig := decodeSignature(thinking.Signature); len(sig) > 0 {
 			p.ThoughtSignature = sig
 		}
 
 		return p
 	case kit.ContentTypeRedactedThinking:
-		if len(part.Data) == 0 {
+		redacted, ok := part.RedactedThinkingValue()
+		if !ok || len(redacted.Data) == 0 {
 			return nil
 		}
 
 		return &genai.Part{
 			Thought:          true,
-			ThoughtSignature: part.Data,
+			ThoughtSignature: redacted.Data,
 		}
 	default:
 		return convertUserContentPart(part)
@@ -449,18 +463,18 @@ func convertResponse(resp *genai.GenerateContentResponse) kit.ModelResponse {
 
 	candidate := resp.Candidates[0]
 
-	var content []kit.ContentPart
+	var parts []kit.ContentPart
 
 	if candidate.Content != nil {
 		for _, p := range candidate.Content.Parts {
 			if p.Thought {
-				content = append(content, kit.NewThinkingPart(p.Text, encodeSignature(p.ThoughtSignature)))
+				parts = append(parts, kit.NewThinkingPart(p.Text, encodeSignature(p.ThoughtSignature)))
 			} else if part, ok := convertResponsePart(p); ok {
-				content = append(content, part)
+				parts = append(parts, part)
 			}
 
 			if p.FunctionCall != nil {
-				content = append(content, toolCallPart(p))
+				parts = append(parts, toolCallPart(p))
 			}
 		}
 	}
@@ -468,9 +482,9 @@ func convertResponse(resp *genai.GenerateContentResponse) kit.ModelResponse {
 	result := kit.ModelResponse{
 		Message: kit.Message{
 			Role:    kit.MessageRoleAssistant,
-			Content: content,
+			Content: parts,
 		},
-		FinishReason: convertFinishReason(candidate.FinishReason, content),
+		FinishReason: convertFinishReason(candidate.FinishReason, parts),
 	}
 
 	if resp.UsageMetadata != nil {
@@ -502,9 +516,11 @@ func convertResponsePart(p *genai.Part) (kit.ContentPart, bool) {
 		}
 	case p.FileData != nil:
 		if strings.HasPrefix(p.FileData.MIMEType, "image/") {
-			part = kit.ContentPart{Type: kit.ContentTypeImage, URL: p.FileData.FileURI, MediaType: p.FileData.MIMEType}
+			part = kit.NewImageURLPart(p.FileData.FileURI)
+			part.Image.MediaType = p.FileData.MIMEType
 		} else {
-			part = kit.ContentPart{Type: kit.ContentTypeDocument, URL: p.FileData.FileURI, MediaType: p.FileData.MIMEType}
+			part = kit.NewDocumentURLPart(p.FileData.FileURI)
+			part.Document.MediaType = p.FileData.MIMEType
 		}
 	default:
 		return kit.ContentPart{}, false
@@ -513,8 +529,8 @@ func convertResponsePart(p *genai.Part) (kit.ContentPart, bool) {
 	return part, true
 }
 
-func convertFinishReason(r genai.FinishReason, content []kit.ContentPart) kit.FinishReason {
-	for _, p := range content {
+func convertFinishReason(r genai.FinishReason, parts []kit.ContentPart) kit.FinishReason {
+	for _, p := range parts {
 		if p.Type == kit.ContentTypeToolCall {
 			return kit.FinishReasonToolCall
 		}

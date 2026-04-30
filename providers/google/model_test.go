@@ -80,11 +80,10 @@ func TestConvertContentPart_ImageData(t *testing.T) {
 }
 
 func TestConvertContentPart_ImageURL(t *testing.T) {
-	part := convertUserContentPart(kit.ContentPart{
-		Type:      kit.ContentTypeImage,
-		URL:       "https://example.com/image.png",
-		MediaType: "image/png",
-	})
+	input := kit.NewImageURLPart("https://example.com/image.png")
+	input.Image.MediaType = "image/png"
+
+	part := convertUserContentPart(input)
 	if part == nil {
 		t.Fatal("expected image URL part")
 	}
@@ -122,11 +121,10 @@ func TestConvertContentPart_DocumentData(t *testing.T) {
 }
 
 func TestConvertContentPart_DocumentURL(t *testing.T) {
-	part := convertUserContentPart(kit.ContentPart{
-		Type:      kit.ContentTypeDocument,
-		URL:       "https://example.com/files/spec.pdf",
-		MediaType: "application/pdf",
-	})
+	input := kit.NewDocumentURLPart("https://example.com/files/spec.pdf")
+	input.Document.MediaType = "application/pdf"
+
+	part := convertUserContentPart(input)
 	if part == nil {
 		t.Fatal("expected document URL part")
 	}
@@ -149,17 +147,17 @@ func TestConvertAssistantMessage_PreservesToolMetadata(t *testing.T) {
 		Role: kit.MessageRoleAssistant,
 		Content: []kit.ContentPart{
 			kit.NewThinkingPart("chain", encodeSignature([]byte("sig-part"))),
-			{
-				Type: kit.ContentTypeText,
-				Text: "done",
-			},
-			{
-				Type:      kit.ContentTypeToolCall,
-				ID:        "call_1",
-				Name:      "search",
-				Arguments: map[string]any{"query": "crappy"},
-				Signature: encodeSignature([]byte("sig")),
-			},
+			kit.NewTextPart("done"),
+			func() kit.ContentPart {
+				part := kit.NewToolCallPart(kit.ToolCall{
+					ID:        "call_1",
+					Name:      "search",
+					Arguments: map[string]any{"query": "crappy"},
+				})
+				part.ToolCall.Signature = encodeSignature([]byte("sig"))
+
+				return part
+			}(),
 		},
 	})
 
@@ -255,24 +253,34 @@ func TestConvertResponse_PreservesThinkingToolCallsAndUsage(t *testing.T) {
 		t.Fatalf("content[0].type = %q, want %q", resp.Message.Content[0].Type, kit.ContentTypeThinking)
 	}
 
-	if want := encodeSignature([]byte("part-sig")); resp.Message.Content[0].Signature != want {
-		t.Fatalf("content[0].signature = %q, want %q", resp.Message.Content[0].Signature, want)
+	thinking, ok := resp.Message.Content[0].ThinkingValue()
+	if !ok {
+		t.Fatal("expected thinking content")
+	}
+
+	if want := encodeSignature([]byte("part-sig")); thinking.Signature != want {
+		t.Fatalf("content[0].signature = %q, want %q", thinking.Signature, want)
 	}
 
 	if resp.Message.Content[1].Type != kit.ContentTypeText {
 		t.Fatalf("content[1].type = %q, want %q", resp.Message.Content[1].Type, kit.ContentTypeText)
 	}
 
-	if resp.Message.Content[1].Text != "final" {
-		t.Fatalf("content[1].text = %q, want %q", resp.Message.Content[1].Text, "final")
+	if resp.Message.Content[1].TextValue() != "final" {
+		t.Fatalf("content[1].text = %q, want %q", resp.Message.Content[1].TextValue(), "final")
 	}
 
 	if resp.Message.Content[2].Type != kit.ContentTypeImage {
 		t.Fatalf("content[2].type = %q, want %q", resp.Message.Content[2].Type, kit.ContentTypeImage)
 	}
 
-	if string(resp.Message.Content[2].Data) != "img" {
-		t.Fatalf("content[2].data = %q, want %q", string(resp.Message.Content[2].Data), "img")
+	blob, ok := resp.Message.Content[2].BlobValue()
+	if !ok {
+		t.Fatal("expected image content")
+	}
+
+	if string(blob.Data) != "img" {
+		t.Fatalf("content[2].data = %q, want %q", string(blob.Data), "img")
 	}
 
 	toolCalls := resp.Message.ToolCalls()
@@ -293,8 +301,12 @@ func TestConvertResponse_PreservesThinkingToolCallsAndUsage(t *testing.T) {
 		}
 	}
 
-	if want := encodeSignature([]byte("sig")); toolPart.Signature != want {
-		t.Fatalf("thought signature = %q, want %q", toolPart.Signature, want)
+	if toolPart.ToolCall == nil {
+		t.Fatal("expected tool call payload")
+	}
+
+	if want := encodeSignature([]byte("sig")); toolPart.ToolCall.Signature != want {
+		t.Fatalf("thought signature = %q, want %q", toolPart.ToolCall.Signature, want)
 	}
 
 	if resp.Usage.InputTokens != 9 || resp.Usage.OutputTokens != 4 || resp.Usage.CacheReadTokens != 2 || resp.Usage.ReasoningTokens != 6 {
@@ -355,11 +367,16 @@ func TestAppendThinkingDelta_MergesAndPreservesLatestSignature(t *testing.T) {
 		t.Fatalf("parts[0].type = %q, want %q", parts[0].Type, kit.ContentTypeThinking)
 	}
 
-	if parts[0].Text != "chain continued" {
-		t.Fatalf("parts[0].text = %q, want %q", parts[0].Text, "chain continued")
+	if parts[0].TextValue() != "chain continued" {
+		t.Fatalf("parts[0].text = %q, want %q", parts[0].TextValue(), "chain continued")
 	}
 
-	if want := encodeSignature([]byte("sig")); parts[0].Signature != want {
-		t.Fatalf("parts[0].signature = %q, want %q", parts[0].Signature, want)
+	thinking, ok := parts[0].ThinkingValue()
+	if !ok {
+		t.Fatal("expected thinking payload")
+	}
+
+	if want := encodeSignature([]byte("sig")); thinking.Signature != want {
+		t.Fatalf("parts[0].signature = %q, want %q", thinking.Signature, want)
 	}
 }

@@ -30,8 +30,21 @@ type ModelTurn struct {
 }
 
 func (turn ModelTurn) modelResponse() kit.ModelResponse {
+	var parts []kit.ContentPart
+	if turn.Thinking != "" {
+		parts = append(parts, kit.NewThinkingPart(turn.Thinking, ""))
+	}
+
+	if turn.Text != "" {
+		parts = append(parts, kit.NewTextPart(turn.Text))
+	}
+
+	for _, tc := range turn.ToolCalls {
+		parts = append(parts, kit.NewToolCallPart(tc))
+	}
+
 	return kit.ModelResponse{
-		Message:          kit.NewAssistantMessage(turn.Text, turn.Thinking, turn.ToolCalls),
+		Message:          kit.NewAssistantMessage(parts...),
 		StructuredOutput: turn.StructuredOutput,
 		FinishReason:     turn.finishReason(),
 		Usage:            turn.Usage,
