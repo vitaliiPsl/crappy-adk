@@ -273,7 +273,6 @@ func TestAgent_Run_MultipleToolCalls(t *testing.T) {
 
 	agent, err := agent.New(model,
 		agent.WithTools(searchTool),
-		agent.WithSequentialToolExecution(),
 	)
 	if err != nil {
 		t.Fatalf("NewAgent: %v", err)
@@ -313,7 +312,6 @@ func TestAgent_Run_MultiTurn(t *testing.T) {
 
 	agent, err := agent.New(model,
 		agent.WithTools(readTool, writeTool),
-		agent.WithSequentialToolExecution(),
 	)
 	if err != nil {
 		t.Fatalf("NewAgent: %v", err)
@@ -716,7 +714,6 @@ func TestAgent_Stream_ToolCallEvents(t *testing.T) {
 
 	agent, err := agent.New(model,
 		agent.WithTools(tool),
-		agent.WithSequentialToolExecution(),
 	)
 	if err != nil {
 		t.Fatalf("NewAgent: %v", err)

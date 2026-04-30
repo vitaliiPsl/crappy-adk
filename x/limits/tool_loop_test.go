@@ -28,7 +28,6 @@ func TestWithToolLoopDetection(t *testing.T) {
 
 	a, err := agent.New(model,
 		agent.WithTools(searchTool),
-		agent.WithSequentialToolExecution(),
 		limits.WithToolLoopDetection(2, 15),
 	)
 	if err != nil {

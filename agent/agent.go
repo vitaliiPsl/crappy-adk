@@ -19,12 +19,10 @@ type Agent struct {
 	config kit.AgentConfig
 	model  kit.Model
 
-	tools           map[string]kit.Tool
-	toolDefinitions []kit.ToolDefinition
+	registry *toolRegistry
 
-	compactor         kit.Compactor
-	hooks             hooks
-	executionStrategy toolExecutionStrategy
+	compactor kit.Compactor
+	hooks     hooks
 
 	modelRunner  *modelRunner
 	toolExecutor *toolExecutor
@@ -33,8 +31,8 @@ type Agent struct {
 // New creates an agent backed by the given model. Options are applied in order.
 func New(model kit.Model, options ...Option) (*Agent, error) {
 	a := &Agent{
-		model: model,
-		tools: make(map[string]kit.Tool),
+		model:    model,
+		registry: newToolRegistry(),
 		config: kit.AgentConfig{
 			CompactionThreshold: defaultCompactionThreshold,
 		},
@@ -46,12 +44,8 @@ func New(model kit.Model, options ...Option) (*Agent, error) {
 		}
 	}
 
-	if a.executionStrategy == nil {
-		a.executionStrategy = parallelStrategy{}
-	}
-
-	a.modelRunner = newModelRunner(a.model, a.toolDefinitions, &a.hooks, &a.config)
-	a.toolExecutor = newToolExecutor(a.tools, &a.hooks, a.executionStrategy)
+	a.modelRunner = newModelRunner(a.model, a.registry, &a.hooks, &a.config)
+	a.toolExecutor = newToolExecutor(a.registry, &a.hooks)
 
 	return a, nil
 }

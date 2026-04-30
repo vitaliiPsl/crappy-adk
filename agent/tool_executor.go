@@ -9,13 +9,12 @@ import (
 )
 
 type toolExecutor struct {
-	tools    map[string]kit.Tool
+	registry *toolRegistry
 	hooks    *hooks
-	strategy toolExecutionStrategy
 }
 
-func newToolExecutor(tools map[string]kit.Tool, hooks *hooks, strategy toolExecutionStrategy) *toolExecutor {
-	return &toolExecutor{tools: tools, hooks: hooks, strategy: strategy}
+func newToolExecutor(registry *toolRegistry, hooks *hooks) *toolExecutor {
+	return &toolExecutor{registry: registry, hooks: hooks}
 }
 
 func (e *toolExecutor) run(
@@ -23,11 +22,24 @@ func (e *toolExecutor) run(
 	calls []kit.ToolCall,
 	emitter *stream.Emitter[kit.Event],
 ) ([]kit.Message, error) {
-	emit := func(result kit.ToolResult) (kit.Message, error) {
-		return e.emitResult(result, emitter)
+	msgs := make([]kit.Message, 0, len(calls))
+
+	for _, call := range calls {
+		if err := ctx.Err(); err != nil {
+			return msgs, err
+		}
+
+		result := e.call(ctx, call)
+
+		msg, err := e.emitResult(result, emitter)
+		if err != nil {
+			return msgs, err
+		}
+
+		msgs = append(msgs, msg)
 	}
 
-	return e.strategy.execute(ctx, calls, e.call, emit)
+	return msgs, nil
 }
 
 func (e *toolExecutor) call(ctx context.Context, toolCall kit.ToolCall) (result kit.ToolResult) {
@@ -42,7 +54,7 @@ func (e *toolExecutor) call(ctx context.Context, toolCall kit.ToolCall) (result 
 		return kit.NewErrorToolResult(toolCall, err)
 	}
 
-	tool, ok := e.tools[toolCall.Name]
+	tool, ok := e.registry.get(toolCall.Name)
 	if !ok {
 		return kit.NewErrorToolResult(toolCall, fmt.Errorf("tool not found: %s", toolCall.Name))
 	}
@@ -80,81 +92,4 @@ func (e *toolExecutor) emitResult(result kit.ToolResult, emitter *stream.Emitter
 	}
 
 	return msg, nil
-}
-
-// toolExecutionStrategy controls how a batch of tool calls are dispatched.
-type toolExecutionStrategy interface {
-	execute(
-		ctx context.Context,
-		calls []kit.ToolCall,
-		call func(context.Context, kit.ToolCall) kit.ToolResult,
-		emit func(kit.ToolResult) (kit.Message, error),
-	) ([]kit.Message, error)
-}
-
-type sequentialStrategy struct{}
-
-func (sequentialStrategy) execute(
-	ctx context.Context,
-	calls []kit.ToolCall,
-	call func(context.Context, kit.ToolCall) kit.ToolResult,
-	emit func(kit.ToolResult) (kit.Message, error),
-) ([]kit.Message, error) {
-	msgs := make([]kit.Message, 0, len(calls))
-
-	for _, c := range calls {
-		msg, err := emit(call(ctx, c))
-		if err != nil {
-			return msgs, err
-		}
-
-		msgs = append(msgs, msg)
-	}
-
-	return msgs, nil
-}
-
-type parallelStrategy struct{}
-
-type indexedResult struct {
-	index  int
-	result kit.ToolResult
-}
-
-func (parallelStrategy) execute(
-	ctx context.Context,
-	calls []kit.ToolCall,
-	call func(context.Context, kit.ToolCall) kit.ToolResult,
-	emit func(kit.ToolResult) (kit.Message, error),
-) ([]kit.Message, error) {
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-
-	msgs := make([]kit.Message, len(calls))
-	results := make(chan indexedResult, len(calls))
-
-	for i, c := range calls {
-		go func(index int, c kit.ToolCall) {
-			results <- indexedResult{index: index, result: call(ctx, c)}
-		}(i, c)
-	}
-
-	for range len(calls) {
-		var ir indexedResult
-
-		select {
-		case ir = <-results:
-		case <-ctx.Done():
-			return msgs, ctx.Err()
-		}
-
-		msg, err := emit(ir.result)
-		if err != nil {
-			return msgs, err
-		}
-
-		msgs[ir.index] = msg
-	}
-
-	return msgs, nil
 }
