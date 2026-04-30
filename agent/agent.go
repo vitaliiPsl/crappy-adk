@@ -19,13 +19,11 @@ type Agent struct {
 	config kit.AgentConfig
 	model  kit.Model
 
-	registry *toolRegistry
+	registry     *toolRegistry
+	toolExecutor *toolExecutor
 
 	compactor kit.Compactor
 	hooks     hooks
-
-	modelRunner  *modelRunner
-	toolExecutor *toolExecutor
 }
 
 // New creates an agent backed by the given model. Options are applied in order.
@@ -44,7 +42,6 @@ func New(model kit.Model, options ...Option) (*Agent, error) {
 		}
 	}
 
-	a.modelRunner = newModelRunner(a.model, a.registry, &a.hooks, &a.config)
 	a.toolExecutor = newToolExecutor(a.registry, &a.hooks)
 
 	return a, nil
@@ -154,8 +151,46 @@ func (a *Agent) runModelTurn(
 	response *kit.Result,
 	e *stream.Emitter[kit.Event],
 ) (kit.ModelResponse, error) {
-	modelResp, err := a.modelRunner.run(ctx, msgs, e)
+	req := kit.ModelRequest{
+		Instruction:    a.config.SystemPrompt,
+		Messages:       msgs,
+		Tools:          a.registry.definitions(),
+		ResponseSchema: a.config.ResponseSchema,
+		Config: kit.GenerationConfig{
+			Temperature:     a.config.Temperature,
+			TopP:            a.config.TopP,
+			MaxOutputTokens: a.config.MaxOutputTokens,
+			Thinking:        a.config.Thinking,
+		},
+	}
+
+	ctx, req, err := a.hooks.onModelRequest(ctx, req)
 	if err != nil {
+		return kit.ModelResponse{}, fmt.Errorf("model request hook failed: %w", err)
+	}
+
+	modelStream, err := a.model.GenerateStream(ctx, req)
+	if err != nil {
+		return kit.ModelResponse{}, err
+	}
+
+	for ev := range modelStream.Iter() {
+		if err := e.Emit(ev); err != nil {
+			return kit.ModelResponse{}, err
+		}
+	}
+
+	modelResp, streamErr := modelStream.Result()
+	if streamErr != nil {
+		return kit.ModelResponse{}, streamErr
+	}
+
+	_, modelResp, err = a.hooks.onModelResponse(ctx, modelResp)
+	if err != nil {
+		return kit.ModelResponse{}, fmt.Errorf("model response hook failed: %w", err)
+	}
+
+	if err := e.Emit(kit.NewMessageEvent(modelResp.Message)); err != nil {
 		return kit.ModelResponse{}, err
 	}
 
