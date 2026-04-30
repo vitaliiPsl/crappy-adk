@@ -96,13 +96,13 @@ func (r *retryModel) Generate(ctx context.Context, req kit.ModelRequest) (kit.Mo
 
 // GenerateStream retries retryable errors before the first chunk. Mid-stream
 // errors pass through the returned stream.
-func (r *retryModel) GenerateStream(ctx context.Context, req kit.ModelRequest) (*xstream.Stream[kit.ModelEvent, kit.ModelResponse], error) {
+func (r *retryModel) GenerateStream(ctx context.Context, req kit.ModelRequest) (*xstream.Stream[kit.Event, kit.ModelResponse], error) {
 	stream, attempt, err := r.acquireStream(ctx, req, 0)
 	if err != nil {
 		return nil, err
 	}
 
-	return xstream.New(func(e *xstream.Emitter[kit.ModelEvent]) (kit.ModelResponse, error) {
+	return xstream.New(func(e *xstream.Emitter[kit.Event]) (kit.ModelResponse, error) {
 		for {
 			started := false
 
@@ -139,7 +139,7 @@ func (r *retryModel) GenerateStream(ctx context.Context, req kit.ModelRequest) (
 
 // acquireStream attempts to get a stream from the underlying model, retrying
 // on retryable errors within the shared attempt budget.
-func (r *retryModel) acquireStream(ctx context.Context, req kit.ModelRequest, attempt int) (*xstream.Stream[kit.ModelEvent, kit.ModelResponse], int, error) {
+func (r *retryModel) acquireStream(ctx context.Context, req kit.ModelRequest, attempt int) (*xstream.Stream[kit.Event, kit.ModelResponse], int, error) {
 	var lastErr error
 
 	for attempt < r.maxAttempts {

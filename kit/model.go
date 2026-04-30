@@ -23,7 +23,7 @@ type Model interface {
 	// GenerateStream sends a request to the model and streams the response as
 	// a sequence of chunks. The stream also exposes the final ModelResponse
 	// once iteration completes.
-	GenerateStream(ctx context.Context, req ModelRequest) (*stream.Stream[ModelEvent, ModelResponse], error)
+	GenerateStream(ctx context.Context, req ModelRequest) (*stream.Stream[Event, ModelResponse], error)
 }
 
 // ModelConfig holds static metadata for a model.
@@ -122,45 +122,6 @@ type ModelResponse struct {
 
 	// Usage reports token consumption for this call.
 	Usage Usage
-}
-
-type ModelEventType string
-
-const (
-	ModelEventContentPartStarted ModelEventType = "content_part_started"
-	ModelEventContentPartDelta   ModelEventType = "content_part_delta"
-	ModelEventContentPartDone    ModelEventType = "content_part_done"
-)
-
-type ModelEvent struct {
-	Type ModelEventType
-
-	ContentPartType ContentType
-	ContentPart     *ContentPart
-	Text            string
-}
-
-func NewModelContentPartStartedEvent(partType ContentType) ModelEvent {
-	return ModelEvent{
-		Type:            ModelEventContentPartStarted,
-		ContentPartType: partType,
-	}
-}
-
-func NewModelContentPartDeltaEvent(partType ContentType, text string) ModelEvent {
-	return ModelEvent{
-		Type:            ModelEventContentPartDelta,
-		ContentPartType: partType,
-		Text:            text,
-	}
-}
-
-func NewModelContentPartDoneEvent(part ContentPart) ModelEvent {
-	return ModelEvent{
-		Type:            ModelEventContentPartDone,
-		ContentPartType: part.Type,
-		ContentPart:     &part,
-	}
 }
 
 // GenerationConfig controls how the model generates its response.

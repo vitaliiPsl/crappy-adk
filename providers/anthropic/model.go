@@ -56,7 +56,7 @@ func (m *model) Generate(ctx context.Context, req kit.ModelRequest) (kit.ModelRe
 	return out, nil
 }
 
-func (m *model) GenerateStream(ctx context.Context, req kit.ModelRequest) (*xstream.Stream[kit.ModelEvent, kit.ModelResponse], error) {
+func (m *model) GenerateStream(ctx context.Context, req kit.ModelRequest) (*xstream.Stream[kit.Event, kit.ModelResponse], error) {
 	params, err := buildParams(req, m.config)
 	if err != nil {
 		return nil, err
@@ -64,7 +64,7 @@ func (m *model) GenerateStream(ctx context.Context, req kit.ModelRequest) (*xstr
 
 	stream := m.client.Messages.NewStreaming(ctx, params)
 
-	return xstream.New(func(emit *xstream.Emitter[kit.ModelEvent]) (kit.ModelResponse, error) {
+	return xstream.New(func(emit *xstream.Emitter[kit.Event]) (kit.ModelResponse, error) {
 		defer func() { _ = stream.Close() }()
 
 		var (
@@ -96,14 +96,14 @@ func (m *model) GenerateStream(ctx context.Context, req kit.ModelRequest) (*xstr
 					part := kit.NewTextPart("")
 					currentPart = &part
 
-					if err := emit.Emit(kit.NewModelContentPartStartedEvent(kit.ContentTypeText)); err != nil {
+					if err := emit.Emit(kit.NewContentPartStartedEvent(kit.ContentTypeText)); err != nil {
 						return kit.ModelResponse{}, nil
 					}
 				case anthropic.ThinkingBlock:
 					part := kit.NewThinkingPart("", block.Signature)
 					currentPart = &part
 
-					if err := emit.Emit(kit.NewModelContentPartStartedEvent(kit.ContentTypeThinking)); err != nil {
+					if err := emit.Emit(kit.NewContentPartStartedEvent(kit.ContentTypeThinking)); err != nil {
 						return kit.ModelResponse{}, nil
 					}
 				case anthropic.ToolUseBlock:
@@ -114,7 +114,7 @@ func (m *model) GenerateStream(ctx context.Context, req kit.ModelRequest) (*xstr
 					})
 					currentPart = &part
 
-					if err := emit.Emit(kit.NewModelContentPartStartedEvent(kit.ContentTypeToolCall)); err != nil {
+					if err := emit.Emit(kit.NewContentPartStartedEvent(kit.ContentTypeToolCall)); err != nil {
 						return kit.ModelResponse{}, nil
 					}
 				}
@@ -128,14 +128,14 @@ func (m *model) GenerateStream(ctx context.Context, req kit.ModelRequest) (*xstr
 				case anthropic.TextDelta:
 					builder.WriteString(d.Text)
 
-					if err := emit.Emit(kit.NewModelContentPartDeltaEvent(kit.ContentTypeText, d.Text)); err != nil {
+					if err := emit.Emit(kit.NewContentPartDeltaEvent(kit.ContentTypeText, d.Text)); err != nil {
 						return kit.ModelResponse{}, nil
 					}
 
 				case anthropic.ThinkingDelta:
 					builder.WriteString(d.Thinking)
 
-					if err := emit.Emit(kit.NewModelContentPartDeltaEvent(kit.ContentTypeThinking, d.Thinking)); err != nil {
+					if err := emit.Emit(kit.NewContentPartDeltaEvent(kit.ContentTypeThinking, d.Thinking)); err != nil {
 						return kit.ModelResponse{}, nil
 					}
 
@@ -161,7 +161,7 @@ func (m *model) GenerateStream(ctx context.Context, req kit.ModelRequest) (*xstr
 					currentPart.Arguments = args
 				}
 
-				if err := emit.Emit(kit.NewModelContentPartDoneEvent(*currentPart)); err != nil {
+				if err := emit.Emit(kit.NewContentPartDoneEvent(*currentPart)); err != nil {
 					return kit.ModelResponse{}, nil
 				}
 

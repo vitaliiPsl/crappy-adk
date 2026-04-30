@@ -47,16 +47,18 @@ func (r *modelRunner) run(
 		return kit.ModelResponse{}, fmt.Errorf("model request hook failed: %w", err)
 	}
 
-	stream, err := r.model.GenerateStream(ctx, req)
+	modelStream, err := r.model.GenerateStream(ctx, req)
 	if err != nil {
 		return kit.ModelResponse{}, err
 	}
 
-	if err := r.forwardEvents(stream, e); err != nil {
-		return kit.ModelResponse{}, err
+	for ev := range modelStream.Iter() {
+		if err := e.Emit(ev); err != nil {
+			return kit.ModelResponse{}, err
+		}
 	}
 
-	modelResp, streamErr := stream.Result()
+	modelResp, streamErr := modelStream.Result()
 	if streamErr != nil {
 		return kit.ModelResponse{}, streamErr
 	}
@@ -71,39 +73,4 @@ func (r *modelRunner) run(
 	}
 
 	return resp, nil
-}
-
-func (r *modelRunner) forwardEvents(
-	modelStream *stream.Stream[kit.ModelEvent, kit.ModelResponse],
-	e *stream.Emitter[kit.Event],
-) error {
-	for ev := range modelStream.Iter() {
-		event, ok := eventFromModelEvent(ev)
-		if !ok {
-			continue
-		}
-
-		if err := e.Emit(event); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-func eventFromModelEvent(ev kit.ModelEvent) (kit.Event, bool) {
-	switch ev.Type {
-	case kit.ModelEventContentPartStarted:
-		return kit.NewContentPartStartedEvent(ev.ContentPartType), true
-	case kit.ModelEventContentPartDelta:
-		return kit.NewContentPartDeltaEvent(ev.ContentPartType, ev.Text), true
-	case kit.ModelEventContentPartDone:
-		if ev.ContentPart == nil {
-			return kit.Event{}, false
-		}
-
-		return kit.NewContentPartDoneEvent(*ev.ContentPart), true
-	default:
-		return kit.Event{}, false
-	}
 }

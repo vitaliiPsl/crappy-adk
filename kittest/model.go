@@ -11,7 +11,7 @@ import (
 // ChunkResult represents a single yield from a model stream: either a
 // successful chunk or an error.
 type ChunkResult struct {
-	Event kit.ModelEvent
+	Event kit.Event
 	Err   error
 }
 
@@ -38,31 +38,31 @@ func (turn ModelTurn) modelResponse() kit.ModelResponse {
 	}
 }
 
-func (turn ModelTurn) events() []kit.ModelEvent {
-	var events []kit.ModelEvent
+func (turn ModelTurn) events() []kit.Event {
+	var events []kit.Event
 
 	if turn.Thinking != "" {
 		events = append(events,
-			kit.NewModelContentPartStartedEvent(kit.ContentTypeThinking),
-			kit.NewModelContentPartDeltaEvent(kit.ContentTypeThinking, turn.Thinking),
-			kit.NewModelContentPartDoneEvent(kit.NewThinkingPart(turn.Thinking, "")),
+			kit.NewContentPartStartedEvent(kit.ContentTypeThinking),
+			kit.NewContentPartDeltaEvent(kit.ContentTypeThinking, turn.Thinking),
+			kit.NewContentPartDoneEvent(kit.NewThinkingPart(turn.Thinking, "")),
 		)
 	}
 
 	if turn.Text != "" {
 		part := kit.NewTextPart(turn.Text)
 		events = append(events,
-			kit.NewModelContentPartStartedEvent(kit.ContentTypeText),
-			kit.NewModelContentPartDeltaEvent(kit.ContentTypeText, turn.Text),
-			kit.NewModelContentPartDoneEvent(part),
+			kit.NewContentPartStartedEvent(kit.ContentTypeText),
+			kit.NewContentPartDeltaEvent(kit.ContentTypeText, turn.Text),
+			kit.NewContentPartDoneEvent(part),
 		)
 	}
 
 	for _, toolCall := range turn.ToolCalls {
 		part := kit.NewToolCallPart(toolCall)
 		events = append(events,
-			kit.NewModelContentPartStartedEvent(kit.ContentTypeToolCall),
-			kit.NewModelContentPartDoneEvent(part),
+			kit.NewContentPartStartedEvent(kit.ContentTypeToolCall),
+			kit.NewContentPartDoneEvent(part),
 		)
 	}
 
@@ -121,7 +121,7 @@ func (model *Model) Generate(_ context.Context, req kit.ModelRequest) (kit.Model
 // GenerateStream returns a stream that yields the next turn's chunks, then
 // exposes the assembled response. When [Turn.Stream] is set, those chunk
 // results are yielded.
-func (model *Model) GenerateStream(_ context.Context, req kit.ModelRequest) (*stream.Stream[kit.ModelEvent, kit.ModelResponse], error) {
+func (model *Model) GenerateStream(_ context.Context, req kit.ModelRequest) (*stream.Stream[kit.Event, kit.ModelResponse], error) {
 	turn := model.next(req)
 	if turn.Error != nil {
 		return nil, turn.Error
@@ -132,7 +132,7 @@ func (model *Model) GenerateStream(_ context.Context, req kit.ModelRequest) (*st
 	if turn.Stream != nil {
 		results := turn.Stream
 
-		return stream.New(func(e *stream.Emitter[kit.ModelEvent]) (kit.ModelResponse, error) {
+		return stream.New(func(e *stream.Emitter[kit.Event]) (kit.ModelResponse, error) {
 			for _, result := range results {
 				if result.Err != nil {
 					return resp, result.Err
@@ -149,7 +149,7 @@ func (model *Model) GenerateStream(_ context.Context, req kit.ModelRequest) (*st
 
 	events := turn.events()
 
-	return stream.New(func(e *stream.Emitter[kit.ModelEvent]) (kit.ModelResponse, error) {
+	return stream.New(func(e *stream.Emitter[kit.Event]) (kit.ModelResponse, error) {
 		for _, event := range events {
 			if err := e.Emit(event); err != nil {
 				return resp, nil

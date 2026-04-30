@@ -638,10 +638,10 @@ func TestAgent_Stream_Events(t *testing.T) {
 		kittest.ModelTurn{
 			Text: "Hello world",
 			Stream: []kittest.ChunkResult{
-				{Event: kit.NewModelContentPartStartedEvent(kit.ContentTypeText)},
-				{Event: kit.NewModelContentPartDeltaEvent(kit.ContentTypeText, "Hello ")},
-				{Event: kit.NewModelContentPartDeltaEvent(kit.ContentTypeText, "world")},
-				{Event: kit.NewModelContentPartDoneEvent(kit.NewTextPart("Hello world"))},
+				{Event: kit.NewContentPartStartedEvent(kit.ContentTypeText)},
+				{Event: kit.NewContentPartDeltaEvent(kit.ContentTypeText, "Hello ")},
+				{Event: kit.NewContentPartDeltaEvent(kit.ContentTypeText, "world")},
+				{Event: kit.NewContentPartDoneEvent(kit.NewTextPart("Hello world"))},
 			},
 		},
 	)
@@ -697,19 +697,19 @@ func TestAgent_Stream_ToolCallEvents(t *testing.T) {
 		kittest.ModelTurn{
 			ToolCalls: []kit.ToolCall{searchCall},
 			Stream: []kittest.ChunkResult{
-				{Event: kit.NewModelContentPartStartedEvent(kit.ContentTypeThinking)},
-				{Event: kit.NewModelContentPartDeltaEvent(kit.ContentTypeThinking, "let me search")},
-				{Event: kit.NewModelContentPartDoneEvent(kit.NewThinkingPart("let me search", ""))},
-				{Event: kit.NewModelContentPartStartedEvent(kit.ContentTypeToolCall)},
-				{Event: kit.NewModelContentPartDoneEvent(kit.NewToolCallPart(searchCall))},
+				{Event: kit.NewContentPartStartedEvent(kit.ContentTypeThinking)},
+				{Event: kit.NewContentPartDeltaEvent(kit.ContentTypeThinking, "let me search")},
+				{Event: kit.NewContentPartDoneEvent(kit.NewThinkingPart("let me search", ""))},
+				{Event: kit.NewContentPartStartedEvent(kit.ContentTypeToolCall)},
+				{Event: kit.NewContentPartDoneEvent(kit.NewToolCallPart(searchCall))},
 			},
 		},
 		kittest.ModelTurn{
 			Text: "Here you go.",
 			Stream: []kittest.ChunkResult{
-				{Event: kit.NewModelContentPartStartedEvent(kit.ContentTypeText)},
-				{Event: kit.NewModelContentPartDeltaEvent(kit.ContentTypeText, "Here you go.")},
-				{Event: kit.NewModelContentPartDoneEvent(kit.NewTextPart("Here you go."))},
+				{Event: kit.NewContentPartStartedEvent(kit.ContentTypeText)},
+				{Event: kit.NewContentPartDeltaEvent(kit.ContentTypeText, "Here you go.")},
+				{Event: kit.NewContentPartDoneEvent(kit.NewTextPart("Here you go."))},
 			},
 		},
 	)
@@ -774,10 +774,10 @@ func TestAgent_Stream_ConsumerStopMidIteration(t *testing.T) {
 		kittest.ModelTurn{
 			Text: "Hello world",
 			Stream: []kittest.ChunkResult{
-				{Event: kit.NewModelContentPartStartedEvent(kit.ContentTypeText)},
-				{Event: kit.NewModelContentPartDeltaEvent(kit.ContentTypeText, "Hello ")},
-				{Event: kit.NewModelContentPartDeltaEvent(kit.ContentTypeText, "world")},
-				{Event: kit.NewModelContentPartDoneEvent(kit.NewTextPart("Hello world"))},
+				{Event: kit.NewContentPartStartedEvent(kit.ContentTypeText)},
+				{Event: kit.NewContentPartDeltaEvent(kit.ContentTypeText, "Hello ")},
+				{Event: kit.NewContentPartDeltaEvent(kit.ContentTypeText, "world")},
+				{Event: kit.NewContentPartDoneEvent(kit.NewTextPart("Hello world"))},
 			},
 		},
 	)
@@ -842,8 +842,8 @@ func TestAgent_Run_StreamError(t *testing.T) {
 func TestAgent_Run_MidStreamError(t *testing.T) {
 	model := kittest.NewModel(t,
 		kittest.ModelTurn{Stream: []kittest.ChunkResult{
-			{Event: kit.NewModelContentPartStartedEvent(kit.ContentTypeText)},
-			{Event: kit.NewModelContentPartDeltaEvent(kit.ContentTypeText, "partial ")},
+			{Event: kit.NewContentPartStartedEvent(kit.ContentTypeText)},
+			{Event: kit.NewContentPartDeltaEvent(kit.ContentTypeText, "partial ")},
 			{Err: errors.New("connection lost")},
 		}},
 	)

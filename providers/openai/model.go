@@ -58,7 +58,7 @@ func (m *model) Generate(ctx context.Context, req kit.ModelRequest) (kit.ModelRe
 	return out, nil
 }
 
-func (m *model) GenerateStream(ctx context.Context, req kit.ModelRequest) (*xstream.Stream[kit.ModelEvent, kit.ModelResponse], error) {
+func (m *model) GenerateStream(ctx context.Context, req kit.ModelRequest) (*xstream.Stream[kit.Event, kit.ModelResponse], error) {
 	params, err := buildParams(req, m.config.ID)
 	if err != nil {
 		return nil, err
@@ -66,7 +66,7 @@ func (m *model) GenerateStream(ctx context.Context, req kit.ModelRequest) (*xstr
 
 	stream := m.client.Responses.NewStreaming(ctx, params)
 
-	return xstream.New(func(emit *xstream.Emitter[kit.ModelEvent]) (kit.ModelResponse, error) {
+	return xstream.New(func(emit *xstream.Emitter[kit.Event]) (kit.ModelResponse, error) {
 		defer func() { _ = stream.Close() }()
 
 		var (
@@ -83,12 +83,12 @@ func (m *model) GenerateStream(ctx context.Context, req kit.ModelRequest) (*xstr
 				if !contentPartStarted {
 					contentPartStarted = true
 
-					if err := emit.Emit(kit.NewModelContentPartStartedEvent(kit.ContentTypeText)); err != nil {
+					if err := emit.Emit(kit.NewContentPartStartedEvent(kit.ContentTypeText)); err != nil {
 						return kit.ModelResponse{}, nil
 					}
 				}
 
-				if err := emit.Emit(kit.NewModelContentPartDeltaEvent(kit.ContentTypeText, e.Delta)); err != nil {
+				if err := emit.Emit(kit.NewContentPartDeltaEvent(kit.ContentTypeText, e.Delta)); err != nil {
 					return kit.ModelResponse{}, nil
 				}
 
@@ -96,12 +96,12 @@ func (m *model) GenerateStream(ctx context.Context, req kit.ModelRequest) (*xstr
 				if !thinkingStarted {
 					thinkingStarted = true
 
-					if err := emit.Emit(kit.NewModelContentPartStartedEvent(kit.ContentTypeThinking)); err != nil {
+					if err := emit.Emit(kit.NewContentPartStartedEvent(kit.ContentTypeThinking)); err != nil {
 						return kit.ModelResponse{}, nil
 					}
 				}
 
-				if err := emit.Emit(kit.NewModelContentPartDeltaEvent(kit.ContentTypeThinking, e.Delta)); err != nil {
+				if err := emit.Emit(kit.NewContentPartDeltaEvent(kit.ContentTypeThinking, e.Delta)); err != nil {
 					return kit.ModelResponse{}, nil
 				}
 
@@ -117,11 +117,11 @@ func (m *model) GenerateStream(ctx context.Context, req kit.ModelRequest) (*xstr
 
 				toolPart := kit.NewToolCallPart(tc)
 
-				if err := emit.Emit(kit.NewModelContentPartStartedEvent(kit.ContentTypeToolCall)); err != nil {
+				if err := emit.Emit(kit.NewContentPartStartedEvent(kit.ContentTypeToolCall)); err != nil {
 					return kit.ModelResponse{}, nil
 				}
 
-				if err := emit.Emit(kit.NewModelContentPartDoneEvent(toolPart)); err != nil {
+				if err := emit.Emit(kit.NewContentPartDoneEvent(toolPart)); err != nil {
 					return kit.ModelResponse{}, nil
 				}
 
@@ -156,7 +156,7 @@ func (m *model) GenerateStream(ctx context.Context, req kit.ModelRequest) (*xstr
 				continue
 			}
 
-			if err := emit.Emit(kit.NewModelContentPartDoneEvent(part)); err != nil {
+			if err := emit.Emit(kit.NewContentPartDoneEvent(part)); err != nil {
 				return resp, nil
 			}
 		}

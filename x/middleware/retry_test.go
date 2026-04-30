@@ -264,8 +264,8 @@ func TestRetry_GenerateStream_PreChunkRetriesExhausted(t *testing.T) {
 func TestRetry_GenerateStream_MidStreamPassesThrough(t *testing.T) {
 	model := kittest.NewModel(t,
 		kittest.ModelTurn{Stream: []kittest.ChunkResult{
-			{Event: kit.NewModelContentPartStartedEvent(kit.ContentTypeText)},
-			{Event: kit.NewModelContentPartDeltaEvent(kit.ContentTypeText, "partial")},
+			{Event: kit.NewContentPartStartedEvent(kit.ContentTypeText)},
+			{Event: kit.NewContentPartDeltaEvent(kit.ContentTypeText, "partial")},
 			{Err: retryableErr("mid-stream failure")},
 		}},
 	)
@@ -282,7 +282,7 @@ func TestRetry_GenerateStream_MidStreamPassesThrough(t *testing.T) {
 	)
 
 	for event := range stream.Iter() {
-		if event.Type == kit.ModelEventContentPartDelta && event.ContentPartType == kit.ContentTypeText {
+		if event.Type == kit.EventContentPartDelta && event.ContentPartType == kit.ContentTypeText {
 			sawText = true
 		}
 	}
@@ -325,13 +325,13 @@ func TestRetry_GenerateStream_MixedImmediateAndPreChunkRetries(t *testing.T) {
 	model.AssertCallCount(t, 3)
 }
 
-func collectText(t *testing.T, stream *stream.Stream[kit.ModelEvent, kit.ModelResponse]) string {
+func collectText(t *testing.T, stream *stream.Stream[kit.Event, kit.ModelResponse]) string {
 	t.Helper()
 
 	var text strings.Builder
 
 	for event := range stream.Iter() {
-		if event.Type == kit.ModelEventContentPartDelta && event.ContentPartType == kit.ContentTypeText {
+		if event.Type == kit.EventContentPartDelta && event.ContentPartType == kit.ContentTypeText {
 			text.WriteString(event.Text)
 		}
 	}
