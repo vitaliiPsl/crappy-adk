@@ -11,6 +11,7 @@ import (
 	"github.com/anthropics/anthropic-sdk-go/packages/param"
 
 	"github.com/vitaliiPsl/crappy-adk/kit"
+	"github.com/vitaliiPsl/crappy-adk/utils/schema"
 	xstream "github.com/vitaliiPsl/crappy-adk/x/stream"
 	"github.com/vitaliiPsl/crappy-adk/x/structuredoutput"
 )
@@ -232,13 +233,13 @@ func buildParams(req kit.ModelRequest, cfg kit.ModelConfig) (anthropic.MessageNe
 	}
 
 	if req.ResponseSchema != nil {
-		schema, err := structuredoutput.SchemaMap(req.ResponseSchema)
+		ToMap, err := schema.ToMap(req.ResponseSchema)
 		if err != nil {
 			return anthropic.MessageNewParams{}, fmt.Errorf("anthropic: schema map: %w", err)
 		}
 
 		params.OutputConfig = anthropic.OutputConfigParam{
-			Format: anthropic.JSONOutputFormatParam{Schema: schema},
+			Format: anthropic.JSONOutputFormatParam{Schema: ToMap},
 		}
 	}
 
@@ -421,20 +422,15 @@ func convertTools(tools []kit.ToolDefinition) []anthropic.ToolUnionParam {
 
 	result := make([]anthropic.ToolUnionParam, 0, len(tools))
 	for _, tool := range tools {
-		schema, err := json.Marshal(tool.Schema)
+		ToMap, err := schema.ToMap(tool.Schema)
 		if err != nil {
 			continue
 		}
 
-		var schemaMap map[string]any
-		if err := json.Unmarshal(schema, &schemaMap); err != nil {
-			continue
-		}
-
 		inputSchema := anthropic.ToolInputSchemaParam{
-			Properties: schemaMap["properties"],
+			Properties: ToMap["properties"],
 		}
-		if req, ok := schemaMap["required"].([]any); ok {
+		if req, ok := ToMap["required"].([]any); ok {
 			for _, r := range req {
 				if s, ok := r.(string); ok {
 					inputSchema.Required = append(inputSchema.Required, s)

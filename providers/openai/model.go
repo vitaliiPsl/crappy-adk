@@ -15,6 +15,7 @@ import (
 	"github.com/openai/openai-go/v3/shared"
 
 	"github.com/vitaliiPsl/crappy-adk/kit"
+	"github.com/vitaliiPsl/crappy-adk/utils/schema"
 	xstream "github.com/vitaliiPsl/crappy-adk/x/stream"
 	"github.com/vitaliiPsl/crappy-adk/x/structuredoutput"
 )
@@ -175,13 +176,13 @@ func buildParams(req kit.ModelRequest, modelID string) (responses.ResponseNewPar
 	}
 
 	if req.ResponseSchema != nil {
-		schema, err := structuredoutput.SchemaMap(req.ResponseSchema)
+		ToMap, err := schema.ToMap(req.ResponseSchema)
 		if err != nil {
 			return responses.ResponseNewParams{}, fmt.Errorf("openai: schema map: %w", err)
 		}
 
 		params.Text = responses.ResponseTextConfigParam{
-			Format: responses.ResponseFormatTextConfigParamOfJSONSchema("structured_output", schema),
+			Format: responses.ResponseFormatTextConfigParamOfJSONSchema("structured_output", ToMap),
 		}
 	}
 
@@ -442,13 +443,8 @@ func convertTools(tools []kit.ToolDefinition) []responses.ToolUnionParam {
 
 	result := make([]responses.ToolUnionParam, 0, len(tools))
 	for _, tool := range tools {
-		schema, err := json.Marshal(tool.Schema)
+		parameters, err := schema.ToMap(tool.Schema)
 		if err != nil {
-			continue
-		}
-
-		var parameters map[string]any
-		if err := json.Unmarshal(schema, &parameters); err != nil {
 			continue
 		}
 

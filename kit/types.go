@@ -247,10 +247,6 @@ type Message struct {
 	Role MessageRole `json:"role"`
 
 	// Content holds the parts that make up this message.
-	// User messages may contain text, images, documents, etc.
-	// Assistant messages may additionally contain thinking parts that carry
-	// reasoning text and a provider-issued signature that must be preserved
-	// across turns for thinking-enabled models.
 	Content []ContentPart `json:"content,omitempty"`
 }
 
