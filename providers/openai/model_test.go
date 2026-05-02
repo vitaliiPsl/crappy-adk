@@ -1,0 +1,315 @@
+package openai
+
+import (
+	"context"
+	"encoding/json"
+	"testing"
+
+	"github.com/openai/openai-go/v3/responses"
+
+	"github.com/vitaliiPsl/crappy-adk/kit"
+)
+
+type mockTool struct {
+	name, description string
+	schema            map[string]any
+}
+
+func (m *mockTool) Definition() kit.ToolDefinition {
+	return kit.ToolDefinition{Name: m.name, Description: m.description, Schema: m.schema}
+}
+
+func (m *mockTool) Execute(_ context.Context, _ map[string]any) (string, error) {
+	return "", nil
+}
+
+func mustParseOutputItem(t *testing.T, data string) responses.ResponseOutputItemUnion {
+	t.Helper()
+
+	var item responses.ResponseOutputItemUnion
+	if err := json.Unmarshal([]byte(data), &item); err != nil {
+		t.Fatalf("unmarshal output item: %v", err)
+	}
+
+	return item
+}
+
+func mustParseResponse(t *testing.T, data string) *responses.Response {
+	t.Helper()
+
+	var resp responses.Response
+	if err := json.Unmarshal([]byte(data), &resp); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+
+	return &resp
+}
+
+func TestConvertRequestTools(t *testing.T) {
+	t.Run("nil returns nil", func(t *testing.T) {
+		if got := convertRequestTools(nil); got != nil {
+			t.Errorf("expected nil, got %v", got)
+		}
+	})
+
+	t.Run("empty slice returns nil", func(t *testing.T) {
+		if got := convertRequestTools([]kit.Tool{}); got != nil {
+			t.Errorf("expected nil, got %v", got)
+		}
+	})
+
+	t.Run("single tool", func(t *testing.T) {
+		schema := map[string]any{"type": "object"}
+		tool := &mockTool{name: "search", description: "search the web", schema: schema}
+
+		result := convertRequestTools([]kit.Tool{tool})
+
+		if len(result) != 1 {
+			t.Fatalf("len = %d, want 1", len(result))
+		}
+
+		fn := result[0].OfFunction
+		if fn == nil {
+			t.Fatal("OfFunction is nil")
+		}
+
+		if fn.Name != "search" {
+			t.Errorf("Name = %q, want %q", fn.Name, "search")
+		}
+
+		if fn.Description.Value != "search the web" {
+			t.Errorf("Description = %q, want %q", fn.Description.Value, "search the web")
+		}
+
+		if fn.Parameters == nil {
+			t.Error("Parameters is nil")
+		}
+	})
+
+	t.Run("multiple tools preserve order", func(t *testing.T) {
+		tools := []kit.Tool{
+			&mockTool{name: "tool_a"},
+			&mockTool{name: "tool_b"},
+			&mockTool{name: "tool_c"},
+		}
+
+		result := convertRequestTools(tools)
+
+		if len(result) != 3 {
+			t.Fatalf("len = %d, want 3", len(result))
+		}
+
+		for i, want := range []string{"tool_a", "tool_b", "tool_c"} {
+			if got := result[i].OfFunction.Name; got != want {
+				t.Errorf("result[%d].Name = %q, want %q", i, got, want)
+			}
+		}
+	})
+}
+
+func TestConvertResponseContent(t *testing.T) {
+	t.Run("message single text part", func(t *testing.T) {
+		item := mustParseOutputItem(t, `{
+			"type": "message", "id": "msg_1", "role": "assistant", "status": "completed",
+			"content": [{"type": "output_text", "text": "Hello!"}]
+		}`)
+
+		got := convertResponseContent(item)
+
+		if len(got) != 1 {
+			t.Fatalf("len = %d, want 1", len(got))
+		}
+
+		if got[0].Type != kit.ContentTypeText {
+			t.Errorf("Type = %q, want %q", got[0].Type, kit.ContentTypeText)
+		}
+
+		if got[0].Text.Text != "Hello!" {
+			t.Errorf("Text = %q, want %q", got[0].Text.Text, "Hello!")
+		}
+	})
+
+	t.Run("message multiple text parts", func(t *testing.T) {
+		item := mustParseOutputItem(t, `{
+			"type": "message", "id": "msg_1", "role": "assistant", "status": "completed",
+			"content": [
+				{"type": "output_text", "text": "Hello"},
+				{"type": "output_text", "text": " world"}
+			]
+		}`)
+
+		got := convertResponseContent(item)
+
+		if len(got) != 2 {
+			t.Fatalf("len = %d, want 2", len(got))
+		}
+
+		if got[0].Text.Text != "Hello" {
+			t.Errorf("got[0].Text = %q, want %q", got[0].Text.Text, "Hello")
+		}
+
+		if got[1].Text.Text != " world" {
+			t.Errorf("got[1].Text = %q, want %q", got[1].Text.Text, " world")
+		}
+	})
+
+	t.Run("message with no text parts", func(t *testing.T) {
+		item := mustParseOutputItem(t, `{
+			"type": "message", "id": "msg_1", "role": "assistant", "status": "completed",
+			"content": []
+		}`)
+
+		if got := convertResponseContent(item); len(got) != 0 {
+			t.Errorf("expected empty, got %v", got)
+		}
+	})
+
+	t.Run("reasoning", func(t *testing.T) {
+		item := mustParseOutputItem(t, `{
+			"type": "reasoning", "id": "reasoning_1",
+			"summary": [{"type": "summary_text", "text": "I think..."}],
+			"encrypted_content": "sig_xyz"
+		}`)
+
+		got := convertResponseContent(item)
+
+		if len(got) != 1 {
+			t.Fatalf("len = %d, want 1", len(got))
+		}
+
+		if got[0].Type != kit.ContentTypeThinking {
+			t.Errorf("Type = %q, want %q", got[0].Type, kit.ContentTypeThinking)
+		}
+
+		th := got[0].Thinking
+		if th.ID != "reasoning_1" {
+			t.Errorf("ID = %q, want %q", th.ID, "reasoning_1")
+		}
+
+		if th.Text != "I think..." {
+			t.Errorf("Text = %q, want %q", th.Text, "I think...")
+		}
+
+		if th.Signature != "sig_xyz" {
+			t.Errorf("Signature = %q, want %q", th.Signature, "sig_xyz")
+		}
+	})
+
+	t.Run("function_call", func(t *testing.T) {
+		item := mustParseOutputItem(t, `{
+			"type": "function_call", "id": "item_1",
+			"call_id": "call_abc", "name": "add",
+			"arguments": "{\"a\": 1, \"b\": 2}"
+		}`)
+
+		got := convertResponseContent(item)
+
+		if len(got) != 1 {
+			t.Fatalf("len = %d, want 1", len(got))
+		}
+
+		if got[0].Type != kit.ContentTypeToolCall {
+			t.Errorf("Type = %q, want %q", got[0].Type, kit.ContentTypeToolCall)
+		}
+
+		tc := got[0].ToolCall
+		if tc.ID != "call_abc" {
+			t.Errorf("ID = %q, want %q", tc.ID, "call_abc")
+		}
+
+		if tc.Name != "add" {
+			t.Errorf("Name = %q, want %q", tc.Name, "add")
+		}
+
+		if tc.Arguments["a"] != float64(1) || tc.Arguments["b"] != float64(2) {
+			t.Errorf("Arguments = %v, want {a:1, b:2}", tc.Arguments)
+		}
+	})
+
+	t.Run("unknown type returns nil", func(t *testing.T) {
+		item := mustParseOutputItem(t, `{"type": "web_search_call", "id": "ws_1"}`)
+		if got := convertResponseContent(item); len(got) != 0 {
+			t.Errorf("expected nil/empty, got %v", got)
+		}
+	})
+}
+
+func TestConvertResponseFinishReason(t *testing.T) {
+	tests := []struct {
+		name string
+		json string
+		want kit.FinishReason
+	}{
+		{
+			name: "completed without tool calls",
+			json: `{"status": "completed", "output": [{"type": "message", "id": "m1", "role": "assistant", "status": "completed", "content": []}]}`,
+			want: kit.FinishReasonStop,
+		},
+		{
+			name: "completed with function call",
+			json: `{"status": "completed", "output": [{"type": "function_call", "id": "fc1", "call_id": "c1", "name": "fn", "arguments": "{}"}]}`,
+			want: kit.FinishReasonToolCall,
+		},
+		{
+			name: "incomplete max_output_tokens",
+			json: `{"status": "incomplete", "incomplete_details": {"reason": "max_output_tokens"}, "output": []}`,
+			want: kit.FinishReasonMaxTokens,
+		},
+		{
+			name: "incomplete content_filter",
+			json: `{"status": "incomplete", "incomplete_details": {"reason": "content_filter"}, "output": []}`,
+			want: kit.FinishReasonSafety,
+		},
+		{
+			name: "incomplete unknown reason",
+			json: `{"status": "incomplete", "incomplete_details": {"reason": "something_else"}, "output": []}`,
+			want: kit.FinishReasonUnknown,
+		},
+		{
+			name: "failed status",
+			json: `{"status": "failed", "output": []}`,
+			want: kit.FinishReasonUnknown,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			resp := mustParseResponse(t, tt.json)
+			if got := convertResponseFinishReason(resp); got != tt.want {
+				t.Errorf("got %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestConvertResponseUsage(t *testing.T) {
+	resp := mustParseResponse(t, `{
+		"status": "completed",
+		"output": [],
+		"usage": {
+			"input_tokens": 100,
+			"output_tokens": 50,
+			"total_tokens": 150,
+			"input_tokens_details": {"cached_tokens": 30},
+			"output_tokens_details": {"reasoning_tokens": 10}
+		}
+	}`)
+
+	got := convertResponseUsage(resp)
+
+	if got.InputTokens != 100 {
+		t.Errorf("InputTokens = %d, want 100", got.InputTokens)
+	}
+
+	if got.OutputTokens != 50 {
+		t.Errorf("OutputTokens = %d, want 50", got.OutputTokens)
+	}
+
+	if got.CacheReadTokens != 30 {
+		t.Errorf("CacheReadTokens = %d, want 30", got.CacheReadTokens)
+	}
+
+	if got.ReasoningTokens != 10 {
+		t.Errorf("ReasoningTokens = %d, want 10", got.ReasoningTokens)
+	}
+}
