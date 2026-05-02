@@ -1,0 +1,97 @@
+package agent
+
+import (
+	"context"
+	"fmt"
+
+	"github.com/vitaliiPsl/crappy-adk/kit"
+)
+
+var _ kit.Agent = (*Agent)(nil)
+
+// Agent runs a multi-turn conversation with a model, executing tools until
+// the model produces a final response.
+type Agent struct {
+	instructions string
+
+	model kit.Model
+
+	tools     []kit.Tool
+	toolIndex map[string]kit.Tool
+}
+
+// New creates a new Agent with the given instructions, model, and tools.
+func New(instructions string, model kit.Model, tools []kit.Tool) *Agent {
+	idx := make(map[string]kit.Tool, len(tools))
+	for _, t := range tools {
+		idx[t.Definition().Name] = t
+	}
+
+	return &Agent{
+		instructions: instructions,
+		model:        model,
+		tools:        tools,
+		toolIndex:    idx,
+	}
+}
+
+// Run executes the agentic loop starting with the given messages.
+// It calls the model repeatedly, executing any requested tools, until the model
+// returns a finish reason other than FinishReasonToolCall.
+func (a *Agent) Run(ctx context.Context, messages []kit.Message) (kit.AgentResponse, error) {
+	history := make([]kit.Message, len(messages))
+	copy(history, messages)
+
+	var usage kit.Usage
+
+	for {
+		req := kit.ModelRequest{
+			Instructions: a.instructions,
+			Messages:     history,
+			Tools:        a.tools,
+		}
+
+		resp, err := a.model.Generate(ctx, req)
+		if err != nil {
+			return kit.AgentResponse{}, err
+		}
+
+		usage.Add(resp.Usage)
+		history = append(history, resp.Message)
+
+		if resp.FinishReason != kit.FinishReasonToolCall {
+			return kit.AgentResponse{
+				Message: resp.Message,
+				Usage:   usage,
+			}, nil
+		}
+
+		results := a.executeTools(ctx, resp.Message)
+		history = append(history, kit.NewToolMessage(results))
+	}
+}
+
+func (a *Agent) executeTools(ctx context.Context, msg kit.Message) []kit.Content {
+	results := make([]kit.Content, 0, len(msg.Content))
+	for _, content := range msg.Content {
+		if content.Type != kit.ContentTypeToolCall || content.ToolCall == nil {
+			continue
+		}
+
+		call := *content.ToolCall
+		results = append(results, kit.NewToolResultContent(a.executeTool(ctx, call)))
+	}
+
+	return results
+}
+
+func (a *Agent) executeTool(ctx context.Context, call kit.ToolCall) kit.ToolResult {
+	tool, ok := a.toolIndex[call.Name]
+	if !ok {
+		return kit.NewToolResult(call, "", fmt.Errorf("tool %q not found", call.Name))
+	}
+
+	output, err := tool.Execute(ctx, call.Arguments)
+
+	return kit.NewToolResult(call, output, err)
+}
