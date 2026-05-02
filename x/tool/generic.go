@@ -67,6 +67,20 @@ func New[T any](
 	}, nil
 }
 
+// MustNew is like [New] but panics if schema generation fails.
+func MustNew[T any](
+	name,
+	description string,
+	fn func(ctx context.Context, args T) (string, error),
+) *Generic[T] {
+	t, err := New(name, description, fn)
+	if err != nil {
+		panic(fmt.Sprintf("tool.MustNew(%q): %v", name, err))
+	}
+
+	return t
+}
+
 // Definition returns the tool's name, description, and the JSON schema derived from T.
 func (g *Generic[T]) Definition() kit.ToolDefinition {
 	return kit.ToolDefinition{
