@@ -67,7 +67,7 @@ func (m *Model) Generate(ctx context.Context, request kit.ModelRequest) (kit.Mod
 
 	resp, err := m.client.Responses.New(ctx, req)
 	if err != nil {
-		return kit.ModelResponse{}, err
+		return kit.ModelResponse{}, mapError(err)
 	}
 
 	return convertResponse(resp), nil

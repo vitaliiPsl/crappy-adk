@@ -3,9 +3,14 @@ package openai
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
+	"net/http"
 	"testing"
 
 	"github.com/openai/openai-go/v3/responses"
+
+	openaisdk "github.com/openai/openai-go/v3"
 
 	"github.com/vitaliiPsl/crappy-adk/kit"
 )
@@ -311,5 +316,97 @@ func TestConvertResponseUsage(t *testing.T) {
 
 	if got.ReasoningTokens != 10 {
 		t.Errorf("ReasoningTokens = %d, want 10", got.ReasoningTokens)
+	}
+}
+
+func makeAPIError(statusCode int, code, message string) *openaisdk.Error {
+	return &openaisdk.Error{
+		StatusCode: statusCode,
+		Code:       code,
+		Message:    message,
+		Request:    &http.Request{},
+		Response:   &http.Response{StatusCode: statusCode},
+	}
+}
+
+func TestMapError(t *testing.T) {
+	tests := []struct {
+		name    string
+		err     error
+		wantErr error
+	}{
+		{
+			name:    "non-api error passes through",
+			err:     fmt.Errorf("some other error"),
+			wantErr: nil,
+		},
+		{
+			name:    "401 maps to ErrAuthentication",
+			err:     makeAPIError(401, "", "invalid api key"),
+			wantErr: kit.ErrAuthentication,
+		},
+		{
+			name:    "403 maps to ErrAuthentication",
+			err:     makeAPIError(403, "", "forbidden"),
+			wantErr: kit.ErrAuthentication,
+		},
+		{
+			name:    "429 maps to ErrRateLimit",
+			err:     makeAPIError(429, "", "rate limit exceeded"),
+			wantErr: kit.ErrRateLimit,
+		},
+		{
+			name:    "400 context_length_exceeded maps to ErrContextLength",
+			err:     makeAPIError(400, "context_length_exceeded", "too many tokens"),
+			wantErr: kit.ErrContextLength,
+		},
+		{
+			name:    "400 other code maps to ErrInvalidRequest",
+			err:     makeAPIError(400, "invalid_request_error", "bad param"),
+			wantErr: kit.ErrInvalidRequest,
+		},
+		{
+			name:    "500 maps to ErrServerError",
+			err:     makeAPIError(500, "", "internal server error"),
+			wantErr: kit.ErrServerError,
+		},
+		{
+			name:    "502 maps to ErrServerError",
+			err:     makeAPIError(502, "", "bad gateway"),
+			wantErr: kit.ErrServerError,
+		},
+		{
+			name:    "503 maps to ErrServerError",
+			err:     makeAPIError(503, "", "service unavailable"),
+			wantErr: kit.ErrServerError,
+		},
+		{
+			name:    "504 maps to ErrServerError",
+			err:     makeAPIError(504, "", "gateway timeout"),
+			wantErr: kit.ErrServerError,
+		},
+		{
+			name:    "unrecognised status passes through",
+			err:     makeAPIError(422, "", "unprocessable"),
+			wantErr: nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := mapError(tt.err)
+
+			if tt.wantErr == nil {
+				if got != tt.err {
+					t.Errorf("expected original error, got %v", got)
+				}
+
+				return
+			}
+
+			if !errors.Is(got, tt.wantErr) {
+				t.Errorf("errors.Is(%v, %v) = false", got, tt.wantErr)
+			}
+		})
 	}
 }
