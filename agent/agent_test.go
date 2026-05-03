@@ -210,7 +210,6 @@ func TestRun_SendsMissingToolErrorBackToModel(t *testing.T) {
 	}
 }
 
-
 type panicTool struct {
 	name string
 }
