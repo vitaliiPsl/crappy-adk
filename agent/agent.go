@@ -82,7 +82,13 @@ func (a *Agent) executeTools(ctx context.Context, toolCalls []kit.ToolCall) []ki
 	return results
 }
 
-func (a *Agent) executeTool(ctx context.Context, call kit.ToolCall) kit.ToolResult {
+func (a *Agent) executeTool(ctx context.Context, call kit.ToolCall) (result kit.ToolResult) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			result = kit.NewToolResult(call, "", fmt.Errorf("tool %q panicked: %v", call.Name, recovered))
+		}
+	}()
+
 	tool, ok := a.toolIndex[call.Name]
 	if !ok {
 		return kit.NewToolResult(call, "", fmt.Errorf("tool %q not found", call.Name))
