@@ -41,6 +41,41 @@ func NewToolMessage(content []Content) Message {
 	}
 }
 
+// TextContent returns the first text block from the message content, or nil if none.
+func (m Message) TextContent() *Text {
+	for _, c := range m.Content {
+		if c.Type == ContentTypeText && c.Text != nil {
+			return c.Text
+		}
+	}
+
+	return nil
+}
+
+// ToolCalls returns all tool call blocks from the message content.
+func (m Message) ToolCalls() []ToolCall {
+	var out []ToolCall
+	for _, c := range m.Content {
+		if c.Type == ContentTypeToolCall && c.ToolCall != nil {
+			out = append(out, *c.ToolCall)
+		}
+	}
+
+	return out
+}
+
+// ToolResults returns all tool result blocks from the message content.
+func (m Message) ToolResults() []ToolResult {
+	var out []ToolResult
+	for _, c := range m.Content {
+		if c.Type == ContentTypeToolResult && c.ToolResult != nil {
+			out = append(out, *c.ToolResult)
+		}
+	}
+
+	return out
+}
+
 // ContentType identifies the kind of content in a [Content].
 type ContentType string
 

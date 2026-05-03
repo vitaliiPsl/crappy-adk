@@ -61,25 +61,22 @@ func (a *Agent) Run(ctx context.Context, messages []kit.Message) (kit.AgentRespo
 
 		if resp.FinishReason != kit.FinishReasonToolCall {
 			return kit.AgentResponse{
-				Message: resp.Message,
-				Usage:   usage,
+				Messages: history[len(messages):],
+				Output:   resp.Message.TextContent(),
+				Usage:    usage,
 			}, nil
 		}
 
-		results := a.executeTools(ctx, resp.Message)
+		results := a.executeTools(ctx, resp.Message.ToolCalls())
 		history = append(history, kit.NewToolMessage(results))
 	}
 }
 
-func (a *Agent) executeTools(ctx context.Context, msg kit.Message) []kit.Content {
-	results := make([]kit.Content, 0, len(msg.Content))
-	for _, content := range msg.Content {
-		if content.Type != kit.ContentTypeToolCall || content.ToolCall == nil {
-			continue
-		}
-
-		call := *content.ToolCall
-		results = append(results, kit.NewToolResultContent(a.executeTool(ctx, call)))
+func (a *Agent) executeTools(ctx context.Context, toolCalls []kit.ToolCall) []kit.Content {
+	results := make([]kit.Content, 0, len(toolCalls))
+	for _, call := range toolCalls {
+		result := a.executeTool(ctx, call)
+		results = append(results, kit.NewToolResultContent(result))
 	}
 
 	return results
