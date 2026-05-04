@@ -487,6 +487,11 @@ func TestMapError(t *testing.T) {
 			wantErr: kit.ErrInvalidRequest,
 		},
 		{
+			name:    "400 with prompt token count message maps to ErrContextLength",
+			err:     genai.APIError{Code: 400, Message: "Prompt token count (102400) exceeds model context limit (32768)."},
+			wantErr: kit.ErrContextLength,
+		},
+		{
 			name:    "500 maps to ErrServerError",
 			err:     genai.APIError{Code: 500, Message: "internal error"},
 			wantErr: kit.ErrServerError,

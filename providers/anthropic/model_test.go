@@ -478,6 +478,22 @@ func makeAPIError(statusCode int) *anthropicsdk.Error {
 	}
 }
 
+func makeAPIErrorWithBody(t *testing.T, statusCode int, body string) *anthropicsdk.Error {
+	t.Helper()
+
+	err := &anthropicsdk.Error{
+		StatusCode: statusCode,
+		Request:    &http.Request{},
+		Response:   &http.Response{StatusCode: statusCode},
+	}
+
+	if jsonErr := json.Unmarshal([]byte(body), err); jsonErr != nil {
+		t.Fatalf("makeAPIErrorWithBody: %v", jsonErr)
+	}
+
+	return err
+}
+
 func TestMapError(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -513,6 +529,16 @@ func TestMapError(t *testing.T) {
 			name:    "400 maps to ErrInvalidRequest",
 			err:     makeAPIError(400),
 			wantErr: kit.ErrInvalidRequest,
+		},
+		{
+			name:    "400 with prompt too long body maps to ErrContextLength",
+			err:     makeAPIErrorWithBody(t, 400, `{"type":"error","error":{"type":"invalid_request_error","message":"prompt is too long: 210000 tokens > 200000 maximum"}}`),
+			wantErr: kit.ErrContextLength,
+		},
+		{
+			name:    "400 with context limit body maps to ErrContextLength",
+			err:     makeAPIErrorWithBody(t, 400, `{"type":"error","error":{"type":"invalid_request_error","message":"context limit exceeded"}}`),
+			wantErr: kit.ErrContextLength,
 		},
 		{
 			name:    "500 maps to ErrServerError",

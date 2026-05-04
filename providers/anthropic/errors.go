@@ -3,6 +3,7 @@ package anthropic
 import (
 	"errors"
 	"fmt"
+	"strings"
 
 	anthropicsdk "github.com/anthropics/anthropic-sdk-go"
 
@@ -23,6 +24,11 @@ func mapError(err error) error {
 	case 529:
 		return fmt.Errorf("%w: %s", kit.ErrRateLimit, apiErr.Error())
 	case 400:
+		raw := apiErr.RawJSON()
+		if strings.Contains(raw, "prompt is too long") || strings.Contains(raw, "context limit") {
+			return fmt.Errorf("%w: %s", kit.ErrContextLength, apiErr.Error())
+		}
+
 		return fmt.Errorf("%w: %s", kit.ErrInvalidRequest, apiErr.Error())
 	case 500, 502, 503, 504:
 		return fmt.Errorf("%w: %s", kit.ErrServerError, apiErr.Error())
