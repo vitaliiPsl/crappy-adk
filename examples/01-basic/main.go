@@ -30,7 +30,7 @@ func main() {
 		log.Fatal("OPENAI_API_KEY is not set")
 	}
 
-	model := openai.New(apiKey, "gpt-4.1-mini")
+	model := openai.New(apiKey, "gpt-5.4-nano")
 
 	a := agent.New(
 		model,

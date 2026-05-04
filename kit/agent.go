@@ -8,18 +8,18 @@ type Agent interface {
 	Run(ctx context.Context, messages []Message) (AgentResponse, error)
 }
 
-// AgentConfig holds agent-level configuration applied to every model call in a run.
+// AgentConfig is the configuration for an [Agent].
 type AgentConfig struct {
-	// Instructions provides the system prompt for the agent.
+	// Instructions describe the agent's behavior and role.
 	Instructions string
 
-	// Temperature controls randomness. Higher values produce more varied output.
+	// Temperature controls response randomness. Higher values produce more varied output.
 	Temperature *float32
 
-	// MaxOutputTokens limits the number of tokens the model can generate per turn.
+	// MaxOutputTokens limits the length of each response.
 	MaxOutputTokens *int32
 
-	// Thinking controls extended thinking. Defaults to ThinkingDisabled.
+	// Thinking controls the level of extended reasoning. Defaults to [ThinkingDisabled].
 	Thinking *ThinkingLevel
 }
 
