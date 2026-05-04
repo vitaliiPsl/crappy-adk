@@ -189,12 +189,8 @@ func convertRequestContentItem(content kit.Content, role responses.EasyInputMess
 
 		return responses.ResponseInputItemUnionParam{
 			OfMessage: &responses.EasyInputMessageParam{
-				Role: role,
-				Content: responses.EasyInputMessageContentUnionParam{
-					OfInputItemContentList: responses.ResponseInputMessageContentListParam{
-						responses.ResponseInputContentParamOfInputText(content.Text.Text),
-					},
-				},
+				Role:    role,
+				Content: responses.EasyInputMessageContentUnionParam{OfString: openai.String(content.Text.Text)},
 			},
 		}, true
 	case kit.ContentTypeThinking:
