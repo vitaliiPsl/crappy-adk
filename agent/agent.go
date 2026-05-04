@@ -12,7 +12,7 @@ var _ kit.Agent = (*Agent)(nil)
 // Agent runs a multi-turn conversation with a model, executing tools until
 // the model produces a final response.
 type Agent struct {
-	instructions string
+	config kit.AgentConfig
 
 	model kit.Model
 
@@ -20,18 +20,18 @@ type Agent struct {
 	toolIndex map[string]kit.Tool
 }
 
-// New creates a new Agent with the given instructions, model, and tools.
-func New(instructions string, model kit.Model, tools []kit.Tool) *Agent {
+// New creates a new Agent with the given model, tools, and config.
+func New(model kit.Model, tools []kit.Tool, config kit.AgentConfig) *Agent {
 	idx := make(map[string]kit.Tool, len(tools))
 	for _, t := range tools {
 		idx[t.Definition().Name] = t
 	}
 
 	return &Agent{
-		instructions: instructions,
-		model:        model,
-		tools:        tools,
-		toolIndex:    idx,
+		config:    config,
+		model:     model,
+		tools:     tools,
+		toolIndex: idx,
 	}
 }
 
@@ -46,9 +46,14 @@ func (a *Agent) Run(ctx context.Context, messages []kit.Message) (kit.AgentRespo
 
 	for {
 		req := kit.ModelRequest{
-			Instructions: a.instructions,
+			Instructions: a.config.Instructions,
 			Messages:     history,
 			Tools:        a.tools,
+			Config: kit.GenerationConfig{
+				Temperature:     a.config.Temperature,
+				MaxOutputTokens: a.config.MaxOutputTokens,
+				Thinking:        a.config.Thinking,
+			},
 		}
 
 		resp, err := a.model.Generate(ctx, req)

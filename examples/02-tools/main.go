@@ -53,10 +53,12 @@ func main() {
 	model := openai.New(apiKey, "gpt-4.1-mini")
 
 	a := agent.New(
-		"You are a dramatic dungeon master. Roll a d20 to determine the adventurer's fate, "+
-			"then narrate the outcome in two vivid sentences. Never reveal the raw number.",
 		model,
 		[]kit.Tool{rollDie},
+		kit.AgentConfig{
+			Instructions: "You are a dramatic dungeon master. Roll a d20 to determine the adventurer's fate, " +
+				"then narrate the outcome in two vivid sentences. Never reveal the raw number.",
+		},
 	)
 
 	messages := []kit.Message{

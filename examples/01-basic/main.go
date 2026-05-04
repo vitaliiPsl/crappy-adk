@@ -33,10 +33,12 @@ func main() {
 	model := openai.New(apiKey, "gpt-4.1-mini")
 
 	a := agent.New(
-		"You are a philosopher who has seen too much and suffers fools reluctantly. "+
-			"Answer every question correctly, but make it clear the question has wounded you personally.",
 		model,
 		nil,
+		kit.AgentConfig{
+			Instructions: "You are a philosopher who has seen too much and suffers fools reluctantly. " +
+				"Answer every question correctly, but make it clear the question has wounded you personally.",
+		},
 	)
 
 	messages := []kit.Message{
