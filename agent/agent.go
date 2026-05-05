@@ -18,6 +18,8 @@ type Agent struct {
 
 	tools     []kit.Tool
 	toolIndex map[string]kit.Tool
+
+	hooks hooks
 }
 
 // New creates a new Agent with the given model, tools, and config.
@@ -55,18 +57,7 @@ func (a *Agent) Run(ctx context.Context, messages []kit.Message) (kit.AgentRespo
 	var usage kit.Usage
 
 	for {
-		req := kit.ModelRequest{
-			Instructions: a.config.Instructions,
-			Messages:     history,
-			Tools:        a.tools,
-			Config: kit.GenerationConfig{
-				Temperature:     a.config.Temperature,
-				MaxOutputTokens: a.config.MaxOutputTokens,
-				Thinking:        a.config.Thinking,
-			},
-		}
-
-		resp, err := a.model.Generate(ctx, req)
+		ctx, resp, err := a.callModel(ctx, history)
 		if err != nil {
 			return kit.AgentResponse{}, err
 		}
@@ -82,34 +73,85 @@ func (a *Agent) Run(ctx context.Context, messages []kit.Message) (kit.AgentRespo
 			}, nil
 		}
 
-		results := a.executeTools(ctx, resp.Message.ToolCalls())
+		results, err := a.executeTools(ctx, resp.Message.ToolCalls())
+		if err != nil {
+			return kit.AgentResponse{}, err
+		}
+
 		history = append(history, kit.NewToolMessage(results))
 	}
 }
 
-func (a *Agent) executeTools(ctx context.Context, toolCalls []kit.ToolCall) []kit.Content {
+func (a *Agent) callModel(ctx context.Context, history []kit.Message) (context.Context, kit.ModelResponse, error) {
+	req := kit.ModelRequest{
+		Instructions: a.config.Instructions,
+		Messages:     history,
+		Tools:        a.tools,
+		Config: kit.GenerationConfig{
+			Temperature:     a.config.Temperature,
+			MaxOutputTokens: a.config.MaxOutputTokens,
+			Thinking:        a.config.Thinking,
+		},
+	}
+
+	var err error
+
+	ctx, req, err = a.hooks.onModelRequest(ctx, req)
+	if err != nil {
+		return ctx, kit.ModelResponse{}, err
+	}
+
+	resp, err := a.model.Generate(ctx, req)
+	if err != nil {
+		return ctx, kit.ModelResponse{}, err
+	}
+
+	ctx, resp, err = a.hooks.onModelResponse(ctx, resp)
+	if err != nil {
+		return ctx, kit.ModelResponse{}, err
+	}
+
+	return ctx, resp, nil
+}
+
+func (a *Agent) executeTools(ctx context.Context, toolCalls []kit.ToolCall) ([]kit.Content, error) {
 	results := make([]kit.Content, 0, len(toolCalls))
 	for _, call := range toolCalls {
-		result := a.executeTool(ctx, call)
+		result, err := a.executeTool(ctx, call)
+		if err != nil {
+			return nil, err
+		}
+
 		results = append(results, kit.NewToolResultContent(result))
 	}
 
-	return results
+	return results, nil
 }
 
-func (a *Agent) executeTool(ctx context.Context, call kit.ToolCall) (result kit.ToolResult) {
+func (a *Agent) executeTool(ctx context.Context, call kit.ToolCall) (result kit.ToolResult, err error) {
 	defer func() {
 		if recovered := recover(); recovered != nil {
 			result = kit.NewToolResult(call, "", fmt.Errorf("tool %q panicked: %v", call.Name, recovered))
+			err = nil
 		}
 	}()
 
 	tool, ok := a.toolIndex[call.Name]
 	if !ok {
-		return kit.NewToolResult(call, "", fmt.Errorf("tool %q not found", call.Name))
+		result = kit.NewToolResult(call, "", fmt.Errorf("tool %q not found", call.Name))
+
+		return
 	}
 
-	output, err := tool.Execute(ctx, call.Arguments)
+	ctx, call, err = a.hooks.onToolCall(ctx, call)
+	if err != nil {
+		return
+	}
 
-	return kit.NewToolResult(call, output, err)
+	output, execErr := tool.Execute(ctx, call.Arguments)
+	result = kit.NewToolResult(call, output, execErr)
+
+	_, result, err = a.hooks.onToolResult(ctx, result)
+
+	return
 }

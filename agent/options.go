@@ -34,6 +34,42 @@ func WithTools(tools ...kit.Tool) Option {
 	}
 }
 
+// WithOnModelRequest registers a hook that is called before each model request.
+func WithOnModelRequest(fn kit.OnModelRequest) Option {
+	return func(a *Agent) error {
+		a.hooks.modelRequest = append(a.hooks.modelRequest, fn)
+
+		return nil
+	}
+}
+
+// WithOnModelResponse registers a hook that is called after each model response.
+func WithOnModelResponse(fn kit.OnModelResponse) Option {
+	return func(a *Agent) error {
+		a.hooks.modelResponse = append(a.hooks.modelResponse, fn)
+
+		return nil
+	}
+}
+
+// WithOnToolCall registers a hook that is called before each tool execution.
+func WithOnToolCall(fn kit.OnToolCall) Option {
+	return func(a *Agent) error {
+		a.hooks.toolCall = append(a.hooks.toolCall, fn)
+
+		return nil
+	}
+}
+
+// WithOnToolResult registers a hook that is called after each tool execution.
+func WithOnToolResult(fn kit.OnToolResult) Option {
+	return func(a *Agent) error {
+		a.hooks.toolResult = append(a.hooks.toolResult, fn)
+
+		return nil
+	}
+}
+
 // WithExtensions applies one or more options to the agent, allowing extensions to be added in a modular way.
 func WithExtensions(extensions ...Option) Option {
 	return func(a *Agent) error {

@@ -264,7 +264,11 @@ func TestExecuteTool_Success(t *testing.T) {
 
 	call := kit.NewToolCall("call-1", "ok", map[string]any{"value": "x"})
 
-	result := a.executeTool(context.Background(), call)
+	result, err := a.executeTool(context.Background(), call)
+	if err != nil {
+		t.Fatalf("executeTool: %v", err)
+	}
+
 	if result.Output != "done" {
 		t.Fatalf("Output = %q, want %q", result.Output, "done")
 	}
@@ -284,7 +288,11 @@ func TestExecuteTool_Error(t *testing.T) {
 		t.Fatalf("New: %v", err)
 	}
 
-	result := a.executeTool(context.Background(), kit.NewToolCall("call-1", "fail", nil))
+	result, err := a.executeTool(context.Background(), kit.NewToolCall("call-1", "fail", nil))
+	if err != nil {
+		t.Fatalf("executeTool: %v", err)
+	}
+
 	if result.Error != "boom" {
 		t.Fatalf("Error = %q, want %q", result.Error, "boom")
 	}
@@ -296,7 +304,11 @@ func TestExecuteTool_NotFound(t *testing.T) {
 		t.Fatalf("New: %v", err)
 	}
 
-	result := a.executeTool(context.Background(), kit.NewToolCall("call-1", "missing", nil))
+	result, err := a.executeTool(context.Background(), kit.NewToolCall("call-1", "missing", nil))
+	if err != nil {
+		t.Fatalf("executeTool: %v", err)
+	}
+
 	if result.Error != `tool "missing" not found` {
 		t.Fatalf("Error = %q, want tool not found error", result.Error)
 	}
@@ -310,7 +322,11 @@ func TestExecuteTool_RecoversPanic(t *testing.T) {
 		t.Fatalf("New: %v", err)
 	}
 
-	result := a.executeTool(context.Background(), kit.NewToolCall("call-1", "panic", nil))
+	result, err := a.executeTool(context.Background(), kit.NewToolCall("call-1", "panic", nil))
+	if err != nil {
+		t.Fatalf("executeTool: %v", err)
+	}
+
 	if result.Output != "" {
 		t.Fatalf("Output = %q, want empty", result.Output)
 	}
