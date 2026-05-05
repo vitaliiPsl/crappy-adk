@@ -34,13 +34,16 @@ func main() {
 
 	model := openai.New(apiKey, "gpt-5.4-nano")
 
-	a := agent.New(
+	a, err := agent.New(
 		model,
 		nil,
 		kit.AgentConfig{
 			Instructions: "You are a concise assistant. Keep every reply to two sentences or fewer.",
 		},
 	)
+	if err != nil {
+		log.Fatalf("failed to create agent: %v", err)
+	}
 
 	turns := []string{
 		"My name is Vitalii and I am working on this AI assistant called Crappy.",

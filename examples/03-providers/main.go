@@ -47,9 +47,14 @@ func main() {
 }
 
 func run(ctx context.Context, label string, model kit.Model, prompt string) {
-	a := agent.New(model, nil, kit.AgentConfig{
+	a, err := agent.New(model, nil, kit.AgentConfig{
 		Instructions: "You are a helpful assistant.",
 	})
+	if err != nil {
+		log.Printf("[%s] failed to create agent: %v", label, err)
+
+		return
+	}
 
 	resp, err := a.Run(ctx, []kit.Message{
 		kit.NewUserMessage([]kit.Content{kit.NewTextContent(prompt)}),

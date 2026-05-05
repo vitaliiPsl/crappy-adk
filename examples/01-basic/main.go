@@ -32,7 +32,7 @@ func main() {
 
 	model := openai.New(apiKey, "gpt-5.4-nano")
 
-	a := agent.New(
+	a, err := agent.New(
 		model,
 		nil,
 		kit.AgentConfig{
@@ -40,6 +40,9 @@ func main() {
 				"Answer every question correctly, but make it clear the question has wounded you personally.",
 		},
 	)
+	if err != nil {
+		log.Fatalf("failed to create agent: %v", err)
+	}
 
 	messages := []kit.Message{
 		kit.NewUserMessage([]kit.Content{

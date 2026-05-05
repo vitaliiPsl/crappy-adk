@@ -21,18 +21,28 @@ type Agent struct {
 }
 
 // New creates a new Agent with the given model, tools, and config.
-func New(model kit.Model, tools []kit.Tool, config kit.AgentConfig) *Agent {
+// Additional options can be provided to further customize the agent's behavior.
+// It would return an error if any of the options fail to apply.
+func New(model kit.Model, tools []kit.Tool, config kit.AgentConfig, options ...Option) (*Agent, error) {
 	idx := make(map[string]kit.Tool, len(tools))
 	for _, t := range tools {
 		idx[t.Definition().Name] = t
 	}
 
-	return &Agent{
+	agent := &Agent{
 		config:    config,
 		model:     model,
 		tools:     tools,
 		toolIndex: idx,
 	}
+
+	for _, opt := range options {
+		if err := opt(agent); err != nil {
+			return nil, err
+		}
+	}
+
+	return agent, nil
 }
 
 // Run executes the agentic loop starting with the given messages.

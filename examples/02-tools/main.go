@@ -52,7 +52,7 @@ func main() {
 
 	model := openai.New(apiKey, "gpt-5.4-nano")
 
-	a := agent.New(
+	a, err := agent.New(
 		model,
 		[]kit.Tool{rollDie},
 		kit.AgentConfig{
@@ -60,6 +60,9 @@ func main() {
 				"then narrate the outcome in two vivid sentences. Never reveal the raw number.",
 		},
 	)
+	if err != nil {
+		log.Fatalf("failed to create agent: %v", err)
+	}
 
 	messages := []kit.Message{
 		kit.NewUserMessage([]kit.Content{

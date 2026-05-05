@@ -25,7 +25,10 @@ func TestRun_ReturnsFinalResponse(t *testing.T) {
 		kit.NewUserMessage([]kit.Content{kit.NewTextContent("hello")}),
 	}
 
-	a := New(model, []kit.Tool{tool}, kit.AgentConfig{Instructions: "be brief"})
+	a, err := New(model, []kit.Tool{tool}, kit.AgentConfig{Instructions: "be brief"})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
 
 	response, err := a.Run(context.Background(), messages)
 	if err != nil {
@@ -62,9 +65,12 @@ func TestRun_ReturnsModelError(t *testing.T) {
 
 	model := kittest.NewModel(t, kittest.ModelResult{Error: wantErr})
 
-	a := New(model, nil, kit.AgentConfig{Instructions: "be brief"})
+	a, err := New(model, nil, kit.AgentConfig{Instructions: "be brief"})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
 
-	_, err := a.Run(context.Background(), []kit.Message{
+	_, err = a.Run(context.Background(), []kit.Message{
 		kit.NewUserMessage([]kit.Content{kit.NewTextContent("hello")}),
 	})
 	if !errors.Is(err, wantErr) {
@@ -102,7 +108,10 @@ func TestRun_ExecutesToolCallAndContinues(t *testing.T) {
 		kit.NewUserMessage([]kit.Content{kit.NewTextContent("add 3 and 4")}),
 	}
 
-	a := New(model, []kit.Tool{tool}, kit.AgentConfig{Instructions: "use tools"})
+	a, err := New(model, []kit.Tool{tool}, kit.AgentConfig{Instructions: "use tools"})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
 
 	response, err := a.Run(context.Background(), messages)
 	if err != nil {
@@ -163,9 +172,12 @@ func TestRun_SendsToolErrorBackToModel(t *testing.T) {
 		},
 	)
 
-	a := New(model, []kit.Tool{tool}, kit.AgentConfig{Instructions: "use tools"})
+	a, err := New(model, []kit.Tool{tool}, kit.AgentConfig{Instructions: "use tools"})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
 
-	_, err := a.Run(context.Background(), []kit.Message{
+	_, err = a.Run(context.Background(), []kit.Message{
 		kit.NewUserMessage([]kit.Content{kit.NewTextContent("try failing tool")}),
 	})
 	if err != nil {
@@ -206,9 +218,12 @@ func TestRun_SendsMissingToolErrorBackToModel(t *testing.T) {
 		},
 	)
 
-	a := New(model, nil, kit.AgentConfig{Instructions: "use tools"})
+	a, err := New(model, nil, kit.AgentConfig{Instructions: "use tools"})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
 
-	_, err := a.Run(context.Background(), []kit.Message{
+	_, err = a.Run(context.Background(), []kit.Message{
 		kit.NewUserMessage([]kit.Content{kit.NewTextContent("try missing tool")}),
 	})
 	if err != nil {
@@ -242,7 +257,10 @@ func (p panicTool) Execute(context.Context, map[string]any) (string, error) {
 func TestExecuteTool_Success(t *testing.T) {
 	tool := kittest.NewTool(t, "ok", "ok tool", kittest.ToolResult{Result: "done"})
 
-	a := New(nil, []kit.Tool{tool}, kit.AgentConfig{})
+	a, err := New(nil, []kit.Tool{tool}, kit.AgentConfig{})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
 
 	call := kit.NewToolCall("call-1", "ok", map[string]any{"value": "x"})
 
@@ -261,7 +279,10 @@ func TestExecuteTool_Success(t *testing.T) {
 func TestExecuteTool_Error(t *testing.T) {
 	tool := kittest.NewTool(t, "fail", "fail tool", kittest.ToolResult{Error: errors.New("boom")})
 
-	a := New(nil, []kit.Tool{tool}, kit.AgentConfig{})
+	a, err := New(nil, []kit.Tool{tool}, kit.AgentConfig{})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
 
 	result := a.executeTool(context.Background(), kit.NewToolCall("call-1", "fail", nil))
 	if result.Error != "boom" {
@@ -270,7 +291,10 @@ func TestExecuteTool_Error(t *testing.T) {
 }
 
 func TestExecuteTool_NotFound(t *testing.T) {
-	a := New(nil, nil, kit.AgentConfig{})
+	a, err := New(nil, nil, kit.AgentConfig{})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
 
 	result := a.executeTool(context.Background(), kit.NewToolCall("call-1", "missing", nil))
 	if result.Error != `tool "missing" not found` {
@@ -281,7 +305,10 @@ func TestExecuteTool_NotFound(t *testing.T) {
 func TestExecuteTool_RecoversPanic(t *testing.T) {
 	tool := panicTool{name: "panic"}
 
-	a := New(nil, []kit.Tool{tool}, kit.AgentConfig{})
+	a, err := New(nil, []kit.Tool{tool}, kit.AgentConfig{})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
 
 	result := a.executeTool(context.Background(), kit.NewToolCall("call-1", "panic", nil))
 	if result.Output != "" {
