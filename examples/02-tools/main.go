@@ -54,11 +54,11 @@ func main() {
 
 	a, err := agent.New(
 		model,
-		[]kit.Tool{rollDie},
-		kit.AgentConfig{
-			Instructions: "You are a dramatic dungeon master. Roll a d20 to determine the adventurer's fate, " +
+		agent.WithInstructions(
+			"You are a dramatic dungeon master. Roll a d20 to determine the adventurer's fate, "+
 				"then narrate the outcome in two vivid sentences. Never reveal the raw number.",
-		},
+		),
+		agent.WithTools(rollDie),
 	)
 	if err != nil {
 		log.Fatalf("failed to create agent: %v", err)

@@ -9,14 +9,41 @@ import (
 // Option is a functional option for configuring an [Agent].
 type Option func(*Agent) error
 
-// WithInstructions appends one or more instructions to the
-// agent's system prompt.
+// WithInstructions sets or appends to the agent's system prompt.
 func WithInstructions(sources ...string) Option {
 	return func(a *Agent) error {
-		parts := []string{a.config.Instructions}
-		parts = append(parts, sources...)
+		if a.config.Instructions != "" {
+			sources = append([]string{a.config.Instructions}, sources...)
+		}
 
-		a.config.Instructions = strings.Join(parts, "\n\n")
+		a.config.Instructions = strings.Join(sources, "\n\n")
+
+		return nil
+	}
+}
+
+// WithTemperature sets the sampling temperature.
+func WithTemperature(v float32) Option {
+	return func(a *Agent) error {
+		a.config.Temperature = &v
+
+		return nil
+	}
+}
+
+// WithMaxOutputTokens limits the length of each model response.
+func WithMaxOutputTokens(v int32) Option {
+	return func(a *Agent) error {
+		a.config.MaxOutputTokens = &v
+
+		return nil
+	}
+}
+
+// WithThinking sets the extended reasoning level.
+func WithThinking(v kit.ThinkingLevel) Option {
+	return func(a *Agent) error {
+		a.config.Thinking = &v
 
 		return nil
 	}

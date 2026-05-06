@@ -25,7 +25,7 @@ func TestRun_ReturnsFinalResponse(t *testing.T) {
 		kit.NewUserMessage([]kit.Content{kit.NewTextContent("hello")}),
 	}
 
-	a, err := New(model, []kit.Tool{tool}, kit.AgentConfig{Instructions: "be brief"})
+	a, err := New(model, WithTools(tool), WithInstructions("be brief"))
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -65,7 +65,7 @@ func TestRun_ReturnsModelError(t *testing.T) {
 
 	model := kittest.NewModel(t, kittest.ModelResult{Error: wantErr})
 
-	a, err := New(model, nil, kit.AgentConfig{Instructions: "be brief"})
+	a, err := New(model, WithInstructions("be brief"))
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -108,7 +108,7 @@ func TestRun_ExecutesToolCallAndContinues(t *testing.T) {
 		kit.NewUserMessage([]kit.Content{kit.NewTextContent("add 3 and 4")}),
 	}
 
-	a, err := New(model, []kit.Tool{tool}, kit.AgentConfig{Instructions: "use tools"})
+	a, err := New(model, WithTools(tool), WithInstructions("use tools"))
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -172,7 +172,7 @@ func TestRun_SendsToolErrorBackToModel(t *testing.T) {
 		},
 	)
 
-	a, err := New(model, []kit.Tool{tool}, kit.AgentConfig{Instructions: "use tools"})
+	a, err := New(model, WithTools(tool), WithInstructions("use tools"))
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -218,7 +218,7 @@ func TestRun_SendsMissingToolErrorBackToModel(t *testing.T) {
 		},
 	)
 
-	a, err := New(model, nil, kit.AgentConfig{Instructions: "use tools"})
+	a, err := New(model, WithInstructions("use tools"))
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -257,7 +257,7 @@ func (p panicTool) Execute(context.Context, map[string]any) (string, error) {
 func TestExecuteTool_Success(t *testing.T) {
 	tool := kittest.NewTool(t, "ok", "ok tool", kittest.ToolResult{Result: "done"})
 
-	a, err := New(nil, []kit.Tool{tool}, kit.AgentConfig{})
+	a, err := New(nil, WithTools(tool))
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -283,7 +283,7 @@ func TestExecuteTool_Success(t *testing.T) {
 func TestExecuteTool_Error(t *testing.T) {
 	tool := kittest.NewTool(t, "fail", "fail tool", kittest.ToolResult{Error: errors.New("boom")})
 
-	a, err := New(nil, []kit.Tool{tool}, kit.AgentConfig{})
+	a, err := New(nil, WithTools(tool))
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -299,7 +299,7 @@ func TestExecuteTool_Error(t *testing.T) {
 }
 
 func TestExecuteTool_NotFound(t *testing.T) {
-	a, err := New(nil, nil, kit.AgentConfig{})
+	a, err := New(nil)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -317,7 +317,7 @@ func TestExecuteTool_NotFound(t *testing.T) {
 func TestExecuteTool_RecoversPanic(t *testing.T) {
 	tool := panicTool{name: "panic"}
 
-	a, err := New(nil, []kit.Tool{tool}, kit.AgentConfig{})
+	a, err := New(nil, WithTools(tool))
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}

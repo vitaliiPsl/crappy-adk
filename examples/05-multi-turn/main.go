@@ -36,10 +36,7 @@ func main() {
 
 	a, err := agent.New(
 		model,
-		nil,
-		kit.AgentConfig{
-			Instructions: "You are a concise assistant. Keep every reply to two sentences or fewer.",
-		},
+		agent.WithInstructions("You are a concise assistant. Keep every reply to two sentences or fewer."),
 	)
 	if err != nil {
 		log.Fatalf("failed to create agent: %v", err)

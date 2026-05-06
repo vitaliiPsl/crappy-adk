@@ -34,11 +34,10 @@ func main() {
 
 	a, err := agent.New(
 		model,
-		nil,
-		kit.AgentConfig{
-			Instructions: "You are a philosopher who has seen too much and suffers fools reluctantly. " +
+		agent.WithInstructions(
+			"You are a philosopher who has seen too much and suffers fools reluctantly. "+
 				"Answer every question correctly, but make it clear the question has wounded you personally.",
-		},
+		),
 	)
 	if err != nil {
 		log.Fatalf("failed to create agent: %v", err)

@@ -23,20 +23,11 @@ type Agent struct {
 	hooks hooks
 }
 
-// New creates a new Agent with the given model, tools, and config.
-// Additional options can be provided to further customize the agent's behavior.
-// It would return an error if any of the options fail to apply.
-func New(model kit.Model, tools []kit.Tool, config kit.AgentConfig, options ...Option) (*Agent, error) {
-	idx := make(map[string]kit.Tool, len(tools))
-	for _, t := range tools {
-		idx[t.Definition().Name] = t
-	}
-
+// New creates a new Agent with the given model and options.
+func New(model kit.Model, options ...Option) (*Agent, error) {
 	agent := &Agent{
-		config:    config,
 		model:     model,
-		tools:     tools,
-		toolIndex: idx,
+		toolIndex: make(map[string]kit.Tool),
 	}
 
 	for _, opt := range options {

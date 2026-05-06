@@ -47,9 +47,7 @@ func main() {
 }
 
 func run(ctx context.Context, label string, model kit.Model, prompt string) {
-	a, err := agent.New(model, nil, kit.AgentConfig{
-		Instructions: "You are a helpful assistant.",
-	})
+	a, err := agent.New(model, agent.WithInstructions("You are a helpful assistant."))
 	if err != nil {
 		log.Printf("[%s] failed to create agent: %v", label, err)
 

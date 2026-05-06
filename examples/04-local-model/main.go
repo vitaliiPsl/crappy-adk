@@ -45,9 +45,7 @@ func main() {
 
 	model := openai.New("", modelID, openai.WithBaseURL(baseURL))
 
-	a, err := agent.New(model, nil, kit.AgentConfig{
-		Instructions: "You are a helpful assistant.",
-	})
+	a, err := agent.New(model, agent.WithInstructions("You are a helpful assistant."))
 	if err != nil {
 		log.Fatalf("failed to create agent: %v", err)
 	}
