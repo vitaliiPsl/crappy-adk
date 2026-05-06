@@ -1,66 +1,86 @@
 package agent
 
 import (
-	"context"
-
 	"github.com/vitaliiPsl/crappy-adk/kit"
 )
 
 type hooks struct {
+	turnStart     []kit.OnTurnStart
+	turnEnd       []kit.OnTurnEnd
 	modelRequest  []kit.OnModelRequest
 	modelResponse []kit.OnModelResponse
 	toolCall      []kit.OnToolCall
 	toolResult    []kit.OnToolResult
 }
 
-func (h *hooks) onModelRequest(ctx context.Context, req kit.ModelRequest) (context.Context, kit.ModelRequest, error) {
+func (h *hooks) onTurnStart(rc *kit.RunContext) error {
+	for _, fn := range h.turnStart {
+		if err := fn(rc); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (h *hooks) onTurnEnd(rc *kit.RunContext) error {
+	for _, fn := range h.turnEnd {
+		if err := fn(rc); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (h *hooks) onModelRequest(rc *kit.RunContext, req kit.ModelRequest) (kit.ModelRequest, error) {
 	for _, fn := range h.modelRequest {
 		var err error
 
-		ctx, req, err = fn(ctx, req)
+		req, err = fn(rc, req)
 		if err != nil {
-			return ctx, kit.ModelRequest{}, err
+			return kit.ModelRequest{}, err
 		}
 	}
 
-	return ctx, req, nil
+	return req, nil
 }
 
-func (h *hooks) onModelResponse(ctx context.Context, resp kit.ModelResponse) (context.Context, kit.ModelResponse, error) {
+func (h *hooks) onModelResponse(rc *kit.RunContext, resp kit.ModelResponse) (kit.ModelResponse, error) {
 	for _, fn := range h.modelResponse {
 		var err error
 
-		ctx, resp, err = fn(ctx, resp)
+		resp, err = fn(rc, resp)
 		if err != nil {
-			return ctx, kit.ModelResponse{}, err
+			return kit.ModelResponse{}, err
 		}
 	}
 
-	return ctx, resp, nil
+	return resp, nil
 }
 
-func (h *hooks) onToolCall(ctx context.Context, call kit.ToolCall) (context.Context, kit.ToolCall, error) {
+func (h *hooks) onToolCall(rc *kit.RunContext, call kit.ToolCall) (kit.ToolCall, error) {
 	for _, fn := range h.toolCall {
 		var err error
 
-		ctx, call, err = fn(ctx, call)
+		call, err = fn(rc, call)
 		if err != nil {
-			return ctx, kit.ToolCall{}, err
+			return kit.ToolCall{}, err
 		}
 	}
 
-	return ctx, call, nil
+	return call, nil
 }
 
-func (h *hooks) onToolResult(ctx context.Context, result kit.ToolResult) (context.Context, kit.ToolResult, error) {
+func (h *hooks) onToolResult(rc *kit.RunContext, result kit.ToolResult) (kit.ToolResult, error) {
 	for _, fn := range h.toolResult {
 		var err error
 
-		ctx, result, err = fn(ctx, result)
+		result, err = fn(rc, result)
 		if err != nil {
-			return ctx, kit.ToolResult{}, err
+			return kit.ToolResult{}, err
 		}
 	}
 
-	return ctx, result, nil
+	return result, nil
 }

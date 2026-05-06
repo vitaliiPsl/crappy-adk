@@ -70,6 +70,24 @@ func WithOnToolResult(fn kit.OnToolResult) Option {
 	}
 }
 
+// WithOnTurnStart registers a hook that is called before each model call.
+func WithOnTurnStart(fn kit.OnTurnStart) Option {
+	return func(a *Agent) error {
+		a.hooks.turnStart = append(a.hooks.turnStart, fn)
+
+		return nil
+	}
+}
+
+// WithOnTurnEnd registers a hook that is called after each turn completes.
+func WithOnTurnEnd(fn kit.OnTurnEnd) Option {
+	return func(a *Agent) error {
+		a.hooks.turnEnd = append(a.hooks.turnEnd, fn)
+
+		return nil
+	}
+}
+
 // WithExtensions applies one or more options to the agent, allowing extensions to be added in a modular way.
 func WithExtensions(extensions ...Option) Option {
 	return func(a *Agent) error {

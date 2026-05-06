@@ -1,23 +1,32 @@
 package kit
 
-import "context"
+// OnTurnStart is called before each model call, after [RunContext.Turn] has been
+// incremented. Hooks may inspect or mutate [RunContext]; this is where compaction
+// strategies modify [RunContext.Messages]. Returning an error stops the agent.
+type OnTurnStart func(rc *RunContext) error
+
+// OnTurnEnd is called after a turn completes — either after tool results have
+// been appended (mid-loop turn) or after a terminal model response.
+// Returning an error stops the agent.
+type OnTurnEnd func(rc *RunContext) error
 
 // OnModelRequest is called before each model request.
-// The returned context and [ModelRequest] replace the originals for the model call.
+// The hook may mutate [RunContext] (including [RunContext.Context]) and the
+// returned [ModelRequest] replaces the original for the model call.
 // Returning an error cancels the request.
-type OnModelRequest func(ctx context.Context, req ModelRequest) (context.Context, ModelRequest, error)
+type OnModelRequest func(rc *RunContext, req ModelRequest) (ModelRequest, error)
 
 // OnModelResponse is called after each model response.
-// The returned context and [ModelResponse] replace the originals for the agent loop.
-// Returning an error stops the agent.
-type OnModelResponse func(ctx context.Context, resp ModelResponse) (context.Context, ModelResponse, error)
+// The hook may mutate [RunContext] and the returned [ModelResponse] replaces
+// the original for the agent loop. Returning an error stops the agent.
+type OnModelResponse func(rc *RunContext, resp ModelResponse) (ModelResponse, error)
 
 // OnToolCall is called before a tool is executed.
-// The returned context and [ToolCall] replace the originals for the tool execution.
-// Returning an error cancels the tool call.
-type OnToolCall func(ctx context.Context, call ToolCall) (context.Context, ToolCall, error)
+// The hook may mutate [RunContext] and the returned [ToolCall] replaces the
+// original for the tool execution. Returning an error cancels the tool call.
+type OnToolCall func(rc *RunContext, call ToolCall) (ToolCall, error)
 
 // OnToolResult is called after a tool finishes executing.
-// The returned context and [ToolResult] replace the originals for the agent loop.
-// Returning an error stops the agent.
-type OnToolResult func(ctx context.Context, result ToolResult) (context.Context, ToolResult, error)
+// The hook may mutate [RunContext] and the returned [ToolResult] replaces the
+// original for the agent loop. Returning an error stops the agent.
+type OnToolResult func(rc *RunContext, result ToolResult) (ToolResult, error)

@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"fmt"
+	"slices"
 
 	"github.com/vitaliiPsl/crappy-adk/kit"
 )
@@ -51,41 +52,55 @@ func New(model kit.Model, tools []kit.Tool, config kit.AgentConfig, options ...O
 // It calls the model repeatedly, executing any requested tools, until the model
 // returns a finish reason other than FinishReasonToolCall.
 func (a *Agent) Run(ctx context.Context, messages []kit.Message) (kit.AgentResponse, error) {
-	history := make([]kit.Message, len(messages))
-	copy(history, messages)
-
-	var usage kit.Usage
+	rc := &kit.RunContext{
+		Context:  ctx,
+		Messages: slices.Clone(messages),
+	}
 
 	for {
-		ctx, resp, err := a.callModel(ctx, history)
+		rc.Turn++
+
+		if err := a.hooks.onTurnStart(rc); err != nil {
+			return kit.AgentResponse{}, err
+		}
+
+		resp, err := a.callModel(rc)
 		if err != nil {
 			return kit.AgentResponse{}, err
 		}
 
-		usage.Add(resp.Usage)
-		history = append(history, resp.Message)
+		rc.RecordUsage(resp.Usage)
+		rc.Append(resp.Message)
 
 		if resp.FinishReason != kit.FinishReasonToolCall {
+			if err := a.hooks.onTurnEnd(rc); err != nil {
+				return kit.AgentResponse{}, err
+			}
+
 			return kit.AgentResponse{
-				Messages: history[len(messages):],
+				Messages: rc.Generated,
 				Output:   resp.Message.TextContent(),
-				Usage:    usage,
+				Usage:    rc.Usage,
 			}, nil
 		}
 
-		results, err := a.executeTools(ctx, resp.Message.ToolCalls())
+		results, err := a.executeTools(rc, resp.Message.ToolCalls())
 		if err != nil {
 			return kit.AgentResponse{}, err
 		}
 
-		history = append(history, kit.NewToolMessage(results))
+		rc.Append(kit.NewToolMessage(results))
+
+		if err := a.hooks.onTurnEnd(rc); err != nil {
+			return kit.AgentResponse{}, err
+		}
 	}
 }
 
-func (a *Agent) callModel(ctx context.Context, history []kit.Message) (context.Context, kit.ModelResponse, error) {
+func (a *Agent) callModel(rc *kit.RunContext) (kit.ModelResponse, error) {
 	req := kit.ModelRequest{
 		Instructions: a.config.Instructions,
-		Messages:     history,
+		Messages:     rc.Messages,
 		Tools:        a.tools,
 		Config: kit.GenerationConfig{
 			Temperature:     a.config.Temperature,
@@ -94,30 +109,28 @@ func (a *Agent) callModel(ctx context.Context, history []kit.Message) (context.C
 		},
 	}
 
-	var err error
-
-	ctx, req, err = a.hooks.onModelRequest(ctx, req)
+	req, err := a.hooks.onModelRequest(rc, req)
 	if err != nil {
-		return ctx, kit.ModelResponse{}, err
+		return kit.ModelResponse{}, err
 	}
 
-	resp, err := a.model.Generate(ctx, req)
+	resp, err := a.model.Generate(rc.Context, req)
 	if err != nil {
-		return ctx, kit.ModelResponse{}, err
+		return kit.ModelResponse{}, err
 	}
 
-	ctx, resp, err = a.hooks.onModelResponse(ctx, resp)
+	resp, err = a.hooks.onModelResponse(rc, resp)
 	if err != nil {
-		return ctx, kit.ModelResponse{}, err
+		return kit.ModelResponse{}, err
 	}
 
-	return ctx, resp, nil
+	return resp, nil
 }
 
-func (a *Agent) executeTools(ctx context.Context, toolCalls []kit.ToolCall) ([]kit.Content, error) {
+func (a *Agent) executeTools(rc *kit.RunContext, toolCalls []kit.ToolCall) ([]kit.Content, error) {
 	results := make([]kit.Content, 0, len(toolCalls))
 	for _, call := range toolCalls {
-		result, err := a.executeTool(ctx, call)
+		result, err := a.executeTool(rc, call)
 		if err != nil {
 			return nil, err
 		}
@@ -128,7 +141,7 @@ func (a *Agent) executeTools(ctx context.Context, toolCalls []kit.ToolCall) ([]k
 	return results, nil
 }
 
-func (a *Agent) executeTool(ctx context.Context, call kit.ToolCall) (result kit.ToolResult, err error) {
+func (a *Agent) executeTool(rc *kit.RunContext, call kit.ToolCall) (result kit.ToolResult, err error) {
 	defer func() {
 		if recovered := recover(); recovered != nil {
 			result = kit.NewToolResult(call, "", fmt.Errorf("tool %q panicked: %v", call.Name, recovered))
@@ -143,15 +156,15 @@ func (a *Agent) executeTool(ctx context.Context, call kit.ToolCall) (result kit.
 		return
 	}
 
-	ctx, call, err = a.hooks.onToolCall(ctx, call)
+	call, err = a.hooks.onToolCall(rc, call)
 	if err != nil {
 		return
 	}
 
-	output, execErr := tool.Execute(ctx, call.Arguments)
+	output, execErr := tool.Execute(rc.Context, call.Arguments)
 	result = kit.NewToolResult(call, output, execErr)
 
-	_, result, err = a.hooks.onToolResult(ctx, result)
+	result, err = a.hooks.onToolResult(rc, result)
 
 	return
 }
