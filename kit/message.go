@@ -41,6 +41,13 @@ func NewToolMessage(content []Content) Message {
 	}
 }
 
+// NewSummaryMessage creates a [RoleUser] message wrapping a single summary content.
+// Compactors should use this so callers can identify summary messages by both
+// role and the [ContentTypeSummary] block in [Message.Content].
+func NewSummaryMessage(text string) Message {
+	return NewUserMessage([]Content{NewSummaryContent(text)})
+}
+
 // TextContent returns the first text block from the message content, or nil if none.
 func (m Message) TextContent() *Text {
 	for _, c := range m.Content {
@@ -84,6 +91,7 @@ const (
 	ContentTypeThinking   ContentType = "thinking"
 	ContentTypeToolCall   ContentType = "tool_call"
 	ContentTypeToolResult ContentType = "tool_result"
+	ContentTypeSummary    ContentType = "summary"
 )
 
 // Content is a single typed piece of message content.
@@ -96,10 +104,19 @@ type Content struct {
 
 	ToolCall   *ToolCall
 	ToolResult *ToolResult
+
+	Summary *Summary
 }
 
 // Text represents a text content.
 type Text struct {
+	Text string
+}
+
+// Summary represents a compaction summary that stands in for a range of older
+// conversation messages.
+type Summary struct {
+	// Text is the natural-language summary of the replaced messages.
 	Text string
 }
 
@@ -142,5 +159,13 @@ func NewToolResultContent(result ToolResult) Content {
 	return Content{
 		Type:       ContentTypeToolResult,
 		ToolResult: &result,
+	}
+}
+
+// NewSummaryContent creates a new [ContentTypeSummary] content with the given text.
+func NewSummaryContent(text string) Content {
+	return Content{
+		Type:    ContentTypeSummary,
+		Summary: &Summary{Text: text},
 	}
 }

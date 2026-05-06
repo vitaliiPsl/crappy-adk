@@ -227,6 +227,12 @@ func convertRequestContentItem(content kit.Content) (anthropicsdk.ContentBlockPa
 		}
 
 		return anthropicsdk.NewToolResultBlock(tr.Call.ID, output, tr.Error != ""), true
+	case kit.ContentTypeSummary:
+		if content.Summary == nil {
+			return anthropicsdk.ContentBlockParamUnion{}, false
+		}
+
+		return anthropicsdk.NewTextBlock(content.Summary.Text), true
 	}
 
 	return anthropicsdk.ContentBlockParamUnion{}, false

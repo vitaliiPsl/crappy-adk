@@ -1,0 +1,11 @@
+package compaction
+
+import "github.com/vitaliiPsl/crappy-adk/kit"
+
+// WhenUsageTokensExceed fires when the input tokens reported by the most
+// recent model response exceed threshold.
+func WhenUsageTokensExceed(threshold int32) Trigger {
+	return func(rc *kit.RunContext) bool {
+		return rc.LastUsage.InputTokens > threshold
+	}
+}

@@ -3,12 +3,7 @@ package kit
 import "context"
 
 // RunContext is the per-run state that the agent threads through its loop.
-// Turn-level hooks receive a pointer to it and may inspect or mutate it.
-//
-// Messages is what gets sent to the model on the next turn; mutating it is how
-// extensions like compaction take effect. Generated is the append-only record
-// of messages produced during the run and is what the caller receives back in
-// [AgentResponse].
+// Hooks receive a pointer to it and may inspect or mutate it.
 type RunContext struct {
 	context.Context
 

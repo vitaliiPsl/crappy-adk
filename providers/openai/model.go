@@ -145,8 +145,11 @@ func convertRequestMessage(msg kit.Message) responses.ResponseInputParam {
 func convertRequestUserMessage(msg kit.Message) responses.ResponseInputParam {
 	list := make(responses.ResponseInputMessageContentListParam, 0, len(msg.Content))
 	for _, c := range msg.Content {
-		if c.Type == kit.ContentTypeText && c.Text != nil {
+		switch {
+		case c.Type == kit.ContentTypeText && c.Text != nil:
 			list = append(list, responses.ResponseInputContentParamOfInputText(c.Text.Text))
+		case c.Type == kit.ContentTypeSummary && c.Summary != nil:
+			list = append(list, responses.ResponseInputContentParamOfInputText(c.Summary.Text))
 		}
 	}
 
@@ -248,6 +251,17 @@ func convertRequestContentItem(content kit.Content, role responses.EasyInputMess
 				Output: responses.ResponseInputItemFunctionCallOutputOutputUnionParam{
 					OfString: openai.String(output),
 				},
+			},
+		}, true
+	case kit.ContentTypeSummary:
+		if content.Summary == nil {
+			return responses.ResponseInputItemUnionParam{}, false
+		}
+
+		return responses.ResponseInputItemUnionParam{
+			OfMessage: &responses.EasyInputMessageParam{
+				Role:    role,
+				Content: responses.EasyInputMessageContentUnionParam{OfString: openai.String(content.Summary.Text)},
 			},
 		}, true
 	}

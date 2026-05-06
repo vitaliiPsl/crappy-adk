@@ -196,6 +196,12 @@ func convertRequestContentItem(content kit.Content) (*genai.Part, bool) {
 		part.FunctionResponse.ID = tr.Call.ID
 
 		return part, true
+	case kit.ContentTypeSummary:
+		if content.Summary == nil {
+			return nil, false
+		}
+
+		return genai.NewPartFromText(content.Summary.Text), true
 	}
 
 	return nil, false
