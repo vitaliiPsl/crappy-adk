@@ -147,15 +147,24 @@ func (a *Agent) executeTool(rc *kit.RunContext, call kit.ToolCall) (result kit.T
 		return
 	}
 
-	call, err = a.hooks.onToolCall(rc, call)
-	if err != nil {
+	hookedCall, hookErr := a.hooks.onToolCall(rc, call)
+	if hookErr != nil {
+		result = kit.NewToolResult(call, "", hookErr)
+
 		return
 	}
+	call = hookedCall
 
 	output, execErr := tool.Execute(rc.Context, call.Arguments)
 	result = kit.NewToolResult(call, output, execErr)
 
-	result, err = a.hooks.onToolResult(rc, result)
+	hookedResult, hookErr := a.hooks.onToolResult(rc, result)
+	if hookErr != nil {
+		result = kit.NewToolResult(call, "", hookErr)
+
+		return
+	}
+	result = hookedResult
 
 	return
 }

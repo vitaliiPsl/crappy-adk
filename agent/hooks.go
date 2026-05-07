@@ -61,12 +61,12 @@ func (h *hooks) onModelResponse(rc *kit.RunContext, resp kit.ModelResponse) (kit
 
 func (h *hooks) onToolCall(rc *kit.RunContext, call kit.ToolCall) (kit.ToolCall, error) {
 	for _, fn := range h.toolCall {
-		var err error
-
-		call, err = fn(rc, call)
+		next, err := fn(rc, call)
 		if err != nil {
-			return kit.ToolCall{}, err
+			return call, err
 		}
+
+		call = next
 	}
 
 	return call, nil
@@ -74,12 +74,12 @@ func (h *hooks) onToolCall(rc *kit.RunContext, call kit.ToolCall) (kit.ToolCall,
 
 func (h *hooks) onToolResult(rc *kit.RunContext, result kit.ToolResult) (kit.ToolResult, error) {
 	for _, fn := range h.toolResult {
-		var err error
-
-		result, err = fn(rc, result)
+		next, err := fn(rc, result)
 		if err != nil {
-			return kit.ToolResult{}, err
+			return result, err
 		}
+
+		result = next
 	}
 
 	return result, nil

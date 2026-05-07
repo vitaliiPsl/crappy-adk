@@ -335,3 +335,134 @@ func TestExecuteTool_RecoversPanic(t *testing.T) {
 		t.Fatalf("Error = %q, want panic recovery error", result.Error)
 	}
 }
+
+func TestExecuteTool_OnToolCallHookErrorBecomesResult(t *testing.T) {
+	tool := kittest.NewTool(t, "ok", "ok tool")
+
+	hookErr := errors.New("policy denied")
+
+	a, err := New(nil,
+		WithTools(tool),
+		WithOnToolCall(func(_ *kit.RunContext, _ kit.ToolCall) (kit.ToolCall, error) {
+			return kit.ToolCall{}, hookErr
+		}),
+	)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	call := kit.NewToolCall("call-1", "ok", map[string]any{"value": "x"})
+
+	result, err := a.executeTool(&kit.RunContext{Context: context.Background()}, call)
+	if err != nil {
+		t.Fatalf("executeTool: %v", err)
+	}
+
+	if result.Call.ID != "call-1" {
+		t.Fatalf("result.Call.ID = %q, want call-1", result.Call.ID)
+	}
+
+	if result.Error != "policy denied" {
+		t.Fatalf("Error = %q, want policy denied", result.Error)
+	}
+
+	if result.Output != "" {
+		t.Fatalf("Output = %q, want empty (tool must not run)", result.Output)
+	}
+
+	tool.AssertNeverCalled(t)
+}
+
+func TestExecuteTool_OnToolResultHookErrorBecomesResult(t *testing.T) {
+	tool := kittest.NewTool(t, "ok", "ok tool", kittest.ToolResult{Result: "raw output"})
+
+	hookErr := errors.New("redaction failed")
+
+	a, err := New(nil,
+		WithTools(tool),
+		WithOnToolResult(func(_ *kit.RunContext, _ kit.ToolResult) (kit.ToolResult, error) {
+			return kit.ToolResult{}, hookErr
+		}),
+	)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	call := kit.NewToolCall("call-1", "ok", map[string]any{"value": "x"})
+
+	result, err := a.executeTool(&kit.RunContext{Context: context.Background()}, call)
+	if err != nil {
+		t.Fatalf("executeTool: %v", err)
+	}
+
+	if result.Call.ID != "call-1" {
+		t.Fatalf("result.Call.ID = %q, want call-1", result.Call.ID)
+	}
+
+	if result.Error != "redaction failed" {
+		t.Fatalf("Error = %q, want redaction failed", result.Error)
+	}
+
+	if result.Output != "" {
+		t.Fatalf("Output = %q, want empty (output replaced by hook error)", result.Output)
+	}
+
+	tool.AssertCallCount(t, 1)
+}
+
+func TestRun_ToolHookErrorIsSentBackToModel(t *testing.T) {
+	call := kit.NewToolCall("call-1", "search", map[string]any{"q": "go"})
+
+	tool := kittest.NewTool(t, "search", "search tool")
+
+	model := kittest.NewModel(t,
+		kittest.ModelResult{
+			Response: kit.ModelResponse{
+				Message:      kit.NewModelMessage([]kit.Content{kit.NewToolCallContent(call)}),
+				FinishReason: kit.FinishReasonToolCall,
+			},
+		},
+		kittest.ModelResult{
+			Response: kit.ModelResponse{
+				Message:      kit.NewModelMessage([]kit.Content{kit.NewTextContent("recovered")}),
+				FinishReason: kit.FinishReasonStop,
+			},
+		},
+	)
+
+	a, err := New(model,
+		WithTools(tool),
+		WithOnToolCall(func(_ *kit.RunContext, _ kit.ToolCall) (kit.ToolCall, error) {
+			return kit.ToolCall{}, errors.New("policy denied")
+		}),
+	)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	resp, err := a.Run(context.Background(), []kit.Message{
+		kit.NewUserMessage([]kit.Content{kit.NewTextContent("search go")}),
+	})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	if resp.Output.Text != "recovered" {
+		t.Fatalf("Output = %q, want recovered", resp.Output.Text)
+	}
+
+	results := model.CallAt(1).Messages[len(model.CallAt(1).Messages)-1].ToolResults()
+	if len(results) != 1 {
+		t.Fatalf("len(ToolResults) = %d, want 1", len(results))
+	}
+
+	if results[0].Call.ID != "call-1" {
+		t.Fatalf("ToolResult.Call.ID = %q, want call-1", results[0].Call.ID)
+	}
+
+	if results[0].Error != "policy denied" {
+		t.Fatalf("ToolResult.Error = %q, want policy denied", results[0].Error)
+	}
+
+	tool.AssertNeverCalled(t)
+}
