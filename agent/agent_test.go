@@ -410,6 +410,41 @@ func TestExecuteTool_OnToolResultHookErrorBecomesResult(t *testing.T) {
 	tool.AssertCallCount(t, 1)
 }
 
+func TestWithTools_DuplicateNameKeepsFirst(t *testing.T) {
+	first := kittest.NewTool(t, "search", "v1", kittest.ToolResult{Result: "from v1"})
+	other := kittest.NewTool(t, "calc", "calc")
+	second := kittest.NewTool(t, "search", "v2")
+
+	a, err := New(nil, WithTools(first, other), WithTools(second))
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	if len(a.tools) != 2 {
+		t.Fatalf("len(tools) = %d, want 2", len(a.tools))
+	}
+
+	if a.tools[0].Definition().Description != "v1" {
+		t.Fatalf("tools[0] description = %q, want v1 (first wins)", a.tools[0].Definition().Description)
+	}
+
+	if a.tools[1].Definition().Name != "calc" {
+		t.Fatalf("tools[1] name = %q, want calc", a.tools[1].Definition().Name)
+	}
+
+	result, err := a.executeTool(&kit.RunContext{Context: context.Background()}, kit.NewToolCall("call-1", "search", nil))
+	if err != nil {
+		t.Fatalf("executeTool: %v", err)
+	}
+
+	if result.Output != "from v1" {
+		t.Fatalf("Output = %q, want from v1 (first registration wins)", result.Output)
+	}
+
+	first.AssertCallCount(t, 1)
+	second.AssertNeverCalled(t)
+}
+
 func TestRun_ToolHookErrorIsSentBackToModel(t *testing.T) {
 	call := kit.NewToolCall("call-1", "search", map[string]any{"q": "go"})
 

@@ -49,12 +49,19 @@ func WithThinking(v kit.ThinkingLevel) Option {
 	}
 }
 
-// WithTools adds one or more tools to the agent's tool set.
+// WithTools adds one or more tools to the agent's tool set. The first
+// registration of a given name wins; later registrations with the same name
+// are ignored.
 func WithTools(tools ...kit.Tool) Option {
 	return func(a *Agent) error {
-		a.tools = append(a.tools, tools...)
 		for _, t := range tools {
-			a.toolIndex[t.Definition().Name] = t
+			name := t.Definition().Name
+			if _, exists := a.toolIndex[name]; exists {
+				continue
+			}
+
+			a.tools = append(a.tools, t)
+			a.toolIndex[name] = t
 		}
 
 		return nil
