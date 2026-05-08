@@ -5,9 +5,21 @@ import (
 	"fmt"
 
 	"github.com/openai/openai-go/v3"
+	"github.com/openai/openai-go/v3/responses"
 
 	"github.com/vitaliiPsl/crappy-adk/kit"
 )
+
+func mapStreamError(code, message string) error {
+	switch responses.ResponseErrorCode(code) {
+	case responses.ResponseErrorCodeRateLimitExceeded:
+		return fmt.Errorf("%w: %s", kit.ErrRateLimit, message)
+	case responses.ResponseErrorCodeInvalidPrompt:
+		return fmt.Errorf("%w: %s", kit.ErrInvalidRequest, message)
+	default:
+		return fmt.Errorf("%w: %s: %s", kit.ErrServerError, code, message)
+	}
+}
 
 func mapError(err error) error {
 	var apiErr *openai.Error

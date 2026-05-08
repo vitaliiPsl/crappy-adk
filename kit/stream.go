@@ -119,10 +119,6 @@ func StreamFromGenerate(
 			}
 		}
 
-		if err := emit.Emit(NewModelMessageEvent(resp.Message)); err != nil {
-			return resp, err
-		}
-
 		return resp, nil
 	})
 }

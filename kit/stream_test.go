@@ -117,7 +117,7 @@ func TestStream_PanicsOnDoubleConsumption(t *testing.T) {
 	}
 }
 
-func TestStreamFromGenerate_EmitsContentAndMessage(t *testing.T) {
+func TestStreamFromGenerate_EmitsContent(t *testing.T) {
 	msg := NewModelMessage([]Content{
 		NewTextContent("hello"),
 		NewTextContent(" world"),
@@ -140,16 +140,16 @@ func TestStreamFromGenerate_EmitsContentAndMessage(t *testing.T) {
 		events = append(events, event)
 	}
 
-	if len(events) != 5 {
-		t.Fatalf("len(events) = %d, want 5", len(events))
+	if len(events) != 4 {
+		t.Fatalf("len(events) = %d, want 4", len(events))
 	}
 
 	if events[0].Type != EventContentStarted || events[1].Type != EventContentDone {
 		t.Fatalf("first part events = %q/%q, want started/done", events[0].Type, events[1].Type)
 	}
 
-	if events[4].Type != EventMessage {
-		t.Fatalf("last event type = %q, want message", events[4].Type)
+	if events[2].Type != EventContentStarted || events[3].Type != EventContentDone {
+		t.Fatalf("second part events = %q/%q, want started/done", events[2].Type, events[3].Type)
 	}
 
 	result, err := stream.Result()

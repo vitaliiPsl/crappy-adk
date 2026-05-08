@@ -59,6 +59,17 @@ func (m Message) TextContent() *Text {
 	return nil
 }
 
+// ThinkingContent returns the first thinking block from the message content, or nil.
+func (m Message) ThinkingContent() *Thinking {
+	for _, c := range m.Content {
+		if c.Type == ContentTypeThinking && c.Thinking != nil {
+			return c.Thinking
+		}
+	}
+
+	return nil
+}
+
 // ToolCalls returns all tool call blocks from the message content.
 func (m Message) ToolCalls() []ToolCall {
 	var out []ToolCall

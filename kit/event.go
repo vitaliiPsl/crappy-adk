@@ -22,7 +22,6 @@ type ModelEvent struct {
 type AgentEvent struct {
 	Type EventType
 
-	Model      *ModelEvent
 	Message    *Message
 	Content    *Content
 	ToolResult *ToolResult
@@ -60,13 +59,46 @@ func NewModelMessageEvent(message Message) ModelEvent {
 	}
 }
 
-// NewAgentModelEvent promotes a model event into an agent event.
-func NewAgentModelEvent(event ModelEvent) AgentEvent {
-	eventCopy := event
+// AgentEventFromModel converts a model content event into an agent event.
+// Returns false if the event type is not a content event or has no content.
+func AgentEventFromModel(event ModelEvent) (AgentEvent, bool) {
+	if event.Content == nil {
+		return AgentEvent{}, false
+	}
 
+	switch event.Type {
+	case EventContentStarted:
+		return NewAgentContentStartedEvent(*event.Content), true
+	case EventContentDelta:
+		return NewAgentContentDeltaEvent(*event.Content), true
+	case EventContentDone:
+		return NewAgentContentDoneEvent(*event.Content), true
+	default:
+		return AgentEvent{}, false
+	}
+}
+
+// NewAgentContentStartedEvent creates an agent event for the start of content.
+func NewAgentContentStartedEvent(content Content) AgentEvent {
 	return AgentEvent{
-		Type:  event.Type,
-		Model: &eventCopy,
+		Type:    EventContentStarted,
+		Content: &content,
+	}
+}
+
+// NewAgentContentDeltaEvent creates an agent event for a content delta.
+func NewAgentContentDeltaEvent(content Content) AgentEvent {
+	return AgentEvent{
+		Type:    EventContentDelta,
+		Content: &content,
+	}
+}
+
+// NewAgentContentDoneEvent creates an agent event for completed content.
+func NewAgentContentDoneEvent(content Content) AgentEvent {
+	return AgentEvent{
+		Type:    EventContentDone,
+		Content: &content,
 	}
 }
 
@@ -75,14 +107,6 @@ func NewAgentMessageEvent(message Message) AgentEvent {
 	return AgentEvent{
 		Type:    EventMessage,
 		Message: &message,
-	}
-}
-
-// NewAgentContentDoneEvent creates an agent event for completed agent-owned content.
-func NewAgentContentDoneEvent(content Content) AgentEvent {
-	return AgentEvent{
-		Type:    EventContentDone,
-		Content: &content,
 	}
 }
 

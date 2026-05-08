@@ -75,7 +75,7 @@ func (m *Model) Generate(ctx context.Context, request kit.ModelRequest) (kit.Mod
 
 // Stream streams a response for the given request.
 func (m *Model) Stream(ctx context.Context, request kit.ModelRequest) *kit.Stream[kit.ModelEvent, kit.ModelResponse] {
-	return kit.StreamFromGenerate(ctx, request, m.Generate)
+	return newStream(ctx, m, request)
 }
 
 func buildRequestParams(modelID string, req kit.ModelRequest) (responses.ResponseNewParams, error) {
@@ -302,12 +302,10 @@ func convertResponse(resp *responses.Response) kit.ModelResponse {
 }
 
 func convertResponseContent(item responses.ResponseOutputItemUnion) []kit.Content {
-	switch item.Type {
-	case "message":
-		msg := item.AsMessage()
-
+	switch item := item.AsAny().(type) {
+	case responses.ResponseOutputMessage:
 		var parts []kit.Content
-		for _, part := range msg.Content {
+		for _, part := range item.Content {
 			if text := part.AsOutputText(); text.Text != "" {
 				parts = append(parts, kit.NewTextContent(text.Text))
 			}
@@ -315,17 +313,15 @@ func convertResponseContent(item responses.ResponseOutputItemUnion) []kit.Conten
 
 		return parts
 
-	case "reasoning":
-		reasoning := item.AsReasoning()
-
+	case responses.ResponseReasoningItem:
 		var reasoningText strings.Builder
-		for _, summary := range reasoning.Summary {
+		for _, summary := range item.Summary {
 			reasoningText.WriteString(summary.Text)
 		}
 
-		return []kit.Content{kit.NewThinkingContent(reasoning.ID, reasoningText.String(), reasoning.EncryptedContent)}
+		return []kit.Content{kit.NewThinkingContent(item.ID, reasoningText.String(), item.EncryptedContent)}
 
-	case "function_call":
+	case responses.ResponseFunctionToolCall:
 		if tc, ok := convertResponseToolCall(item); ok {
 			return []kit.Content{kit.NewToolCallContent(tc)}
 		}
@@ -334,9 +330,9 @@ func convertResponseContent(item responses.ResponseOutputItemUnion) []kit.Conten
 	return nil
 }
 
-func convertResponseToolCall(item responses.ResponseOutputItemUnion) (kit.ToolCall, bool) {
+func convertResponseToolCall(item responses.ResponseFunctionToolCall) (kit.ToolCall, bool) {
 	var args map[string]any
-	if s := item.Arguments.OfString; s != "" {
+	if s := item.Arguments; s != "" {
 		if err := json.Unmarshal([]byte(s), &args); err != nil {
 			return kit.ToolCall{}, false
 		}
@@ -353,7 +349,7 @@ func convertResponseFinishReason(resp *responses.Response) kit.FinishReason {
 	switch resp.Status {
 	case responses.ResponseStatusCompleted:
 		for _, item := range resp.Output {
-			if item.Type == "function_call" {
+			if _, ok := item.AsAny().(responses.ResponseFunctionToolCall); ok {
 				return kit.FinishReasonToolCall
 			}
 		}
