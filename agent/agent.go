@@ -43,21 +43,35 @@ func New(model kit.Model, options ...Option) (*Agent, error) {
 // It calls the model repeatedly, executing any requested tools, until the model
 // returns a finish reason other than FinishReasonToolCall.
 func (a *Agent) Run(ctx context.Context, messages []kit.Message) (kit.AgentResponse, error) {
+	return a.run(ctx, messages, kit.NoopEmitter[kit.AgentEvent]{})
+}
+
+// Stream executes the agentic loop and yields events as the run progresses.
+func (a *Agent) Stream(ctx context.Context, messages []kit.Message) *kit.Stream[kit.AgentEvent, kit.AgentResponse] {
+	return kit.NewStream(func(emit kit.Emitter[kit.AgentEvent]) (kit.AgentResponse, error) {
+		return a.run(ctx, messages, emit)
+	})
+}
+
+func (a *Agent) run(
+	ctx context.Context,
+	messages []kit.Message,
+	events kit.Emitter[kit.AgentEvent],
+) (kit.AgentResponse, error) {
 	rc := &kit.RunContext{
 		Context:  ctx,
 		Messages: slices.Clone(messages),
+		Events:   events,
 	}
 
 	for {
-		rc.Turn++
-
 		if err := a.hooks.onTurnStart(rc); err != nil {
-			return kit.AgentResponse{}, err
+			return rc.Response(), err
 		}
 
 		resp, err := a.callModel(rc)
 		if err != nil {
-			return kit.AgentResponse{}, err
+			return rc.Response(), err
 		}
 
 		rc.RecordUsage(resp.Usage)
@@ -65,25 +79,26 @@ func (a *Agent) Run(ctx context.Context, messages []kit.Message) (kit.AgentRespo
 
 		if resp.FinishReason != kit.FinishReasonToolCall {
 			if err := a.hooks.onTurnEnd(rc); err != nil {
-				return kit.AgentResponse{}, err
+				return rc.Response(), err
 			}
 
-			return kit.AgentResponse{
-				Messages: rc.Generated,
-				Output:   resp.Message.TextContent(),
-				Usage:    rc.Usage,
-			}, nil
+			return rc.Response(), nil
 		}
 
 		results, err := a.executeTools(rc, resp.Message.ToolCalls())
 		if err != nil {
-			return kit.AgentResponse{}, err
+			return rc.Response(), err
 		}
 
-		rc.Append(kit.NewToolMessage(results))
+		toolMessage := kit.NewToolMessage(results)
+		rc.Append(toolMessage)
+
+		if err := rc.Emit(kit.NewAgentMessageEvent(toolMessage)); err != nil {
+			return rc.Response(), err
+		}
 
 		if err := a.hooks.onTurnEnd(rc); err != nil {
-			return kit.AgentResponse{}, err
+			return rc.Response(), err
 		}
 	}
 }
@@ -105,7 +120,7 @@ func (a *Agent) callModel(rc *kit.RunContext) (kit.ModelResponse, error) {
 		return kit.ModelResponse{}, err
 	}
 
-	resp, err := a.model.Generate(rc.Context, req)
+	resp, err := a.streamModel(rc, req)
 	if err != nil {
 		return kit.ModelResponse{}, err
 	}
@@ -118,11 +133,26 @@ func (a *Agent) callModel(rc *kit.RunContext) (kit.ModelResponse, error) {
 	return resp, nil
 }
 
+func (a *Agent) streamModel(rc *kit.RunContext, req kit.ModelRequest) (kit.ModelResponse, error) {
+	stream := a.model.Stream(rc.Context, req)
+	for event := range stream.Iter() {
+		if err := rc.Emit(kit.NewAgentModelEvent(event)); err != nil {
+			return kit.ModelResponse{}, err
+		}
+	}
+
+	return stream.Result()
+}
+
 func (a *Agent) executeTools(rc *kit.RunContext, toolCalls []kit.ToolCall) ([]kit.Content, error) {
 	results := make([]kit.Content, 0, len(toolCalls))
 	for _, call := range toolCalls {
 		result, err := a.executeTool(rc, call)
 		if err != nil {
+			return nil, err
+		}
+
+		if err := rc.Emit(kit.NewAgentToolResultEvent(result)); err != nil {
 			return nil, err
 		}
 
@@ -153,6 +183,7 @@ func (a *Agent) executeTool(rc *kit.RunContext, call kit.ToolCall) (result kit.T
 
 		return
 	}
+
 	call = hookedCall
 
 	output, execErr := tool.Execute(rc.Context, call.Arguments)
@@ -164,6 +195,7 @@ func (a *Agent) executeTool(rc *kit.RunContext, call kit.ToolCall) (result kit.T
 
 		return
 	}
+
 	result = hookedResult
 
 	return

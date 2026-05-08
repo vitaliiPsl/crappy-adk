@@ -6,6 +6,7 @@ import "context"
 // and returns the final response.
 type Agent interface {
 	Run(ctx context.Context, messages []Message) (AgentResponse, error)
+	Stream(ctx context.Context, messages []Message) *Stream[AgentEvent, AgentResponse]
 }
 
 // AgentConfig is the configuration for an [Agent].

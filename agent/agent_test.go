@@ -336,6 +336,176 @@ func TestExecuteTool_RecoversPanic(t *testing.T) {
 	}
 }
 
+func TestStream_ReturnsEventsAndResult(t *testing.T) {
+	model := kittest.NewModel(t, kittest.ModelResult{
+		Response: kit.ModelResponse{
+			Message:      kit.NewModelMessage([]kit.Content{kit.NewTextContent("done")}),
+			FinishReason: kit.FinishReasonStop,
+			Usage:        kit.Usage{InputTokens: 3, OutputTokens: 2},
+		},
+	})
+
+	a, err := New(model, WithInstructions("be brief"))
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	stream := a.Stream(context.Background(), []kit.Message{
+		kit.NewUserMessage([]kit.Content{kit.NewTextContent("hello")}),
+	})
+
+	var events []kit.AgentEvent
+	for event := range stream.Iter() {
+		events = append(events, event)
+	}
+
+	if len(events) != 3 {
+		t.Fatalf("len(events) = %d, want 3", len(events))
+	}
+
+	if events[0].Type != kit.EventContentStarted {
+		t.Fatalf("events[0].Type = %q, want content_started", events[0].Type)
+	}
+
+	if events[0].Model == nil {
+		t.Fatal("events[0].Model is nil, want model event")
+	}
+
+	if events[1].Type != kit.EventContentDone {
+		t.Fatalf("events[1].Type = %q, want content_done", events[1].Type)
+	}
+
+	if events[2].Type != kit.EventMessage {
+		t.Fatalf("events[2].Type = %q, want message", events[2].Type)
+	}
+
+	if events[2].Model == nil || events[2].Model.Message == nil {
+		t.Fatal("events[2].Model.Message is nil, want model message")
+	}
+
+	result, err := stream.Result()
+	if err != nil {
+		t.Fatalf("Result: %v", err)
+	}
+
+	if result.Output.Text != "done" {
+		t.Fatalf("Output = %q, want done", result.Output.Text)
+	}
+
+	if result.Usage.InputTokens != 3 || result.Usage.OutputTokens != 2 {
+		t.Fatalf("Usage = %+v, want input 3 output 2", result.Usage)
+	}
+}
+
+func TestStream_EmitsToolResultAndContinues(t *testing.T) {
+	call := kit.NewToolCall("call-1", "add", map[string]any{"a": 3, "b": 4})
+	toolCallMessage := kit.NewModelMessage([]kit.Content{kit.NewToolCallContent(call)})
+	finalMessage := kit.NewModelMessage([]kit.Content{kit.NewTextContent("3 + 4 = 7")})
+
+	tool := kittest.NewTool(t, "add", "add numbers", kittest.ToolResult{Result: "7"})
+
+	model := kittest.NewModel(t,
+		kittest.ModelResult{
+			Response: kit.ModelResponse{
+				Message:      toolCallMessage,
+				FinishReason: kit.FinishReasonToolCall,
+			},
+		},
+		kittest.ModelResult{
+			Response: kit.ModelResponse{
+				Message:      finalMessage,
+				FinishReason: kit.FinishReasonStop,
+			},
+		},
+	)
+
+	a, err := New(model, WithTools(tool), WithInstructions("use tools"))
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	stream := a.Stream(context.Background(), []kit.Message{
+		kit.NewUserMessage([]kit.Content{kit.NewTextContent("add 3 and 4")}),
+	})
+
+	var (
+		sawToolResult   bool
+		sawFinalMessage bool
+	)
+
+	for event := range stream.Iter() {
+		if event.ToolResult != nil {
+			sawToolResult = true
+
+			if event.Model != nil {
+				t.Fatal("tool result event has model payload, want agent-owned payload")
+			}
+
+			if event.ToolResult.Output != "7" {
+				t.Fatalf("ToolResult.Output = %q, want 7", event.ToolResult.Output)
+			}
+		}
+
+		if event.Type == kit.EventMessage && event.Model != nil && event.Model.Message != nil {
+			if text := event.Model.Message.TextContent(); text != nil && text.Text == "3 + 4 = 7" {
+				sawFinalMessage = true
+			}
+		}
+	}
+
+	if !sawToolResult {
+		t.Fatal("stream did not emit tool result")
+	}
+
+	if !sawFinalMessage {
+		t.Fatal("stream did not emit final message")
+	}
+
+	result, err := stream.Result()
+	if err != nil {
+		t.Fatalf("Result: %v", err)
+	}
+
+	if result.Output.Text != "3 + 4 = 7" {
+		t.Fatalf("Output = %q, want final text", result.Output.Text)
+	}
+
+	tool.AssertCalledWith(t, 0, map[string]any{"a": 3, "b": 4})
+	model.AssertCallCount(t, 2)
+}
+
+func TestStream_ResultAfterEarlyStopReturnsPartialResponse(t *testing.T) {
+	model := kittest.NewModel(t, kittest.ModelResult{
+		Response: kit.ModelResponse{
+			Message:      kit.NewModelMessage([]kit.Content{kit.NewTextContent("done")}),
+			FinishReason: kit.FinishReasonStop,
+			Usage:        kit.Usage{InputTokens: 3, OutputTokens: 2},
+		},
+	})
+
+	a, err := New(model, WithInstructions("be brief"))
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	stream := a.Stream(context.Background(), []kit.Message{
+		kit.NewUserMessage([]kit.Content{kit.NewTextContent("hello")}),
+	})
+
+	for range stream.Iter() {
+		break
+	}
+
+	result, err := stream.Result()
+	if err != nil {
+		t.Fatalf("Result: %v", err)
+	}
+
+	if len(result.Messages) != 0 {
+		t.Fatalf("len(Messages) = %d, want 0 because final model response was not appended yet", len(result.Messages))
+	}
+}
+
 func TestExecuteTool_OnToolCallHookErrorBecomesResult(t *testing.T) {
 	tool := kittest.NewTool(t, "ok", "ok tool")
 

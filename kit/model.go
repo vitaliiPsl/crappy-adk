@@ -5,6 +5,7 @@ import "context"
 // Model represents a language model that can generate responses based on a conversation history and system prompt.
 type Model interface {
 	Generate(ctx context.Context, request ModelRequest) (ModelResponse, error)
+	Stream(ctx context.Context, request ModelRequest) *Stream[ModelEvent, ModelResponse]
 }
 
 // ModelRequest is the input to a model call.

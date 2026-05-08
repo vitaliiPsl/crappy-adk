@@ -75,6 +75,11 @@ func (m *Model) Generate(ctx context.Context, request kit.ModelRequest) (kit.Mod
 	return convertResponse(resp), nil
 }
 
+// Stream streams a response for the given request.
+func (m *Model) Stream(ctx context.Context, request kit.ModelRequest) *kit.Stream[kit.ModelEvent, kit.ModelResponse] {
+	return kit.StreamFromGenerate(ctx, request, m.Generate)
+}
+
 func buildRequestParams(req kit.ModelRequest) ([]*genai.Content, *genai.GenerateContentConfig) {
 	config := &genai.GenerateContentConfig{
 		SystemInstruction: &genai.Content{Parts: []*genai.Part{{Text: req.Instructions}}},

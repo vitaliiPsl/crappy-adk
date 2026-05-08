@@ -1,12 +1,12 @@
 package kit
 
-// OnTurnStart is called before each model call, after [RunContext.Turn] has been
-// incremented. Hooks may inspect or mutate [RunContext]; this is where compaction
-// strategies modify [RunContext.Messages]. Returning an error stops the agent.
+// OnTurnStart is called before each model call. Hooks may inspect or mutate
+// [RunContext]; this is where compaction strategies modify [RunContext.Messages].
+// Returning an error stops the agent.
 type OnTurnStart func(rc *RunContext) error
 
-// OnTurnEnd is called after a turn completes — either after tool results have
-// been appended (mid-loop turn) or after a terminal model response.
+// OnTurnEnd is called after a loop iteration completes — either after tool
+// results have been appended or after a terminal model response.
 // Returning an error stops the agent.
 type OnTurnEnd func(rc *RunContext) error
 

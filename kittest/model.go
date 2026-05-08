@@ -44,6 +44,11 @@ func (model *Model) Generate(_ context.Context, request kit.ModelRequest) (kit.M
 	return result.Response, result.Error
 }
 
+// Stream records the request and streams the next queued result.
+func (model *Model) Stream(ctx context.Context, request kit.ModelRequest) *kit.Stream[kit.ModelEvent, kit.ModelResponse] {
+	return kit.StreamFromGenerate(ctx, request, model.Generate)
+}
+
 func (model *Model) result() ModelResult {
 	idx := len(model.requests) - 1
 	if idx < 0 {
