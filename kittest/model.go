@@ -11,7 +11,9 @@ import (
 var _ kit.Model = (*Model)(nil)
 
 // ModelResult describes what a model should return for a single call.
+// Events are emitted by Stream; Response and Error are returned by both Generate and Stream.
 type ModelResult struct {
+	Events   []kit.ModelEvent
 	Response kit.ModelResponse
 	Error    error
 }
@@ -45,8 +47,23 @@ func (model *Model) Generate(_ context.Context, request kit.ModelRequest) (kit.M
 }
 
 // Stream records the request and streams the next queued result.
-func (model *Model) Stream(ctx context.Context, request kit.ModelRequest) *kit.Stream[kit.ModelEvent, kit.ModelResponse] {
-	return kit.StreamFromGenerate(ctx, request, model.Generate)
+func (model *Model) Stream(_ context.Context, request kit.ModelRequest) *kit.Stream[kit.ModelEvent, kit.ModelResponse] {
+	model.requests = append(model.requests, request)
+	result := model.result()
+
+	return kit.NewStream(func(emit kit.Emitter[kit.ModelEvent]) (kit.ModelResponse, error) {
+		if result.Error != nil {
+			return kit.ModelResponse{}, result.Error
+		}
+
+		for _, event := range result.Events {
+			if err := emit.Emit(event); err != nil {
+				return result.Response, err
+			}
+		}
+
+		return result.Response, nil
+	})
 }
 
 func (model *Model) result() ModelResult {

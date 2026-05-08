@@ -136,7 +136,12 @@ func (a *Agent) callModel(rc *kit.RunContext) (kit.ModelResponse, error) {
 func (a *Agent) streamModel(rc *kit.RunContext, req kit.ModelRequest) (kit.ModelResponse, error) {
 	stream := a.model.Stream(rc.Context, req)
 	for event := range stream.Iter() {
-		if err := rc.Emit(kit.NewAgentModelEvent(event)); err != nil {
+		agentEvent, ok := kit.AgentEventFromModel(event)
+		if !ok {
+			continue
+		}
+
+		if err := rc.Emit(agentEvent); err != nil {
 			return kit.ModelResponse{}, err
 		}
 	}
