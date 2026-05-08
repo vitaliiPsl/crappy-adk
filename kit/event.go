@@ -15,7 +15,6 @@ type ModelEvent struct {
 	Type EventType
 
 	Content *Content
-	Message *Message
 }
 
 // AgentEvent is emitted by an agent stream while an agent run progresses.
@@ -48,14 +47,6 @@ func NewModelContentDoneEvent(content Content) ModelEvent {
 	return ModelEvent{
 		Type:    EventContentDone,
 		Content: &content,
-	}
-}
-
-// NewModelMessageEvent creates a model event for a completed model message.
-func NewModelMessageEvent(message Message) ModelEvent {
-	return ModelEvent{
-		Type:    EventMessage,
-		Message: &message,
 	}
 }
 
@@ -102,7 +93,7 @@ func NewAgentContentDoneEvent(content Content) AgentEvent {
 	}
 }
 
-// NewAgentMessageEvent creates an agent event for a completed agent-owned message.
+// NewAgentMessageEvent creates an agent event for a completed message.
 func NewAgentMessageEvent(message Message) AgentEvent {
 	return AgentEvent{
 		Type:    EventMessage,

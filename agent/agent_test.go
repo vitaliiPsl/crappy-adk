@@ -363,8 +363,8 @@ func TestStream_ReturnsEventsAndResult(t *testing.T) {
 		events = append(events, event)
 	}
 
-	if len(events) != 2 {
-		t.Fatalf("len(events) = %d, want 2", len(events))
+	if len(events) != 3 {
+		t.Fatalf("len(events) = %d, want 3", len(events))
 	}
 
 	if events[0].Type != kit.EventContentStarted {
@@ -377,6 +377,14 @@ func TestStream_ReturnsEventsAndResult(t *testing.T) {
 
 	if events[1].Type != kit.EventContentDone {
 		t.Fatalf("events[1].Type = %q, want content_done", events[1].Type)
+	}
+
+	if events[2].Type != kit.EventMessage {
+		t.Fatalf("events[2].Type = %q, want message", events[2].Type)
+	}
+
+	if events[2].Message == nil || events[2].Message.TextContent().Text != "done" {
+		t.Fatalf("events[2].Message = %+v, want final model message", events[2].Message)
 	}
 
 	result, err := stream.Result()

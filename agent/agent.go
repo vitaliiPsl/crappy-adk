@@ -77,6 +77,10 @@ func (a *Agent) run(
 		rc.RecordUsage(resp.Usage)
 		rc.Append(resp.Message)
 
+		if err := rc.Emit(kit.NewAgentMessageEvent(resp.Message)); err != nil {
+			return rc.Response(), err
+		}
+
 		if resp.FinishReason != kit.FinishReasonToolCall {
 			if err := a.hooks.onTurnEnd(rc); err != nil {
 				return rc.Response(), err
