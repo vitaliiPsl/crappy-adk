@@ -79,7 +79,7 @@ func (m *Model) Generate(ctx context.Context, request kit.ModelRequest) (kit.Mod
 
 // Stream streams a response for the given request.
 func (m *Model) Stream(ctx context.Context, request kit.ModelRequest) *kit.Stream[kit.ModelEvent, kit.ModelResponse] {
-	return kit.StreamFromGenerate(ctx, request, m.Generate)
+	return newStream(ctx, m, request)
 }
 
 func buildRequestParams(modelID string, req kit.ModelRequest) anthropicsdk.MessageNewParams {
