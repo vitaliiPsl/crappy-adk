@@ -33,7 +33,7 @@ func SummarizeWithRecent(model kit.Model, instructions string, keepRecent int) S
 
 		rc.Usage.Add(resp.Usage)
 
-		summary := kit.NewUserMessage([]kit.Content{kit.NewSummaryContent(text.Text)})
+		summary := kit.NewSummaryMessage(text.Text)
 
 		rc.Messages = append([]kit.Message{summary}, rc.Messages[cutoff:]...)
 		rc.Generated = append(rc.Generated, summary)

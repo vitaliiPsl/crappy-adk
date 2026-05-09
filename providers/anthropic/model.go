@@ -43,7 +43,7 @@ type Model struct {
 }
 
 // New returns an authenticated model for the given modelID and apiKey.
-func New(apiKey string, id string, opts ...Option) *Model {
+func New(apiKey string, id string, opts ...Option) (*Model, error) {
 	options := options{}
 	for _, opt := range opts {
 		opt(&options)
@@ -62,7 +62,7 @@ func New(apiKey string, id string, opts ...Option) *Model {
 	return &Model{
 		id:     id,
 		client: &client,
-	}
+	}, nil
 }
 
 // Generate generates a response for the given request.

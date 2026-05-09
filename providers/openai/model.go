@@ -36,7 +36,7 @@ type Model struct {
 }
 
 // New returns an authenticated model for the given modelID and apiKey.
-func New(apiKey string, id string, opts ...Option) *Model {
+func New(apiKey string, id string, opts ...Option) (*Model, error) {
 	options := options{}
 	for _, opt := range opts {
 		opt(&options)
@@ -55,15 +55,12 @@ func New(apiKey string, id string, opts ...Option) *Model {
 	return &Model{
 		id:     id,
 		client: &client,
-	}
+	}, nil
 }
 
 // Generate generates a response for the given request.
 func (m *Model) Generate(ctx context.Context, request kit.ModelRequest) (kit.ModelResponse, error) {
-	req, err := buildRequestParams(m.id, request)
-	if err != nil {
-		return kit.ModelResponse{}, err
-	}
+	req := buildRequestParams(m.id, request)
 
 	resp, err := m.client.Responses.New(ctx, req)
 	if err != nil {
@@ -78,7 +75,7 @@ func (m *Model) Stream(ctx context.Context, request kit.ModelRequest) *kit.Strea
 	return newStream(ctx, m, request)
 }
 
-func buildRequestParams(modelID string, req kit.ModelRequest) (responses.ResponseNewParams, error) {
+func buildRequestParams(modelID string, req kit.ModelRequest) responses.ResponseNewParams {
 	params := responses.ResponseNewParams{
 		Model:        modelID,
 		Instructions: openai.String(req.Instructions),
@@ -104,7 +101,7 @@ func buildRequestParams(modelID string, req kit.ModelRequest) (responses.Respons
 		}
 	}
 
-	return params, nil
+	return params
 }
 
 func convertRequestTools(tools []kit.Tool) []responses.ToolUnionParam {

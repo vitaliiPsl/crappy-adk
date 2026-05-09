@@ -32,7 +32,10 @@ func main() {
 		log.Fatal("OPENAI_API_KEY is not set")
 	}
 
-	model := openai.New(apiKey, "gpt-5.4-nano")
+	model, err := openai.New(apiKey, "gpt-5.4-nano")
+	if err != nil {
+		log.Fatalf("failed to create model: %v", err)
+	}
 
 	a, err := agent.New(
 		model,

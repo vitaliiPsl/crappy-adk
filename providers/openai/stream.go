@@ -10,10 +10,7 @@ import (
 
 func newStream(ctx context.Context, model *Model, request kit.ModelRequest) *kit.Stream[kit.ModelEvent, kit.ModelResponse] {
 	return kit.NewStream(func(emit kit.Emitter[kit.ModelEvent]) (kit.ModelResponse, error) {
-		req, err := buildRequestParams(model.id, request)
-		if err != nil {
-			return kit.ModelResponse{}, err
-		}
+		req := buildRequestParams(model.id, request)
 
 		stream := model.client.Responses.NewStreaming(ctx, req)
 		defer func() {
