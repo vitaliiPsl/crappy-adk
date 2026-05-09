@@ -2,6 +2,7 @@ package tool
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"testing"
@@ -12,7 +13,7 @@ type addArgs struct {
 	B int `json:"b"`
 }
 
-func newAddTool(t *testing.T) *Generic[addArgs] {
+func newAddTool(t *testing.T) *Generic[addArgs, string] {
 	t.Helper()
 
 	tool, err := New("add", "adds two numbers", func(_ context.Context, args addArgs) (string, error) {
@@ -134,7 +135,7 @@ func TestNew_Execute_ContextPropagation(t *testing.T) {
 }
 
 type annotatedArgs struct {
-	Query string `json:"query"         jsonschema:"The search query"`
+	Query string `json:"query"           jsonschema:"The search query"`
 	Limit int    `json:"limit,omitempty" jsonschema:"Maximum number of results"`
 }
 
@@ -179,5 +180,39 @@ func TestNew_OptionalField(t *testing.T) {
 
 	if result != "hello:0" {
 		t.Errorf("result = %q, want %q", result, "hello:0")
+	}
+}
+
+type addResult struct {
+	Sum   int    `json:"sum"`
+	Label string `json:"label"`
+}
+
+func TestNew_Execute_StructuredOutput(t *testing.T) {
+	tool, err := New("add", "adds two numbers", func(_ context.Context, args addArgs) (addResult, error) {
+		sum := args.A + args.B
+
+		return addResult{Sum: sum, Label: fmt.Sprintf("%d + %d = %d", args.A, args.B, sum)}, nil
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	raw, err := tool.Execute(context.Background(), map[string]any{"a": 3, "b": 4})
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+
+	var got addResult
+	if err := json.Unmarshal([]byte(raw), &got); err != nil {
+		t.Fatalf("unmarshal result: %v", err)
+	}
+
+	if got.Sum != 7 {
+		t.Errorf("Sum = %d, want 7", got.Sum)
+	}
+
+	if got.Label != "3 + 4 = 7" {
+		t.Errorf("Label = %q, want %q", got.Label, "3 + 4 = 7")
 	}
 }
