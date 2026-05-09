@@ -1,0 +1,303 @@
+# Crappy Agent Development Kit
+
+<div align="center">
+  <img src="docs/icon.png" alt="crappy-adk" width="260" /><br/><br/>
+
+  [![Go](https://img.shields.io/badge/Go-1.26.1-00ADD8?style=flat&logo=go&logoColor=white)](https://golang.org)
+  [![GoDoc](https://pkg.go.dev/badge/github.com/vitaliiPsl/crappy-adk.svg)](https://pkg.go.dev/github.com/vitaliiPsl/crappy-adk)
+  [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+</div>
+
+A small toolkit for building AI agents in Go. ReAct loop, three providers, typed tools, hooks, and compaction — pick what you need.
+
+## Motivation
+
+Felt bored while on vacation, so decided to learn more about AI agents and build one myself.
+
+## Contents
+
+- [Install](#install)
+- [Quick start](#quick-start)
+- [Providers](#providers)
+- [Tools](#tools)
+- [Streaming](#streaming)
+- [Multi-turn conversations](#multi-turn-conversations)
+- [Hooks](#hooks)
+- [Compaction](#compaction)
+- [Testing](#testing)
+- [Extending](#extending)
+- [Examples](#examples)
+- [License](#license)
+
+## Install
+
+```sh
+go get github.com/vitaliiPsl/crappy-adk
+```
+
+Requires Go 1.26.1.
+
+API documentation: https://pkg.go.dev/github.com/vitaliiPsl/crappy-adk
+
+## Quick start
+
+```go
+ctx := context.Background()
+
+model, err := openai.New(os.Getenv("OPENAI_API_KEY"), "gpt-5.4-nano")
+if err != nil {
+    log.Fatal(err)
+}
+
+a, err := agent.New(model,
+    agent.WithInstructions("You are a helpful assistant."),
+)
+if err != nil {
+    log.Fatal(err)
+}
+
+resp, err := a.Run(ctx, []kit.Message{
+    kit.NewUserMessage([]kit.Content{
+        kit.NewTextContent("What does this project do?"),
+    }),
+})
+if err != nil {
+    log.Fatal(err)
+}
+
+fmt.Println(resp.Output.Text)
+fmt.Printf("messages produced: %d\n", len(resp.Messages))
+fmt.Printf("tokens used: in=%d out=%d\n", resp.Usage.InputTokens, resp.Usage.OutputTokens)
+```
+
+## Providers
+
+Each provider package exposes a `New(...)` constructor that returns a `kit.Model`. The agent doesn't know or care which provider is behind it — it always calls `Stream(...)` internally and assembles the final response.
+
+| Provider | Package                    | API                              |
+|----------|----------------------------|----------------------------------|
+| Anthropic | `providers/anthropic`     | Anthropic Messages API           |
+| OpenAI    | `providers/openai`        | OpenAI Responses API             |
+| Google    | `providers/google`        | Gemini GenerateContent API       |
+
+All three providers support extended thinking via `agent.WithThinking(...)` where the underlying model offers it.
+
+These adapters represent API dialects rather than vendor names. Each provider can be pointed at a compatible endpoint with `WithBaseURL(...)`.
+
+`providers/openai` targets the OpenAI Responses API and can also point at OpenAI-compatible backends (Ollama, LM Studio, gateways):
+
+```go
+model, err := openai.New("", "gemma4",
+    openai.WithBaseURL("http://localhost:11434/v1"),
+)
+```
+
+`providers/anthropic` targets the Anthropic Messages API:
+
+```go
+model, err := anthropic.New(apiKey, "claude-compatible",
+    anthropic.WithBaseURL("https://your-anthropic-compatible-gateway.example.com"),
+)
+```
+
+`providers/google` targets the Gemini GenerateContent API:
+
+```go
+model, err := google.New(apiKey, "gemini-compatible",
+    google.WithBaseURL("https://your-gemini-compatible-gateway.example.com"),
+)
+```
+
+## Tools
+
+Tools are the actions the agent can take during the ReAct loop. Each tool has a name, a description the model uses to decide when to call it, a JSON schema for its arguments, and an execute function.
+
+`Generic[I, O]` in `x/tool` wraps a typed Go function as a tool. The JSON schema for arguments is generated automatically from `I` — no manual schema definition needed. Arguments are validated against the schema before the handler is called. If `O` is a string the value is returned as-is; any other type is JSON-marshalled before being returned to the model.
+
+```go
+type GetTimeInput struct {
+    Timezone string `json:"timezone" jsonschema:"IANA timezone name, e.g. America/New_York"`
+}
+
+getTime, err := tool.New(
+    "get_time",
+    "Get the current time in a given IANA timezone.",
+    func(_ context.Context, args GetTimeInput) (string, error) {
+        loc, err := time.LoadLocation(args.Timezone)
+        if err != nil {
+            return "", fmt.Errorf("unknown timezone: %s", args.Timezone)
+        }
+        return time.Now().In(loc).Format(time.RFC3339), nil
+    },
+)
+```
+
+Use `tool.MustNew(...)` for the panic-on-error variant in test code or top-level vars.
+
+Anything implementing `kit.Tool` works — `Generic` is the convenience wrapper, not a requirement.
+
+## Streaming
+
+`Stream` returns a lazy single-consumption iterator that yields fine-grained events as they arrive. Range over it once with `stream.Iter()`, then call `stream.Result()` for the final response and any terminal error. If you call `stream.Result()` before iteration starts, it drains the stream for you. If you stop iterating early, `stream.Result()` returns the partial result accumulated so far and does not resume.
+
+The stream emits content lifecycle events (`content_started`, `content_delta`, `content_done`) for every kind of content — text, thinking, tool calls, and tool results — plus a higher-level `message` event once each message is fully assembled.
+
+```go
+stream := a.Stream(ctx, messages)
+
+for event := range stream.Iter() {
+    switch event.Type {
+    case kit.EventContentStarted:
+        switch event.Content.Type {
+        case kit.ContentTypeThinking:
+            fmt.Println("[thinking]")
+        case kit.ContentTypeText:
+            fmt.Println("[response]")
+        case kit.ContentTypeToolCall:
+            fmt.Printf("[tool call] %s\n", event.Content.ToolCall.Name)
+        }
+    case kit.EventContentDelta:
+        switch event.Content.Type {
+        case kit.ContentTypeThinking:
+            fmt.Print(event.Content.Thinking.Text)
+        case kit.ContentTypeText:
+            fmt.Print(event.Content.Text.Text)
+        }
+    case kit.EventContentDone:
+        if event.ToolResult != nil {
+            fmt.Printf("[tool result] %s → %s\n", event.ToolResult.Call.Name, event.ToolResult.Output)
+        }
+    case kit.EventMessage:
+        fmt.Printf("[message %s complete]\n", event.Message.Role)
+    }
+}
+
+resp, err := stream.Result()
+if err != nil {
+    log.Fatal(err)
+}
+
+fmt.Printf("final text: %s\n", resp.Output.Text)
+```
+
+## Multi-turn conversations
+
+The agent is stateless between runs. To continue a conversation, append the messages from the previous result to the history and pass it back on the next call.
+
+```go
+resp, err := a.Run(ctx, history)
+
+history = append(history, resp.Messages...)
+history = append(history, kit.NewUserMessage([]kit.Content{
+    kit.NewTextContent("follow-up question"),
+}))
+
+resp, err = a.Run(ctx, history)
+```
+
+## Hooks
+
+Six hooks cover every stage of the ReAct loop. Each hook receives a pointer to `*kit.RunContext` and may inspect or mutate it. Returning a modified value replaces the original; returning an error aborts the run. Tool hooks are the exception: an error becomes a tool result and the loop continues so the model can react to the failure.
+
+**`WithOnTurnStart`** — start of each turn, before the model is called. Compaction strategies plug in here.
+```go
+func(rc *kit.RunContext) error
+```
+
+**`WithOnTurnEnd`** — end of each turn, after any tool calls in that turn have executed.
+```go
+func(rc *kit.RunContext) error
+```
+
+**`WithOnModelRequest`** — before each model call. Returned request replaces the original.
+```go
+func(rc *kit.RunContext, req kit.ModelRequest) (kit.ModelRequest, error)
+```
+
+**`WithOnModelResponse`** — after each model call. Returned response replaces the original.
+```go
+func(rc *kit.RunContext, resp kit.ModelResponse) (kit.ModelResponse, error)
+```
+
+**`WithOnToolCall`** — before each tool execution. Return an error to block the call; the error becomes the tool result and is sent back to the model.
+```go
+func(rc *kit.RunContext, call kit.ToolCall) (kit.ToolCall, error)
+```
+
+**`WithOnToolResult`** — after each tool execution.
+```go
+func(rc *kit.RunContext, result kit.ToolResult) (kit.ToolResult, error)
+```
+
+`RunContext` carries the working message set, the append-only generated log, cumulative and last-call usage, and the stream emitter. Hooks can rewrite `rc.Messages` to reshape what the model sees on the next turn.
+
+## Compaction
+
+`x/compaction` plugs into `OnTurnStart` to keep long conversations within the model's context window. A `Trigger` decides when to compact; a `Strategy` does the work.
+
+```go
+a, err := agent.New(model,
+    agent.WithInstructions("You are a helpful assistant."),
+    compaction.WithCompaction(
+        compaction.WhenUsageTokensExceed(80_000),
+        compaction.SummarizeWithRecent(summarizerModel, "Summarize the conversation so far.", 8),
+    ),
+)
+```
+
+`SummarizeWithRecent` summarizes everything except the last *N* messages by calling a separate model, then replaces the prefix with a single summary message marked `kit.ContentTypeSummary`. The summarizer can be the same model as the agent, or a cheaper one.
+
+`Trigger` and `Strategy` are plain function types — implement your own to use a different policy.
+
+## Testing
+
+`kittest` provides programmable test doubles for `kit.Model` and `kit.Tool` so you can drive the agent loop deterministically in unit tests.
+
+```go
+m := kittest.NewModel(t,
+    kittest.ModelResult{
+        Response: kit.ModelResponse{
+            Message:      kit.NewModelMessage([]kit.Content{kit.NewTextContent("hello")}),
+            FinishReason: kit.FinishReasonStop,
+        },
+    },
+)
+
+a, _ := agent.New(m)
+resp, err := a.Run(ctx, []kit.Message{
+    kit.NewUserMessage([]kit.Content{kit.NewTextContent("hi")}),
+})
+```
+
+The test double records every request it receives, fails the test if the agent makes more calls than scripted, and ships with assertion helpers for inspecting recorded calls.
+
+## Extending
+
+Everything is an interface. If something doesn't fit, replace it.
+
+- **Model** — `kit.Model`. Point at any inference backend via a provider package or implement your own.
+- **Tool** — `kit.Tool`, or use `tool.New[I, O]` from `x/tool` for auto-schema from a Go struct.
+- **Compactor** — a `Trigger` plus a `Strategy` registered with `compaction.WithCompaction(...)`.
+- **Hooks** — typed function values registered with `WithOn...` options.
+- **Extension** — `agent.WithExtensions(opts...)` bundles a set of options into a reusable capability.
+
+## Examples
+
+| Example                  | What it shows                                       |
+|--------------------------|-----------------------------------------------------|
+| `examples/01-basic`      | `Run()`, no tools                                   |
+| `examples/02-tools`      | `tool.MustNew` with a typed custom tool             |
+| `examples/03-providers`  | Anthropic, Google, and OpenAI side by side          |
+| `examples/04-local-model`| `providers/openai` against a local Ollama server    |
+| `examples/05-multi-turn` | Stateless multi-turn conversation pattern           |
+| `examples/06-streaming`  | `Stream()`, thinking, text deltas, tool events      |
+
+Run any example from the repo root:
+
+```sh
+OPENAI_API_KEY=... go run ./examples/01-basic
+```
+
+## License
+
+MIT — see [LICENSE](LICENSE).
