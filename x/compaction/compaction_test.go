@@ -5,13 +5,14 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/vitaliiPsl/crappy-adk/agent"
 	"github.com/vitaliiPsl/crappy-adk/kit"
 	"github.com/vitaliiPsl/crappy-adk/kittest"
 )
 
-func TestOnTurnStart_RunsStrategyWhenTriggerFires(t *testing.T) {
+func TestCompactionHook_RunsStrategyWhenTriggerFires(t *testing.T) {
 	called := false
-	hook := OnTurnStart(
+	hook := onTurnStart(
 		func(*kit.RunContext) bool { return true },
 		func(*kit.RunContext) error {
 			called = true
@@ -29,8 +30,8 @@ func TestOnTurnStart_RunsStrategyWhenTriggerFires(t *testing.T) {
 	}
 }
 
-func TestOnTurnStart_SkipsStrategyWhenTriggerDoesNotFire(t *testing.T) {
-	hook := OnTurnStart(
+func TestCompactionHook_SkipsStrategyWhenTriggerDoesNotFire(t *testing.T) {
+	hook := onTurnStart(
 		func(*kit.RunContext) bool { return false },
 		func(*kit.RunContext) error {
 			t.Fatal("strategy ran when trigger returned false")
@@ -41,6 +42,54 @@ func TestOnTurnStart_SkipsStrategyWhenTriggerDoesNotFire(t *testing.T) {
 
 	if err := hook(&kit.RunContext{}); err != nil {
 		t.Fatalf("hook: %v", err)
+	}
+}
+
+func TestWithCompaction_ConfiguresAgentCompaction(t *testing.T) {
+	model := kittest.NewModel(t, kittest.ModelResult{
+		Response: kit.ModelResponse{
+			Message:      kit.NewModelMessage([]kit.Content{kit.NewTextContent("done")}),
+			FinishReason: kit.FinishReasonStop,
+		},
+	})
+
+	called := false
+
+	a, err := agent.New(
+		model,
+		WithCompaction(
+			func(*kit.RunContext) bool { return true },
+			func(rc *kit.RunContext) error {
+				called = true
+
+				rc.Messages = append(rc.Messages, kit.NewSummaryMessage("compacted"))
+
+				return nil
+			},
+		),
+	)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	_, err = a.Run(context.Background(), []kit.Message{
+		kit.NewUserMessage([]kit.Content{kit.NewTextContent("hello")}),
+	})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	if !called {
+		t.Fatal("strategy was not called")
+	}
+
+	req := model.CallAt(0)
+	if got := len(req.Messages); got != 2 {
+		t.Fatalf("model received %d messages, want original + summary", got)
+	}
+
+	if req.Messages[1].Content[0].Type != kit.ContentTypeSummary {
+		t.Fatalf("second message content type = %q, want summary", req.Messages[1].Content[0].Type)
 	}
 }
 
