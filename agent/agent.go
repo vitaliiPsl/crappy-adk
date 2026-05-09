@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 
@@ -65,6 +66,10 @@ func (a *Agent) run(
 	}
 
 	for {
+		if err := rc.Err(); err != nil {
+			return rc.Response(), err
+		}
+
 		if err := a.hooks.onTurnStart(rc); err != nil {
 			return rc.Response(), err
 		}
@@ -196,6 +201,10 @@ func (a *Agent) executeTool(rc *kit.RunContext, call kit.ToolCall) (result kit.T
 	call = hookedCall
 
 	output, execErr := tool.Execute(rc.Context, call.Arguments)
+	if errors.Is(execErr, context.Canceled) || errors.Is(execErr, context.DeadlineExceeded) {
+		return kit.ToolResult{}, execErr
+	}
+
 	result = kit.NewToolResult(call, output, execErr)
 
 	hookedResult, hookErr := a.hooks.onToolResult(rc, result)

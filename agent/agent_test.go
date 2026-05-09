@@ -80,6 +80,31 @@ func TestRun_ReturnsModelError(t *testing.T) {
 	model.AssertCallCount(t, 1)
 }
 
+func TestRun_ReturnsCanceledContextBeforeModelCall(t *testing.T) {
+	model := kittest.NewModel(t)
+
+	a, err := New(model, WithInstructions("be brief"))
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	resp, err := a.Run(ctx, []kit.Message{
+		kit.NewUserMessage([]kit.Content{kit.NewTextContent("hello")}),
+	})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("Run error = %v, want context canceled", err)
+	}
+
+	if len(resp.Messages) != 0 {
+		t.Fatalf("len(Messages) = %d, want 0", len(resp.Messages))
+	}
+
+	model.AssertNeverCalled(t)
+}
+
 func TestRun_ExecutesToolCallAndContinues(t *testing.T) {
 	call := kit.NewToolCall("call-1", "add", map[string]any{"a": 3, "b": 4})
 	toolCallMessage := kit.NewModelMessage([]kit.Content{kit.NewToolCallContent(call)})
@@ -254,6 +279,22 @@ func (p panicTool) Execute(context.Context, map[string]any) (string, error) {
 	panic("bad things")
 }
 
+type cancelTool struct {
+	cancel context.CancelFunc
+	called bool
+}
+
+func (c *cancelTool) Definition() kit.ToolDefinition {
+	return kit.ToolDefinition{Name: "cancel"}
+}
+
+func (c *cancelTool) Execute(ctx context.Context, _ map[string]any) (string, error) {
+	c.called = true
+	c.cancel()
+
+	return "", ctx.Err()
+}
+
 func TestExecuteTool_Success(t *testing.T) {
 	tool := kittest.NewTool(t, "ok", "ok tool", kittest.ToolResult{Result: "done"})
 
@@ -333,6 +374,47 @@ func TestExecuteTool_RecoversPanic(t *testing.T) {
 
 	if !strings.Contains(result.Error, `tool "panic" panicked: bad things`) {
 		t.Fatalf("Error = %q, want panic recovery error", result.Error)
+	}
+}
+
+func TestRun_ContextCanceledDuringToolAbortsRun(t *testing.T) {
+	call := kit.NewToolCall("call-1", "cancel", nil)
+	toolCallMessage := kit.NewModelMessage([]kit.Content{kit.NewToolCallContent(call)})
+
+	model := kittest.NewModel(t, kittest.ModelResult{
+		Response: kit.ModelResponse{
+			Message:      toolCallMessage,
+			FinishReason: kit.FinishReasonToolCall,
+		},
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	tool := &cancelTool{cancel: cancel}
+
+	a, err := New(model, WithTools(tool), WithInstructions("use tools"))
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	resp, err := a.Run(ctx, []kit.Message{
+		kit.NewUserMessage([]kit.Content{kit.NewTextContent("cancel during tool")}),
+	})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("Run error = %v, want context canceled", err)
+	}
+
+	if !tool.called {
+		t.Fatal("tool was not called")
+	}
+
+	model.AssertCallCount(t, 1)
+
+	if len(resp.Messages) != 1 {
+		t.Fatalf("len(Messages) = %d, want only the model tool-call message", len(resp.Messages))
+	}
+
+	if got := len(resp.Messages[0].ToolCalls()); got != 1 {
+		t.Fatalf("len(ToolCalls) = %d, want 1", got)
 	}
 }
 
