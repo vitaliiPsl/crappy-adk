@@ -8,7 +8,7 @@
   [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 </div>
 
-A small toolkit for building AI agents in Go. ReAct loop, three providers, typed tools, hooks, and compaction — pick what you need.
+A small toolkit for building AI agents in Go. ReAct loop, three providers, typed tools, hooks, compaction, and runtime guards — pick what you need.
 
 ## Motivation
 
@@ -24,6 +24,7 @@ Felt bored while on vacation, so decided to learn more about AI agents and build
 - [Multi-turn conversations](#multi-turn-conversations)
 - [Hooks](#hooks)
 - [Compaction](#compaction)
+- [Guards](#guards)
 - [Testing](#testing)
 - [Extending](#extending)
 - [Examples](#examples)
@@ -249,6 +250,31 @@ a, err := agent.New(model,
 
 `Trigger` and `Strategy` are plain function types — implement your own to use a different policy.
 
+## Guards
+
+`x/guard` provides hook-based runtime policies for stopping runaway or unexpectedly expensive runs. Guards are regular `agent.Option` values, so compose them with the rest of your agent setup.
+
+```go
+a, err := agent.New(model,
+    agent.WithInstructions("You are a helpful assistant."),
+    guard.WithMaxTurns(12),
+    guard.WithMaxToolCalls(40),
+    guard.WithInputTokenBudget(80_000),
+    guard.WithOutputTokenBudget(8_000),
+    guard.WithTotalTokenBudget(88_000),
+    guard.WithRepeatedToolCallLimit(2, 4),
+)
+```
+
+Available guards:
+
+- `WithMaxTurns(n)` stops before the next model call once the run has produced `n` model turns.
+- `WithMaxToolCalls(n)` limits total tool calls requested during a run.
+- `WithInputTokenBudget(n)`, `WithOutputTokenBudget(n)`, and `WithTotalTokenBudget(n)` limit cumulative accepted usage.
+- `WithRepeatedToolCallLimit(maxRepeats, window)` detects repeated identical tool calls by tool name plus arguments, ignoring provider call IDs. The window counts tool-calling model responses including the current one; `window <= 0` checks all prior tool-calling responses.
+
+Guard failures are exported sentinel errors: `ErrMaxTurnsExceeded`, `ErrMaxToolCallsExceeded`, `ErrBudgetExceeded`, and `ErrToolLoopDetected`.
+
 ## Testing
 
 `kittest` provides programmable test doubles for `kit.Model` and `kit.Tool` so you can drive the agent loop deterministically in unit tests.
@@ -278,6 +304,7 @@ Everything is an interface. If something doesn't fit, replace it.
 - **Model** — `kit.Model`. Point at any inference backend via a provider package or implement your own.
 - **Tool** — `kit.Tool`, or use `tool.New[I, O]` from `x/tool` for auto-schema from a Go struct.
 - **Compactor** — a `Trigger` plus a `Strategy` registered with `compaction.WithCompaction(...)`.
+- **Guard** — runtime policies from `x/guard`, such as turn, tool-call, token-budget, and repeated-tool-call limits.
 - **Hooks** — typed function values registered with `WithOn...` options.
 - **Extension** — `agent.WithExtensions(opts...)` bundles a set of options into a reusable capability.
 
