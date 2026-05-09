@@ -368,9 +368,9 @@ func convertResponseFinishReason(resp *responses.Response) kit.FinishReason {
 
 func convertResponseUsage(resp *responses.Response) kit.Usage {
 	return kit.Usage{
-		InputTokens:     int32(resp.Usage.InputTokens),
-		OutputTokens:    int32(resp.Usage.OutputTokens),
-		CacheReadTokens: int32(resp.Usage.InputTokensDetails.CachedTokens),
-		ReasoningTokens: int32(resp.Usage.OutputTokensDetails.ReasoningTokens),
+		InputTokens:     resp.Usage.InputTokens,
+		OutputTokens:    resp.Usage.OutputTokens,
+		CacheReadTokens: resp.Usage.InputTokensDetails.CachedTokens,
+		ReasoningTokens: resp.Usage.OutputTokensDetails.ReasoningTokens,
 	}
 }

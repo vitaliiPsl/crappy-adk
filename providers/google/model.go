@@ -286,9 +286,9 @@ func convertResponseUsage(resp *genai.GenerateContentResponse) kit.Usage {
 	}
 
 	return kit.Usage{
-		InputTokens:     resp.UsageMetadata.PromptTokenCount,
-		OutputTokens:    resp.UsageMetadata.CandidatesTokenCount,
-		CacheReadTokens: resp.UsageMetadata.CachedContentTokenCount,
-		ReasoningTokens: resp.UsageMetadata.ThoughtsTokenCount,
+		InputTokens:     int64(resp.UsageMetadata.PromptTokenCount),
+		OutputTokens:    int64(resp.UsageMetadata.CandidatesTokenCount),
+		CacheReadTokens: int64(resp.UsageMetadata.CachedContentTokenCount),
+		ReasoningTokens: int64(resp.UsageMetadata.ThoughtsTokenCount),
 	}
 }

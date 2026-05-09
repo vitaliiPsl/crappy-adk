@@ -304,9 +304,9 @@ func convertResponseFinishReason(resp *anthropicsdk.Message) kit.FinishReason {
 
 func convertResponseUsage(resp *anthropicsdk.Message) kit.Usage {
 	return kit.Usage{
-		InputTokens:      int32(resp.Usage.InputTokens),
-		OutputTokens:     int32(resp.Usage.OutputTokens),
-		CacheReadTokens:  int32(resp.Usage.CacheReadInputTokens),
-		CacheWriteTokens: int32(resp.Usage.CacheCreationInputTokens),
+		InputTokens:      resp.Usage.InputTokens,
+		OutputTokens:     resp.Usage.OutputTokens,
+		CacheReadTokens:  resp.Usage.CacheReadInputTokens,
+		CacheWriteTokens: resp.Usage.CacheCreationInputTokens,
 	}
 }

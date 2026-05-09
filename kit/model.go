@@ -75,22 +75,22 @@ const (
 // Usage holds the number of tokens consumed by a model call.
 type Usage struct {
 	// InputTokens is the number of tokens in the request.
-	InputTokens int32
+	InputTokens int64
 
 	// OutputTokens is the number of tokens generated in the response.
-	OutputTokens int32
+	OutputTokens int64
 
 	// CacheReadTokens is the number of input tokens read from the cache.
 	// Zero if caching was not used or not supported.
-	CacheReadTokens int32
+	CacheReadTokens int64
 
 	// CacheWriteTokens is the number of input tokens written to the cache.
 	// Zero if no new cache entry was created or not supported.
-	CacheWriteTokens int32
+	CacheWriteTokens int64
 
 	// ReasoningTokens is the number of tokens used for internal reasoning.
 	// Zero if the model does not support extended thinking.
-	ReasoningTokens int32
+	ReasoningTokens int64
 }
 
 // Add accumulates the token counts from other into u.
