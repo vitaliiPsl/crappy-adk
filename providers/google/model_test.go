@@ -115,7 +115,7 @@ func TestConvertRequestContentItem(t *testing.T) {
 	})
 
 	t.Run("thinking", func(t *testing.T) {
-		content := kit.NewThinkingContent("id_1", "I think...", "sig_xyz")
+		content := kit.NewThinkingContent("id_1", "I think...", "c2lnX3h5eg==")
 
 		part, ok := convertRequestContentItem(content)
 
@@ -149,6 +149,7 @@ func TestConvertRequestContentItem(t *testing.T) {
 			ID:        "call_1",
 			Name:      "search",
 			Arguments: map[string]any{"query": "Go"},
+			Signature: "c2lnX3Rvb2w=",
 		})
 
 		part, ok := convertRequestContentItem(content)
@@ -171,6 +172,10 @@ func TestConvertRequestContentItem(t *testing.T) {
 
 		if part.FunctionCall.Args["query"] != "Go" {
 			t.Errorf("Args[query] = %v, want %q", part.FunctionCall.Args["query"], "Go")
+		}
+
+		if string(part.ThoughtSignature) != "sig_tool" {
+			t.Errorf("ThoughtSignature = %q, want %q", string(part.ThoughtSignature), "sig_tool")
 		}
 	})
 
@@ -325,14 +330,15 @@ func TestConvertResponseContent(t *testing.T) {
 			t.Errorf("Text = %q, want %q", th.Text, "I think...")
 		}
 
-		if th.Signature != "sig_xyz" {
-			t.Errorf("Signature = %q, want %q", th.Signature, "sig_xyz")
+		if th.Signature != "c2lnX3h5eg==" {
+			t.Errorf("Signature = %q, want %q", th.Signature, "c2lnX3h5eg==")
 		}
 	})
 
 	t.Run("function_call part", func(t *testing.T) {
 		part := genai.NewPartFromFunctionCall("search", map[string]any{"query": "Go"})
 		part.FunctionCall.ID = "call_1"
+		part.ThoughtSignature = []byte("sig_tool")
 
 		got := convertResponseContent(part)
 
@@ -355,6 +361,10 @@ func TestConvertResponseContent(t *testing.T) {
 
 		if tc.Arguments["query"] != "Go" {
 			t.Errorf("Arguments[query] = %v, want %q", tc.Arguments["query"], "Go")
+		}
+
+		if tc.Signature != "c2lnX3Rvb2w=" {
+			t.Errorf("Signature = %q, want %q", tc.Signature, "c2lnX3Rvb2w=")
 		}
 	})
 

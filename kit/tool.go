@@ -28,6 +28,8 @@ type ToolCall struct {
 	Name string
 	// Arguments parsed to the tool.
 	Arguments map[string]any
+	// Signature is opaque provider metadata required by some models to replay signed tool calls.
+	Signature string
 }
 
 // ToolResult represents the output of a tool execution.

@@ -44,8 +44,11 @@ func toolCallChunk(id, name string, args map[string]any) *genai.GenerateContentR
 	return &genai.GenerateContentResponse{
 		Candidates: []*genai.Candidate{{
 			Content: &genai.Content{
-				Role:  genai.RoleModel,
-				Parts: []*genai.Part{{FunctionCall: &genai.FunctionCall{ID: id, Name: name, Args: args}}},
+				Role: genai.RoleModel,
+				Parts: []*genai.Part{{
+					FunctionCall:     &genai.FunctionCall{ID: id, Name: name, Args: args},
+					ThoughtSignature: []byte("sig_tool"),
+				}},
 			},
 		}},
 	}
@@ -181,8 +184,8 @@ func TestHandleChunk_ThinkingLifecycle(t *testing.T) {
 		t.Errorf("result thinking text = %q, want %q", thinking.Text, "Let me think")
 	}
 
-	if thinking.Signature != "sig_abc" {
-		t.Errorf("result thinking signature = %q, want %q", thinking.Signature, "sig_abc")
+	if thinking.Signature != "c2lnX2FiYw==" {
+		t.Errorf("result thinking signature = %q, want %q", thinking.Signature, "c2lnX2FiYw==")
 	}
 }
 
@@ -228,6 +231,10 @@ func TestHandleChunk_FunctionCallLifecycle(t *testing.T) {
 
 	if calls[0].Arguments["a"] != float64(1) {
 		t.Errorf("Arguments = %v, want a=1", calls[0].Arguments)
+	}
+
+	if calls[0].Signature != "c2lnX3Rvb2w=" {
+		t.Errorf("Signature = %q, want %q", calls[0].Signature, "c2lnX3Rvb2w=")
 	}
 
 	if result.FinishReason != kit.FinishReasonToolCall {

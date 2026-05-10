@@ -77,7 +77,7 @@ func (a *streamAcc) handlePart(part *genai.Part, emit kit.Emitter[kit.ModelEvent
 			return err
 		}
 
-		tc, _ := convertResponseToolCall(part.FunctionCall)
+		tc, _ := convertResponseToolCall(part)
 		content := kit.NewToolCallContent(tc)
 
 		if err := emit.Emit(kit.NewModelContentStartedEvent(content)); err != nil {
@@ -158,7 +158,7 @@ func (a *streamAcc) result() kit.ModelResponse {
 	content := make([]kit.Content, 0)
 
 	if a.thinkBuf != "" {
-		content = append(content, kit.NewThinkingContent("", a.thinkBuf, string(a.thinkSig)))
+		content = append(content, kit.NewThinkingContent("", a.thinkBuf, encodeSignature(a.thinkSig)))
 	}
 
 	if a.textBuf != "" {

@@ -2,6 +2,7 @@ package google
 
 import (
 	"context"
+	"encoding/base64"
 
 	"google.golang.org/genai"
 
@@ -172,7 +173,7 @@ func convertRequestContentItem(content kit.Content) (*genai.Part, bool) {
 		return &genai.Part{
 			Thought:          true,
 			Text:             t.Text,
-			ThoughtSignature: []byte(t.Signature),
+			ThoughtSignature: decodeSignature(t.Signature),
 		}, true
 	case kit.ContentTypeToolCall:
 		if content.ToolCall == nil {
@@ -183,6 +184,7 @@ func convertRequestContentItem(content kit.Content) (*genai.Part, bool) {
 
 		part := genai.NewPartFromFunctionCall(tc.Name, tc.Arguments)
 		part.FunctionCall.ID = tc.ID
+		part.ThoughtSignature = decodeSignature(tc.Signature)
 
 		return part, true
 	case kit.ContentTypeToolResult:
@@ -235,7 +237,7 @@ func convertResponse(resp *genai.GenerateContentResponse) kit.ModelResponse {
 
 func convertResponseContent(part *genai.Part) []kit.Content {
 	if part.Thought {
-		return []kit.Content{kit.NewThinkingContent("", part.Text, string(part.ThoughtSignature))}
+		return []kit.Content{kit.NewThinkingContent("", part.Text, encodeSignature(part.ThoughtSignature))}
 	}
 
 	if part.Text != "" {
@@ -243,7 +245,7 @@ func convertResponseContent(part *genai.Part) []kit.Content {
 	}
 
 	if part.FunctionCall != nil {
-		if tc, ok := convertResponseToolCall(part.FunctionCall); ok {
+		if tc, ok := convertResponseToolCall(part); ok {
 			return []kit.Content{kit.NewToolCallContent(tc)}
 		}
 	}
@@ -251,12 +253,40 @@ func convertResponseContent(part *genai.Part) []kit.Content {
 	return nil
 }
 
-func convertResponseToolCall(fc *genai.FunctionCall) (kit.ToolCall, bool) {
+func convertResponseToolCall(part *genai.Part) (kit.ToolCall, bool) {
+	if part == nil || part.FunctionCall == nil {
+		return kit.ToolCall{}, false
+	}
+
+	fc := part.FunctionCall
+
 	return kit.ToolCall{
 		ID:        fc.ID,
 		Name:      fc.Name,
 		Arguments: fc.Args,
+		Signature: encodeSignature(part.ThoughtSignature),
 	}, true
+}
+
+func encodeSignature(sig []byte) string {
+	if len(sig) == 0 {
+		return ""
+	}
+
+	return base64.StdEncoding.EncodeToString(sig)
+}
+
+func decodeSignature(sig string) []byte {
+	if sig == "" {
+		return nil
+	}
+
+	decoded, err := base64.StdEncoding.DecodeString(sig)
+	if err == nil {
+		return decoded
+	}
+
+	return []byte(sig)
 }
 
 func convertResponseFinishReason(candidate *genai.Candidate) kit.FinishReason {
