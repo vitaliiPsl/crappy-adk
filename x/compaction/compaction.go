@@ -8,7 +8,7 @@ import (
 // Trigger reports whether [Strategy] should run on the current turn.
 type Trigger func(rc *kit.RunContext) bool
 
-// Strategy mutates [kit.RunContext] to reduce the working conversation.
+// Strategy mutates memory through [kit.RunContext] to reduce the working conversation.
 type Strategy func(rc *kit.RunContext) error
 
 // WithCompaction configures an agent to run strategy whenever trigger fires.

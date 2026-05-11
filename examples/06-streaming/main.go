@@ -24,6 +24,7 @@ import (
 	"github.com/vitaliiPsl/crappy-adk/agent"
 	"github.com/vitaliiPsl/crappy-adk/kit"
 	"github.com/vitaliiPsl/crappy-adk/providers/openai"
+	"github.com/vitaliiPsl/crappy-adk/x/memory"
 	tool "github.com/vitaliiPsl/crappy-adk/x/tool"
 )
 
@@ -56,6 +57,7 @@ func main() {
 
 	a, err := agent.New(
 		model,
+		memory.NewHistory(),
 		agent.WithInstructions(
 			"You are a dramatic dungeon master. Roll a d20 to determine the adventurer's fate, "+
 				"then narrate the outcome in two vivid sentences. Never reveal the raw number.",
@@ -67,13 +69,11 @@ func main() {
 		log.Fatalf("failed to create agent: %v", err)
 	}
 
-	messages := []kit.Message{
-		kit.NewUserMessage([]kit.Content{
-			kit.NewTextContent("I attempt to pick the lock on the dragon's vault."),
-		}),
-	}
+	input := kit.NewUserMessage([]kit.Content{
+		kit.NewTextContent("I attempt to pick the lock on the dragon's vault."),
+	})
 
-	stream := a.Stream(context.Background(), messages)
+	stream := a.Stream(context.Background(), input)
 
 	for event := range stream.Iter() {
 		switch {

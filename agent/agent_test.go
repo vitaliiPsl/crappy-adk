@@ -8,6 +8,7 @@ import (
 
 	"github.com/vitaliiPsl/crappy-adk/kit"
 	"github.com/vitaliiPsl/crappy-adk/kittest"
+	xmemory "github.com/vitaliiPsl/crappy-adk/x/memory"
 )
 
 func TestRun_ReturnsFinalResponse(t *testing.T) {
@@ -25,12 +26,12 @@ func TestRun_ReturnsFinalResponse(t *testing.T) {
 		kit.NewUserMessage([]kit.Content{kit.NewTextContent("hello")}),
 	}
 
-	a, err := New(model, WithTools(tool), WithInstructions("be brief"))
+	a, err := New(model, xmemory.NewHistory(), WithTools(tool), WithInstructions("be brief"))
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
 
-	response, err := a.Run(context.Background(), messages)
+	response, err := a.Run(context.Background(), messages[0])
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -65,14 +66,14 @@ func TestRun_ReturnsModelError(t *testing.T) {
 
 	model := kittest.NewModel(t, kittest.ModelResult{Error: wantErr})
 
-	a, err := New(model, WithInstructions("be brief"))
+	input := kit.NewUserMessage([]kit.Content{kit.NewTextContent("hello")})
+
+	a, err := New(model, xmemory.NewHistory(), WithInstructions("be brief"))
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
 
-	_, err = a.Run(context.Background(), []kit.Message{
-		kit.NewUserMessage([]kit.Content{kit.NewTextContent("hello")}),
-	})
+	_, err = a.Run(context.Background(), input)
 	if !errors.Is(err, wantErr) {
 		t.Fatalf("Run error = %v, want %v", err, wantErr)
 	}
@@ -83,7 +84,9 @@ func TestRun_ReturnsModelError(t *testing.T) {
 func TestRun_ReturnsCanceledContextBeforeModelCall(t *testing.T) {
 	model := kittest.NewModel(t)
 
-	a, err := New(model, WithInstructions("be brief"))
+	input := kit.NewUserMessage([]kit.Content{kit.NewTextContent("hello")})
+
+	a, err := New(model, xmemory.NewHistory(), WithInstructions("be brief"))
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -91,9 +94,7 @@ func TestRun_ReturnsCanceledContextBeforeModelCall(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	resp, err := a.Run(ctx, []kit.Message{
-		kit.NewUserMessage([]kit.Content{kit.NewTextContent("hello")}),
-	})
+	resp, err := a.Run(ctx, input)
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("Run error = %v, want context canceled", err)
 	}
@@ -133,12 +134,12 @@ func TestRun_ExecutesToolCallAndContinues(t *testing.T) {
 		kit.NewUserMessage([]kit.Content{kit.NewTextContent("add 3 and 4")}),
 	}
 
-	a, err := New(model, WithTools(tool), WithInstructions("use tools"))
+	a, err := New(model, xmemory.NewHistory(), WithTools(tool), WithInstructions("use tools"))
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
 
-	response, err := a.Run(context.Background(), messages)
+	response, err := a.Run(context.Background(), messages[0])
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -197,14 +198,14 @@ func TestRun_SendsToolErrorBackToModel(t *testing.T) {
 		},
 	)
 
-	a, err := New(model, WithTools(tool), WithInstructions("use tools"))
+	input := kit.NewUserMessage([]kit.Content{kit.NewTextContent("try failing tool")})
+
+	a, err := New(model, xmemory.NewHistory(), WithTools(tool), WithInstructions("use tools"))
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
 
-	_, err = a.Run(context.Background(), []kit.Message{
-		kit.NewUserMessage([]kit.Content{kit.NewTextContent("try failing tool")}),
-	})
+	_, err = a.Run(context.Background(), input)
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -243,14 +244,14 @@ func TestRun_SendsMissingToolErrorBackToModel(t *testing.T) {
 		},
 	)
 
-	a, err := New(model, WithInstructions("use tools"))
+	input := kit.NewUserMessage([]kit.Content{kit.NewTextContent("try missing tool")})
+
+	a, err := New(model, xmemory.NewHistory(), WithInstructions("use tools"))
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
 
-	_, err = a.Run(context.Background(), []kit.Message{
-		kit.NewUserMessage([]kit.Content{kit.NewTextContent("try missing tool")}),
-	})
+	_, err = a.Run(context.Background(), input)
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -298,7 +299,7 @@ func (c *cancelTool) Execute(ctx context.Context, _ map[string]any) (string, err
 func TestExecuteTool_Success(t *testing.T) {
 	tool := kittest.NewTool(t, "ok", "ok tool", kittest.ToolResult{Result: "done"})
 
-	a, err := New(nil, WithTools(tool))
+	a, err := New(nil, xmemory.NewHistory(), WithTools(tool))
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -324,7 +325,7 @@ func TestExecuteTool_Success(t *testing.T) {
 func TestExecuteTool_Error(t *testing.T) {
 	tool := kittest.NewTool(t, "fail", "fail tool", kittest.ToolResult{Error: errors.New("boom")})
 
-	a, err := New(nil, WithTools(tool))
+	a, err := New(nil, xmemory.NewHistory(), WithTools(tool))
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -340,7 +341,7 @@ func TestExecuteTool_Error(t *testing.T) {
 }
 
 func TestExecuteTool_NotFound(t *testing.T) {
-	a, err := New(nil)
+	a, err := New(nil, xmemory.NewHistory())
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -358,7 +359,7 @@ func TestExecuteTool_NotFound(t *testing.T) {
 func TestExecuteTool_RecoversPanic(t *testing.T) {
 	tool := panicTool{name: "panic"}
 
-	a, err := New(nil, WithTools(tool))
+	a, err := New(nil, xmemory.NewHistory(), WithTools(tool))
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -391,14 +392,14 @@ func TestRun_ContextCanceledDuringToolAbortsRun(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	tool := &cancelTool{cancel: cancel}
 
-	a, err := New(model, WithTools(tool), WithInstructions("use tools"))
+	input := kit.NewUserMessage([]kit.Content{kit.NewTextContent("cancel during tool")})
+
+	a, err := New(model, xmemory.NewHistory(), WithTools(tool), WithInstructions("use tools"))
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
 
-	resp, err := a.Run(ctx, []kit.Message{
-		kit.NewUserMessage([]kit.Content{kit.NewTextContent("cancel during tool")}),
-	})
+	resp, err := a.Run(ctx, input)
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("Run error = %v, want context canceled", err)
 	}
@@ -431,14 +432,14 @@ func TestStream_ReturnsEventsAndResult(t *testing.T) {
 		},
 	})
 
-	a, err := New(model, WithInstructions("be brief"))
+	input := kit.NewUserMessage([]kit.Content{kit.NewTextContent("hello")})
+
+	a, err := New(model, xmemory.NewHistory(), WithInstructions("be brief"))
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
 
-	stream := a.Stream(context.Background(), []kit.Message{
-		kit.NewUserMessage([]kit.Content{kit.NewTextContent("hello")}),
-	})
+	stream := a.Stream(context.Background(), input)
 
 	var events []kit.AgentEvent
 	for event := range stream.Iter() {
@@ -505,14 +506,14 @@ func TestStream_EmitsToolResultAndContinues(t *testing.T) {
 		},
 	)
 
-	a, err := New(model, WithTools(tool), WithInstructions("use tools"))
+	input := kit.NewUserMessage([]kit.Content{kit.NewTextContent("add 3 and 4")})
+
+	a, err := New(model, xmemory.NewHistory(), WithTools(tool), WithInstructions("use tools"))
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
 
-	stream := a.Stream(context.Background(), []kit.Message{
-		kit.NewUserMessage([]kit.Content{kit.NewTextContent("add 3 and 4")}),
-	})
+	stream := a.Stream(context.Background(), input)
 
 	var sawToolResult bool
 
@@ -556,14 +557,14 @@ func TestStream_ResultAfterEarlyStopReturnsPartialResponse(t *testing.T) {
 		},
 	})
 
-	a, err := New(model, WithInstructions("be brief"))
+	input := kit.NewUserMessage([]kit.Content{kit.NewTextContent("hello")})
+
+	a, err := New(model, xmemory.NewHistory(), WithInstructions("be brief"))
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
 
-	stream := a.Stream(context.Background(), []kit.Message{
-		kit.NewUserMessage([]kit.Content{kit.NewTextContent("hello")}),
-	})
+	stream := a.Stream(context.Background(), input)
 
 	for range stream.Iter() {
 		break
@@ -584,7 +585,7 @@ func TestExecuteTool_OnToolCallHookErrorBecomesResult(t *testing.T) {
 
 	hookErr := errors.New("policy denied")
 
-	a, err := New(nil,
+	a, err := New(nil, xmemory.NewHistory(),
 		WithTools(tool),
 		WithOnToolCall(func(_ *kit.RunContext, _ kit.ToolCall) (kit.ToolCall, error) {
 			return kit.ToolCall{}, hookErr
@@ -621,7 +622,7 @@ func TestExecuteTool_OnToolResultHookErrorBecomesResult(t *testing.T) {
 
 	hookErr := errors.New("redaction failed")
 
-	a, err := New(nil,
+	a, err := New(nil, xmemory.NewHistory(),
 		WithTools(tool),
 		WithOnToolResult(func(_ *kit.RunContext, _ kit.ToolResult) (kit.ToolResult, error) {
 			return kit.ToolResult{}, hookErr
@@ -658,7 +659,7 @@ func TestWithTools_DuplicateNameKeepsFirst(t *testing.T) {
 	other := kittest.NewTool(t, "calc", "calc")
 	second := kittest.NewTool(t, "search", "v2")
 
-	a, err := New(nil, WithTools(first, other), WithTools(second))
+	a, err := New(nil, xmemory.NewHistory(), WithTools(first, other), WithTools(second))
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -708,7 +709,9 @@ func TestRun_ToolHookErrorIsSentBackToModel(t *testing.T) {
 		},
 	)
 
-	a, err := New(model,
+	input := kit.NewUserMessage([]kit.Content{kit.NewTextContent("search go")})
+
+	a, err := New(model, xmemory.NewHistory(),
 		WithTools(tool),
 		WithOnToolCall(func(_ *kit.RunContext, _ kit.ToolCall) (kit.ToolCall, error) {
 			return kit.ToolCall{}, errors.New("policy denied")
@@ -718,9 +721,7 @@ func TestRun_ToolHookErrorIsSentBackToModel(t *testing.T) {
 		t.Fatalf("New: %v", err)
 	}
 
-	resp, err := a.Run(context.Background(), []kit.Message{
-		kit.NewUserMessage([]kit.Content{kit.NewTextContent("search go")}),
-	})
+	resp, err := a.Run(context.Background(), input)
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -743,4 +744,53 @@ func TestRun_ToolHookErrorIsSentBackToModel(t *testing.T) {
 	}
 
 	tool.AssertNeverCalled(t)
+}
+
+func TestRun_WithMemoryLoadsContextAndRecordsMessages(t *testing.T) {
+	remembered := kit.NewUserMessage([]kit.Content{kit.NewTextContent("remember me")})
+	input := kit.NewUserMessage([]kit.Content{kit.NewTextContent("what do you remember?")})
+	final := kit.NewModelMessage([]kit.Content{kit.NewTextContent("I remember you.")})
+
+	mem := xmemory.NewHistory(remembered)
+	model := kittest.NewModel(t, kittest.ModelResult{
+		Response: kit.ModelResponse{
+			Message:      final,
+			FinishReason: kit.FinishReasonStop,
+		},
+	})
+
+	a, err := New(model, mem)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	resp, err := a.Run(context.Background(), input)
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	if resp.Output.Text != "I remember you." {
+		t.Fatalf("Output = %q, want final memory response", resp.Output.Text)
+	}
+
+	model.AssertCalledWith(t, 0, kit.ModelRequest{
+		Messages: []kit.Message{remembered, input},
+	})
+
+	got, err := mem.History(context.Background())
+	if err != nil {
+		t.Fatalf("History: %v", err)
+	}
+
+	want := []kit.Message{remembered, input, final}
+
+	if len(got) != len(want) {
+		t.Fatalf("len(memory history) = %d, want %d", len(got), len(want))
+	}
+
+	for i := range want {
+		if got[i].Role != want[i].Role || got[i].TextContent().Text != want[i].TextContent().Text {
+			t.Fatalf("memory history[%d] = %+v, want %+v", i, got[i], want[i])
+		}
+	}
 }

@@ -16,7 +16,7 @@ func WithMaxTurns(limit int) agent.Option {
 
 	return agent.WithOnTurnStart(func(rc *kit.RunContext) error {
 		turns := 0
-		for _, msg := range rc.Generated {
+		for _, msg := range rc.Messages {
 			if msg.Role == kit.RoleModel {
 				turns++
 			}
@@ -39,7 +39,7 @@ func WithMaxToolCalls(limit int) agent.Option {
 
 	return agent.WithOnModelResponse(func(rc *kit.RunContext, resp kit.ModelResponse) (kit.ModelResponse, error) {
 		toolCalls := len(resp.Message.ToolCalls())
-		for _, msg := range rc.Generated {
+		for _, msg := range rc.Messages {
 			toolCalls += len(msg.ToolCalls())
 		}
 

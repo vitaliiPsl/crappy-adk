@@ -35,8 +35,8 @@ func WithRepeatedToolCallLimit(maxRepeats, window int) agent.Option {
 		}
 
 		previousToolResponses := 0
-		for i := len(rc.Generated) - 1; i >= 0; i-- {
-			msg := rc.Generated[i]
+		for i := len(rc.Messages) - 1; i >= 0; i-- {
+			msg := rc.Messages[i]
 			if msg.Role != kit.RoleModel {
 				continue
 			}

@@ -6,21 +6,23 @@ import (
 	"github.com/vitaliiPsl/crappy-adk/kit"
 )
 
-// SummarizeWithRecent returns a [Strategy] that summarizes all but the last
-// keepRecent messages, replacing the summarized prefix with a single summary
-// message and appending the summary to [kit.RunContext.Generated].
-func SummarizeWithRecent(model kit.Model, instructions string, keepRecent int) Strategy {
+// Summarize returns a [Strategy] that summarizes the current memory context and
+// records the summary in memory. Memory history is preserved; future context is
+// derived from the latest summary message.
+func Summarize(model kit.Model, instructions string) Strategy {
 	return func(rc *kit.RunContext) error {
-		cutoff := safeCutoff(rc.Messages, keepRecent)
-		if cutoff <= 0 {
+		messages, err := rc.Memory.Context(rc.Context)
+		if err != nil {
+			return fmt.Errorf("compaction: failed to read memory context: %w", err)
+		}
+
+		if len(messages) == 0 {
 			return nil
 		}
 
-		toSummarize := rc.Messages[:cutoff]
-
 		resp, err := model.Generate(rc.Context, kit.ModelRequest{
 			Instructions: instructions,
-			Messages:     toSummarize,
+			Messages:     messages,
 		})
 		if err != nil {
 			return fmt.Errorf("compaction: summarizer call failed: %w", err)
@@ -34,23 +36,10 @@ func SummarizeWithRecent(model kit.Model, instructions string, keepRecent int) S
 		rc.Usage.Add(resp.Usage)
 
 		summary := kit.NewSummaryMessage(text.Text)
-
-		rc.Messages = append([]kit.Message{summary}, rc.Messages[cutoff:]...)
-		rc.Generated = append(rc.Generated, summary)
+		if err := rc.Memory.Record(rc.Context, summary); err != nil {
+			return fmt.Errorf("compaction: failed to record summary: %w", err)
+		}
 
 		return nil
 	}
-}
-
-func safeCutoff(msgs []kit.Message, keepRecent int) int {
-	desired := len(msgs) - keepRecent
-	if desired <= 0 {
-		return 0
-	}
-
-	for desired < len(msgs) && msgs[desired].Role == kit.RoleTool {
-		desired++
-	}
-
-	return desired
 }

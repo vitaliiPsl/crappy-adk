@@ -24,6 +24,7 @@ import (
 	"github.com/vitaliiPsl/crappy-adk/agent"
 	"github.com/vitaliiPsl/crappy-adk/kit"
 	"github.com/vitaliiPsl/crappy-adk/providers/openai"
+	"github.com/vitaliiPsl/crappy-adk/x/memory"
 )
 
 func main() {
@@ -39,6 +40,7 @@ func main() {
 
 	a, err := agent.New(
 		model,
+		memory.NewHistory(),
 		agent.WithInstructions("You are a concise assistant. Keep every reply to two sentences or fewer."),
 	)
 	if err != nil {
@@ -51,23 +53,19 @@ func main() {
 		"What am I working on?",
 	}
 
-	var (
-		history    []kit.Message
-		totalUsage kit.Usage
-	)
+	var totalUsage kit.Usage
 
 	ctx := context.Background()
 	for i, prompt := range turns {
-		history = append(history, kit.NewUserMessage([]kit.Content{
+		input := kit.NewUserMessage([]kit.Content{
 			kit.NewTextContent(prompt),
-		}))
+		})
 
-		resp, err := a.Run(ctx, history)
+		resp, err := a.Run(ctx, input)
 		if err != nil {
 			log.Fatalf("turn %d failed: %v", i+1, err)
 		}
 
-		history = append(history, resp.Messages...)
 		totalUsage.Add(resp.Usage)
 
 		fmt.Printf("User: %s\n", prompt)

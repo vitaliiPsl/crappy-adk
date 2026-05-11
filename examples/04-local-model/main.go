@@ -25,6 +25,7 @@ import (
 	"github.com/vitaliiPsl/crappy-adk/agent"
 	"github.com/vitaliiPsl/crappy-adk/kit"
 	"github.com/vitaliiPsl/crappy-adk/providers/openai"
+	"github.com/vitaliiPsl/crappy-adk/x/memory"
 )
 
 const (
@@ -48,16 +49,14 @@ func main() {
 		log.Fatalf("failed to create model: %v", err)
 	}
 
-	a, err := agent.New(model, agent.WithInstructions("You are a helpful assistant."))
+	a, err := agent.New(model, memory.NewHistory(), agent.WithInstructions("You are a helpful assistant."))
 	if err != nil {
 		log.Fatalf("failed to create agent: %v", err)
 	}
 
-	resp, err := a.Run(context.Background(), []kit.Message{
-		kit.NewUserMessage([]kit.Content{
-			kit.NewTextContent("In one sentence, what is a transformer in machine learning?"),
-		}),
-	})
+	resp, err := a.Run(context.Background(), kit.NewUserMessage([]kit.Content{
+		kit.NewTextContent("In one sentence, what is a transformer in machine learning?"),
+	}))
 	if err != nil {
 		log.Fatalf("agent run failed: %v", err)
 	}

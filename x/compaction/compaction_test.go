@@ -8,6 +8,7 @@ import (
 	"github.com/vitaliiPsl/crappy-adk/agent"
 	"github.com/vitaliiPsl/crappy-adk/kit"
 	"github.com/vitaliiPsl/crappy-adk/kittest"
+	"github.com/vitaliiPsl/crappy-adk/x/memory"
 )
 
 func TestCompactionHook_RunsStrategyWhenTriggerFires(t *testing.T) {
@@ -54,17 +55,17 @@ func TestWithCompaction_ConfiguresAgentCompaction(t *testing.T) {
 	})
 
 	called := false
+	mem := memory.NewHistory()
 
 	a, err := agent.New(
 		model,
+		mem,
 		WithCompaction(
 			func(*kit.RunContext) bool { return true },
 			func(rc *kit.RunContext) error {
 				called = true
 
-				rc.Messages = append(rc.Messages, kit.NewSummaryMessage("compacted"))
-
-				return nil
+				return rc.Memory.Record(rc.Context, kit.NewSummaryMessage("compacted"))
 			},
 		),
 	)
@@ -72,9 +73,7 @@ func TestWithCompaction_ConfiguresAgentCompaction(t *testing.T) {
 		t.Fatalf("New: %v", err)
 	}
 
-	_, err = a.Run(context.Background(), []kit.Message{
-		kit.NewUserMessage([]kit.Content{kit.NewTextContent("hello")}),
-	})
+	_, err = a.Run(context.Background(), kit.NewUserMessage([]kit.Content{kit.NewTextContent("hello")}))
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -84,12 +83,12 @@ func TestWithCompaction_ConfiguresAgentCompaction(t *testing.T) {
 	}
 
 	req := model.CallAt(0)
-	if got := len(req.Messages); got != 2 {
-		t.Fatalf("model received %d messages, want original + summary", got)
+	if got := len(req.Messages); got != 1 {
+		t.Fatalf("model received %d messages, want summary context", got)
 	}
 
-	if req.Messages[1].Content[0].Type != kit.ContentTypeSummary {
-		t.Fatalf("second message content type = %q, want summary", req.Messages[1].Content[0].Type)
+	if req.Messages[0].Content[0].Type != kit.ContentTypeSummary {
+		t.Fatalf("message content type = %q, want summary", req.Messages[0].Content[0].Type)
 	}
 }
 
@@ -117,55 +116,7 @@ func TestWhenUsageTokensExceed_AboveThreshold(t *testing.T) {
 	}
 }
 
-func TestSafeCutoff_KeepMoreThanTotal(t *testing.T) {
-	msgs := []kit.Message{kit.NewUserMessage(nil), kit.NewModelMessage(nil)}
-
-	if got := safeCutoff(msgs, 5); got != 0 {
-		t.Fatalf("safeCutoff = %d, want 0", got)
-	}
-}
-
-func TestSafeCutoff_CleanBoundary(t *testing.T) {
-	msgs := []kit.Message{
-		kit.NewUserMessage(nil),
-		kit.NewModelMessage(nil),
-		kit.NewUserMessage(nil),
-		kit.NewModelMessage(nil),
-	}
-
-	if got := safeCutoff(msgs, 2); got != 2 {
-		t.Fatalf("safeCutoff = %d, want 2", got)
-	}
-}
-
-func TestSafeCutoff_BoundaryOnToolMessagePushesForward(t *testing.T) {
-	msgs := []kit.Message{
-		kit.NewUserMessage(nil),
-		kit.NewModelMessage(nil),
-		kit.NewToolMessage(nil),
-		kit.NewModelMessage(nil),
-	}
-
-	if got := safeCutoff(msgs, 2); got != 3 {
-		t.Fatalf("safeCutoff = %d, want 3", got)
-	}
-}
-
-func TestSafeCutoff_ConsecutiveToolMessagesPushedPast(t *testing.T) {
-	msgs := []kit.Message{
-		kit.NewUserMessage(nil),
-		kit.NewModelMessage(nil),
-		kit.NewToolMessage(nil),
-		kit.NewToolMessage(nil),
-		kit.NewModelMessage(nil),
-	}
-
-	if got := safeCutoff(msgs, 3); got != 4 {
-		t.Fatalf("safeCutoff = %d, want 4", got)
-	}
-}
-
-func TestSummarizeWithRecent_ReplacesPrefixAndAppendsToGenerated(t *testing.T) {
+func TestSummarize_RecordsSummaryAndPreservesHistory(t *testing.T) {
 	msgs := []kit.Message{
 		kit.NewUserMessage([]kit.Content{kit.NewTextContent("turn 1")}),
 		kit.NewModelMessage([]kit.Content{kit.NewTextContent("reply 1")}),
@@ -183,21 +134,27 @@ func TestSummarizeWithRecent_ReplacesPrefixAndAppendsToGenerated(t *testing.T) {
 		},
 	})
 
+	mem := memory.NewHistory(msgs...)
 	rc := &kit.RunContext{
-		Context:  context.Background(),
-		Messages: append([]kit.Message{}, msgs...),
-		Usage:    kit.Usage{InputTokens: 100, OutputTokens: 50},
+		Context: context.Background(),
+		Memory:  mem,
+		Usage:   kit.Usage{InputTokens: 100, OutputTokens: 50},
 	}
 
-	if err := SummarizeWithRecent(summarizer, "summarize this", 2)(rc); err != nil {
-		t.Fatalf("SummarizeWithRecent: %v", err)
+	if err := Summarize(summarizer, "summarize this")(rc); err != nil {
+		t.Fatalf("Summarize: %v", err)
 	}
 
-	if got := len(rc.Messages); got != 3 {
-		t.Fatalf("len(Messages) = %d, want 3 (summary + 2 kept)", got)
+	history, err := mem.History(context.Background())
+	if err != nil {
+		t.Fatalf("History: %v", err)
 	}
 
-	summaryMsg := rc.Messages[0]
+	if got := len(history); got != len(msgs)+1 {
+		t.Fatalf("len(History) = %d, want original history + summary", got)
+	}
+
+	summaryMsg := history[len(history)-1]
 
 	if summaryMsg.Role != kit.RoleUser {
 		t.Fatalf("summary message role = %q, want %q", summaryMsg.Role, kit.RoleUser)
@@ -211,16 +168,17 @@ func TestSummarizeWithRecent_ReplacesPrefixAndAppendsToGenerated(t *testing.T) {
 		t.Fatalf("summary text = %q, want %q", summaryMsg.Content[0].Summary.Text, "summary text")
 	}
 
-	if rc.Messages[1].Content[0].Text.Text != "turn 3" {
-		t.Fatalf("kept[0] text = %q, want %q", rc.Messages[1].Content[0].Text.Text, "turn 3")
+	contextMessages, err := mem.Context(context.Background())
+	if err != nil {
+		t.Fatalf("Context: %v", err)
 	}
 
-	if len(rc.Generated) != 1 {
-		t.Fatalf("len(Generated) = %d, want 1", len(rc.Generated))
+	if len(contextMessages) != 1 {
+		t.Fatalf("len(Context) = %d, want latest summary only", len(contextMessages))
 	}
 
-	if rc.Generated[0].Content[0].Type != kit.ContentTypeSummary {
-		t.Fatalf("Generated[0] is not a summary message")
+	if contextMessages[0].Content[0].Summary.Text != "summary text" {
+		t.Fatalf("context summary = %q, want summary text", contextMessages[0].Content[0].Summary.Text)
 	}
 
 	if rc.Usage.InputTokens != 111 || rc.Usage.OutputTokens != 57 {
@@ -234,53 +192,53 @@ func TestSummarizeWithRecent_ReplacesPrefixAndAppendsToGenerated(t *testing.T) {
 		t.Fatalf("summarizer instructions = %q, want %q", req.Instructions, "summarize this")
 	}
 
-	if len(req.Messages) != 4 {
-		t.Fatalf("summarizer received %d messages, want 4", len(req.Messages))
+	if len(req.Messages) != len(msgs) {
+		t.Fatalf("summarizer received %d messages, want %d", len(req.Messages), len(msgs))
 	}
 }
 
-func TestSummarizeWithRecent_NoOpWhenNothingToSummarize(t *testing.T) {
+func TestSummarize_NoOpWhenContextIsEmpty(t *testing.T) {
 	summarizer := kittest.NewModel(t)
 
+	mem := memory.NewHistory()
 	rc := &kit.RunContext{
 		Context: context.Background(),
-		Messages: []kit.Message{
-			kit.NewUserMessage([]kit.Content{kit.NewTextContent("hi")}),
-			kit.NewModelMessage([]kit.Content{kit.NewTextContent("hello")}),
-		},
+		Memory:  mem,
 	}
 
-	if err := SummarizeWithRecent(summarizer, "summarize", 5)(rc); err != nil {
-		t.Fatalf("SummarizeWithRecent: %v", err)
+	if err := Summarize(summarizer, "summarize")(rc); err != nil {
+		t.Fatalf("Summarize: %v", err)
 	}
 
-	if len(rc.Messages) != 2 {
-		t.Fatalf("len(Messages) = %d, want 2", len(rc.Messages))
+	history, err := mem.History(context.Background())
+	if err != nil {
+		t.Fatalf("History: %v", err)
 	}
 
-	if len(rc.Generated) != 0 {
-		t.Fatalf("len(Generated) = %d, want 0", len(rc.Generated))
+	if got := len(history); got != 0 {
+		t.Fatalf("len(History) = %d, want 0", got)
 	}
 
 	summarizer.AssertCallCount(t, 0)
 }
 
-func TestSummarizeWithRecent_PropagatesSummarizerError(t *testing.T) {
+func TestSummarize_PropagatesSummarizerError(t *testing.T) {
 	wantErr := errors.New("summarizer down")
 
 	summarizer := kittest.NewModel(t, kittest.ModelResult{Error: wantErr})
 
+	mem := memory.NewHistory(
+		kit.NewUserMessage([]kit.Content{kit.NewTextContent("a")}),
+		kit.NewModelMessage([]kit.Content{kit.NewTextContent("b")}),
+		kit.NewUserMessage([]kit.Content{kit.NewTextContent("c")}),
+		kit.NewModelMessage([]kit.Content{kit.NewTextContent("d")}),
+	)
 	rc := &kit.RunContext{
 		Context: context.Background(),
-		Messages: []kit.Message{
-			kit.NewUserMessage([]kit.Content{kit.NewTextContent("a")}),
-			kit.NewModelMessage([]kit.Content{kit.NewTextContent("b")}),
-			kit.NewUserMessage([]kit.Content{kit.NewTextContent("c")}),
-			kit.NewModelMessage([]kit.Content{kit.NewTextContent("d")}),
-		},
+		Memory:  mem,
 	}
 
-	err := SummarizeWithRecent(summarizer, "summarize", 1)(rc)
+	err := Summarize(summarizer, "summarize")(rc)
 	if !errors.Is(err, wantErr) {
 		t.Fatalf("err = %v, want wraps %v", err, wantErr)
 	}

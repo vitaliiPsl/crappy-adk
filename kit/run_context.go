@@ -3,17 +3,16 @@ package kit
 import "context"
 
 // RunContext is the per-run state that the agent threads through its loop.
-// Hooks receive a pointer to it and may inspect or mutate it.
+// Hooks receive a pointer to it and may inspect it or mutate memory.
 type RunContext struct {
 	context.Context
 
-	// Messages is the conversation sent to the model on the next call.
-	// Hooks may mutate it (e.g. to compact older turns).
-	Messages []Message
+	// Memory is the memory configured for this run.
+	Memory Memory
 
-	// Generated holds every message produced during this run, in order.
+	// Messages holds every message produced during this run, in order.
 	// It is returned to the caller in [AgentResponse.Messages].
-	Generated []Message
+	Messages []Message
 
 	// Usage is the cumulative token usage across all completed model calls.
 	Usage Usage
@@ -25,11 +24,9 @@ type RunContext struct {
 	Events Emitter[AgentEvent]
 }
 
-// Append records a message in both the working set sent to the model and the
-// append-only log returned to the caller.
+// Append records a message in the append-only log returned to the caller.
 func (rc *RunContext) Append(msg Message) {
 	rc.Messages = append(rc.Messages, msg)
-	rc.Generated = append(rc.Generated, msg)
 }
 
 // RecordUsage stores u as the most recent model call's usage and adds it to the
@@ -40,18 +37,18 @@ func (rc *RunContext) RecordUsage(u Usage) {
 }
 
 // Response returns the agent response accumulated so far. Output is taken only
-// from the latest generated message when that message is a model message.
+// from the latest run message when that message is a model message.
 func (rc *RunContext) Response() AgentResponse {
 	resp := AgentResponse{
-		Messages: rc.Generated,
+		Messages: rc.Messages,
 		Usage:    rc.Usage,
 	}
 
-	if len(rc.Generated) == 0 {
+	if len(rc.Messages) == 0 {
 		return resp
 	}
 
-	last := rc.Generated[len(rc.Generated)-1]
+	last := rc.Messages[len(rc.Messages)-1]
 	if last.Role == RoleModel {
 		resp.Output = last.TextContent()
 	}

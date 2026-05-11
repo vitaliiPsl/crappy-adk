@@ -1,7 +1,6 @@
 package kit
 
-// OnTurnStart is called before each model call. Hooks may inspect or mutate
-// [RunContext]; this is where compaction strategies modify [RunContext.Messages].
+// OnTurnStart is called before each model call.
 // Returning an error stops the agent.
 type OnTurnStart func(rc *RunContext) error
 
@@ -11,22 +10,21 @@ type OnTurnStart func(rc *RunContext) error
 type OnTurnEnd func(rc *RunContext) error
 
 // OnModelRequest is called before each model request.
-// The hook may mutate [RunContext] (including [RunContext.Context]) and the
-// returned [ModelRequest] replaces the original for the model call.
+// Returned [ModelRequest] replaces the original for the model call.
 // Returning an error cancels the request.
 type OnModelRequest func(rc *RunContext, req ModelRequest) (ModelRequest, error)
 
 // OnModelResponse is called after each model response.
-// The hook may mutate [RunContext] and the returned [ModelResponse] replaces
-// the original for the agent loop. Returning an error stops the agent.
+// Returned [ModelResponse] replaces the original for the agent loop.
+// Returning an error stops the agent.
 type OnModelResponse func(rc *RunContext, resp ModelResponse) (ModelResponse, error)
 
 // OnToolCall is called before a tool is executed.
-// The hook may mutate [RunContext] and the returned [ToolCall] replaces the
-// original for the tool execution. Returning an error cancels the tool call.
+// Returned [ToolCall] replaces the original for the tool execution.
+// Returned error is sent to the model as a tool result.
 type OnToolCall func(rc *RunContext, call ToolCall) (ToolCall, error)
 
 // OnToolResult is called after a tool finishes executing.
-// The hook may mutate [RunContext] and the returned [ToolResult] replaces the
-// original for the agent loop. Returning an error stops the agent.
+// Returned [ToolResult] replaces the original for the agent loop.
+// Returned error is sent to the model as a tool result.
 type OnToolResult func(rc *RunContext, result ToolResult) (ToolResult, error)

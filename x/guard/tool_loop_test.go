@@ -8,6 +8,7 @@ import (
 	"github.com/vitaliiPsl/crappy-adk/agent"
 	"github.com/vitaliiPsl/crappy-adk/kit"
 	"github.com/vitaliiPsl/crappy-adk/kittest"
+	"github.com/vitaliiPsl/crappy-adk/x/memory"
 )
 
 func TestWithRepeatedToolCallLimit_DetectsRepeatedCallIgnoringCallID(t *testing.T) {
@@ -34,14 +35,12 @@ func TestWithRepeatedToolCallLimit_DetectsRepeatedCallIgnoringCallID(t *testing.
 		},
 	)
 
-	a, err := agent.New(model, agent.WithTools(tool), WithRepeatedToolCallLimit(1, 2))
+	a, err := agent.New(model, memory.NewHistory(), agent.WithTools(tool), WithRepeatedToolCallLimit(1, 2))
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
 
-	_, err = a.Run(context.Background(), []kit.Message{
-		kit.NewUserMessage([]kit.Content{kit.NewTextContent("add 3 and 4")}),
-	})
+	_, err = a.Run(context.Background(), kit.NewUserMessage([]kit.Content{kit.NewTextContent("add 3 and 4")}))
 	if !errors.Is(err, ErrToolLoopDetected) {
 		t.Fatalf("Run error = %v, want ErrToolLoopDetected", err)
 	}
@@ -65,14 +64,12 @@ func TestWithRepeatedToolCallLimit_CountsDuplicatesInCurrentResponse(t *testing.
 		},
 	})
 
-	a, err := agent.New(model, agent.WithTools(tool), WithRepeatedToolCallLimit(1, 1))
+	a, err := agent.New(model, memory.NewHistory(), agent.WithTools(tool), WithRepeatedToolCallLimit(1, 1))
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
 
-	_, err = a.Run(context.Background(), []kit.Message{
-		kit.NewUserMessage([]kit.Content{kit.NewTextContent("add 3 and 4 twice")}),
-	})
+	_, err = a.Run(context.Background(), kit.NewUserMessage([]kit.Content{kit.NewTextContent("add 3 and 4 twice")}))
 	if !errors.Is(err, ErrToolLoopDetected) {
 		t.Fatalf("Run error = %v, want ErrToolLoopDetected", err)
 	}
@@ -120,14 +117,12 @@ func TestWithRepeatedToolCallLimit_OnlyCountsWithinWindow(t *testing.T) {
 		},
 	)
 
-	a, err := agent.New(model, agent.WithTools(tool), WithRepeatedToolCallLimit(1, 2))
+	a, err := agent.New(model, memory.NewHistory(), agent.WithTools(tool), WithRepeatedToolCallLimit(1, 2))
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
 
-	resp, err := a.Run(context.Background(), []kit.Message{
-		kit.NewUserMessage([]kit.Content{kit.NewTextContent("add numbers")}),
-	})
+	resp, err := a.Run(context.Background(), kit.NewUserMessage([]kit.Content{kit.NewTextContent("add numbers")}))
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}

@@ -5,8 +5,8 @@ import "context"
 // Agent runs a ReAct loop against a [Model], executes any requested [Tool] calls,
 // and returns the final response.
 type Agent interface {
-	Run(ctx context.Context, messages []Message) (AgentResponse, error)
-	Stream(ctx context.Context, messages []Message) *Stream[AgentEvent, AgentResponse]
+	Run(ctx context.Context, input Message) (AgentResponse, error)
+	Stream(ctx context.Context, input Message) *Stream[AgentEvent, AgentResponse]
 }
 
 // AgentConfig is the configuration for an [Agent].

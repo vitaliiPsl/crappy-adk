@@ -8,6 +8,7 @@ import (
 	"github.com/vitaliiPsl/crappy-adk/agent"
 	"github.com/vitaliiPsl/crappy-adk/kit"
 	"github.com/vitaliiPsl/crappy-adk/kittest"
+	"github.com/vitaliiPsl/crappy-adk/x/memory"
 )
 
 func TestWithMaxTurns_StopsBeforeNextModelCall(t *testing.T) {
@@ -30,14 +31,12 @@ func TestWithMaxTurns_StopsBeforeNextModelCall(t *testing.T) {
 		},
 	)
 
-	a, err := agent.New(model, agent.WithTools(tool), WithMaxTurns(1))
+	a, err := agent.New(model, memory.NewHistory(), agent.WithTools(tool), WithMaxTurns(1))
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
 
-	resp, err := a.Run(context.Background(), []kit.Message{
-		kit.NewUserMessage([]kit.Content{kit.NewTextContent("add 3 and 4")}),
-	})
+	resp, err := a.Run(context.Background(), kit.NewUserMessage([]kit.Content{kit.NewTextContent("add 3 and 4")}))
 	if !errors.Is(err, ErrMaxTurnsExceeded) {
 		t.Fatalf("Run error = %v, want ErrMaxTurnsExceeded", err)
 	}
@@ -64,14 +63,12 @@ func TestWithMaxToolCalls_StopsBeforeToolExecution(t *testing.T) {
 		},
 	})
 
-	a, err := agent.New(model, agent.WithTools(tool), WithMaxToolCalls(1))
+	a, err := agent.New(model, memory.NewHistory(), agent.WithTools(tool), WithMaxToolCalls(1))
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
 
-	resp, err := a.Run(context.Background(), []kit.Message{
-		kit.NewUserMessage([]kit.Content{kit.NewTextContent("add these")}),
-	})
+	resp, err := a.Run(context.Background(), kit.NewUserMessage([]kit.Content{kit.NewTextContent("add these")}))
 	if !errors.Is(err, ErrMaxToolCallsExceeded) {
 		t.Fatalf("Run error = %v, want ErrMaxToolCallsExceeded", err)
 	}

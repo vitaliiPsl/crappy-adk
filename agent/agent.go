@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"slices"
 
 	"github.com/vitaliiPsl/crappy-adk/kit"
 )
@@ -16,7 +15,8 @@ var _ kit.Agent = (*Agent)(nil)
 type Agent struct {
 	config kit.AgentConfig
 
-	model kit.Model
+	model  kit.Model
+	memory kit.Memory
 
 	tools     []kit.Tool
 	toolIndex map[string]kit.Tool
@@ -24,9 +24,10 @@ type Agent struct {
 	hooks hooks
 }
 
-// New creates a new Agent with the given model and options.
-func New(model kit.Model, options ...Option) (*Agent, error) {
+// New creates a new Agent with the given model, memory, and options.
+func New(model kit.Model, memory kit.Memory, options ...Option) (*Agent, error) {
 	agent := &Agent{
+		memory:    memory,
 		model:     model,
 		toolIndex: make(map[string]kit.Tool),
 	}
@@ -40,29 +41,35 @@ func New(model kit.Model, options ...Option) (*Agent, error) {
 	return agent, nil
 }
 
-// Run executes the agentic loop starting with the given messages.
-// It calls the model repeatedly, executing any requested tools, until the model
-// returns a finish reason other than FinishReasonToolCall.
-func (a *Agent) Run(ctx context.Context, messages []kit.Message) (kit.AgentResponse, error) {
-	return a.run(ctx, messages, kit.NoopEmitter[kit.AgentEvent]{})
+// Run executes the agentic loop and returns agent reponse when run finishes.
+func (a *Agent) Run(ctx context.Context, input kit.Message) (kit.AgentResponse, error) {
+	return a.run(ctx, input, kit.NoopEmitter[kit.AgentEvent]{})
 }
 
 // Stream executes the agentic loop and yields events as the run progresses.
-func (a *Agent) Stream(ctx context.Context, messages []kit.Message) *kit.Stream[kit.AgentEvent, kit.AgentResponse] {
+func (a *Agent) Stream(ctx context.Context, input kit.Message) *kit.Stream[kit.AgentEvent, kit.AgentResponse] {
 	return kit.NewStream(func(emit kit.Emitter[kit.AgentEvent]) (kit.AgentResponse, error) {
-		return a.run(ctx, messages, emit)
+		return a.run(ctx, input, emit)
 	})
 }
 
 func (a *Agent) run(
 	ctx context.Context,
-	messages []kit.Message,
+	input kit.Message,
 	events kit.Emitter[kit.AgentEvent],
 ) (kit.AgentResponse, error) {
+	if err := ctx.Err(); err != nil {
+		return kit.AgentResponse{}, err
+	}
+
 	rc := &kit.RunContext{
-		Context:  ctx,
-		Messages: slices.Clone(messages),
-		Events:   events,
+		Context: ctx,
+		Memory:  a.memory,
+		Events:  events,
+	}
+
+	if err := a.memory.Record(ctx, input); err != nil {
+		return rc.Response(), err
 	}
 
 	for {
@@ -80,7 +87,10 @@ func (a *Agent) run(
 		}
 
 		rc.RecordUsage(resp.Usage)
-		rc.Append(resp.Message)
+
+		if err := a.appendMessage(rc, resp.Message); err != nil {
+			return rc.Response(), err
+		}
 
 		if err := rc.Emit(kit.NewAgentMessageEvent(resp.Message)); err != nil {
 			return rc.Response(), err
@@ -100,7 +110,9 @@ func (a *Agent) run(
 		}
 
 		toolMessage := kit.NewToolMessage(results)
-		rc.Append(toolMessage)
+		if err := a.appendMessage(rc, toolMessage); err != nil {
+			return rc.Response(), err
+		}
 
 		if err := rc.Emit(kit.NewAgentMessageEvent(toolMessage)); err != nil {
 			return rc.Response(), err
@@ -112,10 +124,21 @@ func (a *Agent) run(
 	}
 }
 
+func (a *Agent) appendMessage(rc *kit.RunContext, msg kit.Message) error {
+	rc.Append(msg)
+
+	return a.memory.Record(rc.Context, msg)
+}
+
 func (a *Agent) callModel(rc *kit.RunContext) (kit.ModelResponse, error) {
+	messages, err := a.memory.Context(rc.Context)
+	if err != nil {
+		return kit.ModelResponse{}, err
+	}
+
 	req := kit.ModelRequest{
 		Instructions: a.config.Instructions,
-		Messages:     rc.Messages,
+		Messages:     messages,
 		Tools:        a.tools,
 		Config: kit.GenerationConfig{
 			Temperature:     a.config.Temperature,
@@ -124,7 +147,7 @@ func (a *Agent) callModel(rc *kit.RunContext) (kit.ModelResponse, error) {
 		},
 	}
 
-	req, err := a.hooks.onModelRequest(rc, req)
+	req, err = a.hooks.onModelRequest(rc, req)
 	if err != nil {
 		return kit.ModelResponse{}, err
 	}

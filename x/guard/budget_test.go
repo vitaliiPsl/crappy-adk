@@ -8,6 +8,7 @@ import (
 	"github.com/vitaliiPsl/crappy-adk/agent"
 	"github.com/vitaliiPsl/crappy-adk/kit"
 	"github.com/vitaliiPsl/crappy-adk/kittest"
+	"github.com/vitaliiPsl/crappy-adk/x/memory"
 )
 
 func TestWithBudget_AllowsUsageAtLimit(t *testing.T) {
@@ -19,7 +20,7 @@ func TestWithBudget_AllowsUsageAtLimit(t *testing.T) {
 		},
 	})
 
-	a, err := agent.New(model,
+	a, err := agent.New(model, memory.NewHistory(),
 		WithInputTokenBudget(7),
 		WithOutputTokenBudget(3),
 		WithTotalTokenBudget(10),
@@ -28,9 +29,7 @@ func TestWithBudget_AllowsUsageAtLimit(t *testing.T) {
 		t.Fatalf("New: %v", err)
 	}
 
-	resp, err := a.Run(context.Background(), []kit.Message{
-		kit.NewUserMessage([]kit.Content{kit.NewTextContent("hello")}),
-	})
+	resp, err := a.Run(context.Background(), kit.NewUserMessage([]kit.Content{kit.NewTextContent("hello")}))
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -67,14 +66,12 @@ func TestWithBudget_RejectsResponseThatExceedsCumulativeBudget(t *testing.T) {
 		},
 	)
 
-	a, err := agent.New(model, agent.WithTools(tool), WithTotalTokenBudget(13))
+	a, err := agent.New(model, memory.NewHistory(), agent.WithTools(tool), WithTotalTokenBudget(13))
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
 
-	resp, err := a.Run(context.Background(), []kit.Message{
-		kit.NewUserMessage([]kit.Content{kit.NewTextContent("add 3 and 4")}),
-	})
+	resp, err := a.Run(context.Background(), kit.NewUserMessage([]kit.Content{kit.NewTextContent("add 3 and 4")}))
 	if !errors.Is(err, ErrBudgetExceeded) {
 		t.Fatalf("Run error = %v, want ErrBudgetExceeded", err)
 	}
@@ -104,14 +101,12 @@ func TestWithInputTokenBudget_RejectsInputBudget(t *testing.T) {
 		},
 	})
 
-	a, err := agent.New(model, WithInputTokenBudget(3))
+	a, err := agent.New(model, memory.NewHistory(), WithInputTokenBudget(3))
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
 
-	resp, err := a.Run(context.Background(), []kit.Message{
-		kit.NewUserMessage([]kit.Content{kit.NewTextContent("think")}),
-	})
+	resp, err := a.Run(context.Background(), kit.NewUserMessage([]kit.Content{kit.NewTextContent("think")}))
 	if !errors.Is(err, ErrBudgetExceeded) {
 		t.Fatalf("Run error = %v, want ErrBudgetExceeded", err)
 	}
@@ -130,14 +125,12 @@ func TestWithOutputTokenBudget_RejectsOutputBudget(t *testing.T) {
 		},
 	})
 
-	a, err := agent.New(model, WithOutputTokenBudget(3))
+	a, err := agent.New(model, memory.NewHistory(), WithOutputTokenBudget(3))
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
 
-	resp, err := a.Run(context.Background(), []kit.Message{
-		kit.NewUserMessage([]kit.Content{kit.NewTextContent("write")}),
-	})
+	resp, err := a.Run(context.Background(), kit.NewUserMessage([]kit.Content{kit.NewTextContent("write")}))
 	if !errors.Is(err, ErrBudgetExceeded) {
 		t.Fatalf("Run error = %v, want ErrBudgetExceeded", err)
 	}
