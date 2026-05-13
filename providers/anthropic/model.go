@@ -24,6 +24,7 @@ var thinkingBudgets = map[kit.ThinkingLevel]int64{
 
 type options struct {
 	baseURL string
+	config  kit.ModelConfig
 }
 
 // Option customizes the Anthropic provider.
@@ -36,9 +37,17 @@ func WithBaseURL(baseURL string) Option {
 	}
 }
 
+// WithModelConfig overrides the static metadata returned by [Model.Config].
+func WithModelConfig(config kit.ModelConfig) Option {
+	return func(o *options) {
+		o.config = config
+	}
+}
+
 // Model implements the [kit.Model] interface using Anthropic's messages API.
 type Model struct {
 	id     string
+	config kit.ModelConfig
 	client *anthropicsdk.Client
 }
 
@@ -59,10 +68,21 @@ func New(apiKey string, id string, opts ...Option) (*Model, error) {
 
 	client := anthropicsdk.NewClient(clientOptions...)
 
+	config := options.config
+	if config.ID == "" {
+		config.ID = id
+	}
+
 	return &Model{
 		id:     id,
+		config: config,
 		client: &client,
 	}, nil
+}
+
+// Config returns static metadata for this model.
+func (m *Model) Config() kit.ModelConfig {
+	return m.config
 }
 
 // Generate generates a response for the given request.

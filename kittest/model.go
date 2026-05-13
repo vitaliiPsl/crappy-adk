@@ -23,6 +23,7 @@ type ModelResult struct {
 // If more calls are made than responses provided, the test fails immediately.
 type Model struct {
 	t        testing.TB
+	config   kit.ModelConfig
 	results  []ModelResult
 	requests []kit.ModelRequest
 }
@@ -33,8 +34,28 @@ func NewModel(t testing.TB, results ...ModelResult) *Model {
 
 	return &Model{
 		t:       t,
+		config:  kit.ModelConfig{ID: "kittest"},
 		results: results,
 	}
+}
+
+// NewModelWithConfig creates a Model with static metadata and scripted results.
+func NewModelWithConfig(t testing.TB, config kit.ModelConfig, results ...ModelResult) *Model {
+	t.Helper()
+
+	model := NewModel(t, results...)
+
+	model.config = config
+	if model.config.ID == "" {
+		model.config.ID = "kittest"
+	}
+
+	return model
+}
+
+// Config returns static metadata for this test model.
+func (model *Model) Config() kit.ModelConfig {
+	return model.config
 }
 
 // Generate records the request and returns the next queued result.
