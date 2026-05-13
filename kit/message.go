@@ -18,7 +18,7 @@ type Message struct {
 }
 
 // NewUserMessage creates a new user message with the given content.
-func NewUserMessage(content []Content) Message {
+func NewUserMessage(content ...Content) Message {
 	return Message{
 		Role:    RoleUser,
 		Content: content,
@@ -26,7 +26,7 @@ func NewUserMessage(content []Content) Message {
 }
 
 // NewModelMessage creates a new model message with the given content.
-func NewModelMessage(content []Content) Message {
+func NewModelMessage(content ...Content) Message {
 	return Message{
 		Role:    RoleModel,
 		Content: content,
@@ -34,18 +34,11 @@ func NewModelMessage(content []Content) Message {
 }
 
 // NewToolMessage creates a new tool message with the given content.
-func NewToolMessage(content []Content) Message {
+func NewToolMessage(content ...Content) Message {
 	return Message{
 		Role:    RoleTool,
 		Content: content,
 	}
-}
-
-// NewSummaryMessage creates a [RoleUser] message wrapping a single summary content.
-// Summarizers should use this so callers can identify summary messages by both
-// role and the [ContentTypeSummary] block in [Message.Content].
-func NewSummaryMessage(text string) Message {
-	return NewUserMessage([]Content{NewSummaryContent(text)})
 }
 
 // TextContent returns the first text block from the message content, or nil if none.

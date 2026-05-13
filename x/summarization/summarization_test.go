@@ -3,6 +3,7 @@ package summarization
 import (
 	"context"
 	"errors"
+	"reflect"
 	"testing"
 
 	"github.com/vitaliiPsl/crappy-adk/agent"
@@ -10,6 +11,16 @@ import (
 	"github.com/vitaliiPsl/crappy-adk/kittest"
 	"github.com/vitaliiPsl/crappy-adk/x/memory"
 )
+
+type recordAgentEvents struct {
+	events []kit.AgentEvent
+}
+
+func (r *recordAgentEvents) Emit(event kit.AgentEvent) error {
+	r.events = append(r.events, event)
+
+	return nil
+}
 
 func TestSummarizationHook_RunsStrategyWhenTriggerFires(t *testing.T) {
 	called := false
@@ -49,7 +60,7 @@ func TestSummarizationHook_SkipsStrategyWhenTriggerDoesNotFire(t *testing.T) {
 func TestWithSummarization_ConfiguresAgentSummarization(t *testing.T) {
 	model := kittest.NewModel(t, kittest.ModelResult{
 		Response: kit.ModelResponse{
-			Message:      kit.NewModelMessage([]kit.Content{kit.NewTextContent("done")}),
+			Message:      kit.NewModelMessage(kit.NewTextContent("done")),
 			FinishReason: kit.FinishReasonStop,
 		},
 	})
@@ -65,7 +76,7 @@ func TestWithSummarization_ConfiguresAgentSummarization(t *testing.T) {
 			func(rc *kit.RunContext) error {
 				called = true
 
-				return rc.Memory.Record(rc.Context, kit.NewSummaryMessage("summarized"))
+				return rc.Memory.Record(rc.Context, kit.NewUserMessage(kit.NewSummaryContent("summarized")))
 			},
 		),
 	)
@@ -73,7 +84,7 @@ func TestWithSummarization_ConfiguresAgentSummarization(t *testing.T) {
 		t.Fatalf("New: %v", err)
 	}
 
-	_, err = a.Run(context.Background(), kit.NewUserMessage([]kit.Content{kit.NewTextContent("hello")}))
+	_, err = a.Run(context.Background(), kit.NewUserMessage(kit.NewTextContent("hello")))
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -118,27 +129,29 @@ func TestWhenUsageTokensExceed_AboveThreshold(t *testing.T) {
 
 func TestSummarize_RecordsSummaryAndPreservesHistory(t *testing.T) {
 	msgs := []kit.Message{
-		kit.NewUserMessage([]kit.Content{kit.NewTextContent("turn 1")}),
-		kit.NewModelMessage([]kit.Content{kit.NewTextContent("reply 1")}),
-		kit.NewUserMessage([]kit.Content{kit.NewTextContent("turn 2")}),
-		kit.NewModelMessage([]kit.Content{kit.NewTextContent("reply 2")}),
-		kit.NewUserMessage([]kit.Content{kit.NewTextContent("turn 3")}),
-		kit.NewModelMessage([]kit.Content{kit.NewTextContent("reply 3")}),
+		kit.NewUserMessage(kit.NewTextContent("turn 1")),
+		kit.NewModelMessage(kit.NewTextContent("reply 1")),
+		kit.NewUserMessage(kit.NewTextContent("turn 2")),
+		kit.NewModelMessage(kit.NewTextContent("reply 2")),
+		kit.NewUserMessage(kit.NewTextContent("turn 3")),
+		kit.NewModelMessage(kit.NewTextContent("reply 3")),
 	}
 
 	summarizer := kittest.NewModel(t, kittest.ModelResult{
 		Response: kit.ModelResponse{
-			Message:      kit.NewModelMessage([]kit.Content{kit.NewTextContent("summary text")}),
+			Message:      kit.NewModelMessage(kit.NewTextContent("summary text")),
 			FinishReason: kit.FinishReasonStop,
 			Usage:        kit.Usage{InputTokens: 11, OutputTokens: 7},
 		},
 	})
 
 	mem := memory.NewHistory(msgs...)
+	events := &recordAgentEvents{}
 	rc := &kit.RunContext{
 		Context: context.Background(),
 		Memory:  mem,
 		Usage:   kit.Usage{InputTokens: 100, OutputTokens: 50},
+		Events:  events,
 	}
 
 	if err := Summarize(summarizer, "summarize this")(rc); err != nil {
@@ -166,6 +179,38 @@ func TestSummarize_RecordsSummaryAndPreservesHistory(t *testing.T) {
 
 	if summaryMsg.Content[0].Summary.Text != "summary text" {
 		t.Fatalf("summary text = %q, want %q", summaryMsg.Content[0].Summary.Text, "summary text")
+	}
+
+	if !reflect.DeepEqual(rc.Messages, []kit.Message{summaryMsg}) {
+		t.Fatalf("run messages = %+v, want summary message", rc.Messages)
+	}
+
+	if len(events.events) != 3 {
+		t.Fatalf("len(events) = %d, want 3", len(events.events))
+	}
+
+	if events.events[0].Type != kit.EventContentStarted {
+		t.Fatalf("event[0] type = %q, want %q", events.events[0].Type, kit.EventContentStarted)
+	}
+
+	if events.events[0].Content == nil || events.events[0].Content.Type != kit.ContentTypeSummary {
+		t.Fatalf("event[0] content = %+v, want summary content", events.events[0].Content)
+	}
+
+	if events.events[1].Type != kit.EventContentDone {
+		t.Fatalf("event[1] type = %q, want %q", events.events[1].Type, kit.EventContentDone)
+	}
+
+	if events.events[1].Content == nil || !reflect.DeepEqual(*events.events[1].Content, summaryMsg.Content[0]) {
+		t.Fatalf("event[1] content = %+v, want summary content", events.events[1].Content)
+	}
+
+	if events.events[2].Type != kit.EventMessage {
+		t.Fatalf("event[2] type = %q, want %q", events.events[2].Type, kit.EventMessage)
+	}
+
+	if events.events[2].Message == nil || !reflect.DeepEqual(*events.events[2].Message, summaryMsg) {
+		t.Fatalf("event[2] message = %+v, want summary message", events.events[2].Message)
 	}
 
 	contextMessages, err := mem.Context(context.Background())
@@ -228,10 +273,10 @@ func TestSummarize_PropagatesSummarizerError(t *testing.T) {
 	summarizer := kittest.NewModel(t, kittest.ModelResult{Error: wantErr})
 
 	mem := memory.NewHistory(
-		kit.NewUserMessage([]kit.Content{kit.NewTextContent("a")}),
-		kit.NewModelMessage([]kit.Content{kit.NewTextContent("b")}),
-		kit.NewUserMessage([]kit.Content{kit.NewTextContent("c")}),
-		kit.NewModelMessage([]kit.Content{kit.NewTextContent("d")}),
+		kit.NewUserMessage(kit.NewTextContent("a")),
+		kit.NewModelMessage(kit.NewTextContent("b")),
+		kit.NewUserMessage(kit.NewTextContent("c")),
+		kit.NewModelMessage(kit.NewTextContent("d")),
 	)
 	rc := &kit.RunContext{
 		Context: context.Background(),

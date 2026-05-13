@@ -5,8 +5,8 @@ import "testing"
 func TestRunContextResponse_OutputComesFromLastModelMessage(t *testing.T) {
 	rc := &RunContext{
 		Messages: []Message{
-			NewUserMessage([]Content{NewTextContent("user text")}),
-			NewModelMessage([]Content{NewTextContent("final model")}),
+			NewUserMessage(NewTextContent("user text")),
+			NewModelMessage(NewTextContent("final model")),
 		},
 	}
 
@@ -23,10 +23,10 @@ func TestRunContextResponse_OutputComesFromLastModelMessage(t *testing.T) {
 func TestRunContextResponse_LastNonModelMessageLeavesOutputNil(t *testing.T) {
 	rc := &RunContext{
 		Messages: []Message{
-			NewModelMessage([]Content{NewTextContent("older text")}),
-			NewToolMessage([]Content{
+			NewModelMessage(NewTextContent("older text")),
+			NewToolMessage(
 				NewToolResultContent(NewToolResult(ToolCall{ID: "call-1", Name: "tool"}, "tool output", nil)),
-			}),
+			),
 		},
 	}
 

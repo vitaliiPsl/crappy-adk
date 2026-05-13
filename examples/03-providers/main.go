@@ -63,7 +63,7 @@ func run(ctx context.Context, label string, model kit.Model, prompt string) {
 		return
 	}
 
-	resp, err := a.Run(ctx, kit.NewUserMessage([]kit.Content{kit.NewTextContent(prompt)}))
+	resp, err := a.Run(ctx, kit.NewUserMessage(kit.NewTextContent(prompt)))
 	if err != nil {
 		log.Printf("[%s] error: %v", label, err)
 

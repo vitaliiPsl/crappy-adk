@@ -20,6 +20,10 @@ func Summarize(model kit.Model, instructions string) Strategy {
 			return nil
 		}
 
+		if err := rc.Emit(kit.NewAgentContentStartedEvent(kit.NewSummaryContent(""))); err != nil {
+			return err
+		}
+
 		resp, err := model.Generate(rc.Context, kit.ModelRequest{
 			Instructions: instructions,
 			Messages:     messages,
@@ -35,9 +39,20 @@ func Summarize(model kit.Model, instructions string) Strategy {
 
 		rc.Usage.Add(resp.Usage)
 
-		summary := kit.NewSummaryMessage(text.Text)
+		summaryContent := kit.NewSummaryContent(text.Text)
+		summary := kit.NewUserMessage(summaryContent)
+		rc.Append(summary)
+
 		if err := rc.Memory.Record(rc.Context, summary); err != nil {
 			return fmt.Errorf("summarization: failed to record summary: %w", err)
+		}
+
+		if err := rc.Emit(kit.NewAgentContentDoneEvent(summaryContent)); err != nil {
+			return err
+		}
+
+		if err := rc.Emit(kit.NewAgentMessageEvent(summary)); err != nil {
+			return err
 		}
 
 		return nil

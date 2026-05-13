@@ -272,7 +272,7 @@ func TestConvertRequestContentItem(t *testing.T) {
 
 func TestConvertRequestMessage(t *testing.T) {
 	t.Run("user message produces user role", func(t *testing.T) {
-		msg := kit.NewUserMessage([]kit.Content{kit.NewTextContent("hi")})
+		msg := kit.NewUserMessage(kit.NewTextContent("hi"))
 
 		result := convertRequestMessage(msg)
 
@@ -286,7 +286,7 @@ func TestConvertRequestMessage(t *testing.T) {
 	})
 
 	t.Run("model message produces assistant role", func(t *testing.T) {
-		msg := kit.NewModelMessage([]kit.Content{kit.NewTextContent("hello")})
+		msg := kit.NewModelMessage(kit.NewTextContent("hello"))
 
 		result := convertRequestMessage(msg)
 
@@ -301,9 +301,8 @@ func TestConvertRequestMessage(t *testing.T) {
 
 	t.Run("tool message produces user role", func(t *testing.T) {
 		call := kit.ToolCall{ID: "call_1", Name: "fn"}
-		msg := kit.NewToolMessage([]kit.Content{
-			kit.NewToolResultContent(kit.NewToolResult(call, "ok", nil)),
-		})
+		msg := kit.NewToolMessage(
+			kit.NewToolResultContent(kit.NewToolResult(call, "ok", nil)))
 
 		result := convertRequestMessage(msg)
 

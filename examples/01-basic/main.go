@@ -48,9 +48,8 @@ func main() {
 		log.Fatalf("failed to create agent: %v", err)
 	}
 
-	input := kit.NewUserMessage([]kit.Content{
-		kit.NewTextContent("If a tree falls in the forest and nobody is around to hear it, does it make a sound?"),
-	})
+	input := kit.NewUserMessage(
+		kit.NewTextContent("If a tree falls in the forest and nobody is around to hear it, does it make a sound?"))
 
 	resp, err := a.Run(context.Background(), input)
 	if err != nil {

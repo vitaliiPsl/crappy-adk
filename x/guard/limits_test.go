@@ -13,7 +13,7 @@ import (
 
 func TestWithMaxTurns_StopsBeforeNextModelCall(t *testing.T) {
 	call := kit.NewToolCall("call-1", "add", map[string]any{"a": 3, "b": 4})
-	toolCallMessage := kit.NewModelMessage([]kit.Content{kit.NewToolCallContent(call)})
+	toolCallMessage := kit.NewModelMessage(kit.NewToolCallContent(call))
 
 	tool := kittest.NewTool(t, "add", "add numbers", kittest.ToolResult{Result: "7"})
 	model := kittest.NewModel(t,
@@ -25,7 +25,7 @@ func TestWithMaxTurns_StopsBeforeNextModelCall(t *testing.T) {
 		},
 		kittest.ModelResult{
 			Response: kit.ModelResponse{
-				Message:      kit.NewModelMessage([]kit.Content{kit.NewTextContent("should not be called")}),
+				Message:      kit.NewModelMessage(kit.NewTextContent("should not be called")),
 				FinishReason: kit.FinishReasonStop,
 			},
 		},
@@ -36,7 +36,7 @@ func TestWithMaxTurns_StopsBeforeNextModelCall(t *testing.T) {
 		t.Fatalf("New: %v", err)
 	}
 
-	resp, err := a.Run(context.Background(), kit.NewUserMessage([]kit.Content{kit.NewTextContent("add 3 and 4")}))
+	resp, err := a.Run(context.Background(), kit.NewUserMessage(kit.NewTextContent("add 3 and 4")))
 	if !errors.Is(err, ErrMaxTurnsExceeded) {
 		t.Fatalf("Run error = %v, want ErrMaxTurnsExceeded", err)
 	}
@@ -58,7 +58,7 @@ func TestWithMaxToolCalls_StopsBeforeToolExecution(t *testing.T) {
 	tool := kittest.NewTool(t, "add", "add numbers")
 	model := kittest.NewModel(t, kittest.ModelResult{
 		Response: kit.ModelResponse{
-			Message:      kit.NewModelMessage(calls),
+			Message:      kit.NewModelMessage(calls...),
 			FinishReason: kit.FinishReasonToolCall,
 		},
 	})
@@ -68,7 +68,7 @@ func TestWithMaxToolCalls_StopsBeforeToolExecution(t *testing.T) {
 		t.Fatalf("New: %v", err)
 	}
 
-	resp, err := a.Run(context.Background(), kit.NewUserMessage([]kit.Content{kit.NewTextContent("add these")}))
+	resp, err := a.Run(context.Background(), kit.NewUserMessage(kit.NewTextContent("add these")))
 	if !errors.Is(err, ErrMaxToolCallsExceeded) {
 		t.Fatalf("Run error = %v, want ErrMaxToolCallsExceeded", err)
 	}

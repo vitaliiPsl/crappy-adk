@@ -118,10 +118,10 @@ func TestStream_PanicsOnDoubleConsumption(t *testing.T) {
 }
 
 func TestStreamFromGenerate_EmitsContent(t *testing.T) {
-	msg := NewModelMessage([]Content{
+	msg := NewModelMessage(
 		NewTextContent("hello"),
 		NewTextContent(" world"),
-	})
+	)
 
 	stream := StreamFromGenerate(
 		context.Background(),

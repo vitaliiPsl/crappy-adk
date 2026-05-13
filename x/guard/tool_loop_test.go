@@ -20,16 +20,16 @@ func TestWithRepeatedToolCallLimit_DetectsRepeatedCallIgnoringCallID(t *testing.
 	model := kittest.NewModel(t,
 		kittest.ModelResult{
 			Response: kit.ModelResponse{
-				Message:      kit.NewModelMessage([]kit.Content{kit.NewToolCallContent(firstCall)}),
+				Message:      kit.NewModelMessage(kit.NewToolCallContent(firstCall)),
 				FinishReason: kit.FinishReasonToolCall,
 			},
 		},
 		kittest.ModelResult{
 			Response: kit.ModelResponse{
-				Message: kit.NewModelMessage([]kit.Content{
+				Message: kit.NewModelMessage(
 					kit.NewToolCallContent(repeatedCall),
 					kit.NewToolCallContent(otherCall),
-				}),
+				),
 				FinishReason: kit.FinishReasonToolCall,
 			},
 		},
@@ -40,7 +40,7 @@ func TestWithRepeatedToolCallLimit_DetectsRepeatedCallIgnoringCallID(t *testing.
 		t.Fatalf("New: %v", err)
 	}
 
-	_, err = a.Run(context.Background(), kit.NewUserMessage([]kit.Content{kit.NewTextContent("add 3 and 4")}))
+	_, err = a.Run(context.Background(), kit.NewUserMessage(kit.NewTextContent("add 3 and 4")))
 	if !errors.Is(err, ErrToolLoopDetected) {
 		t.Fatalf("Run error = %v, want ErrToolLoopDetected", err)
 	}
@@ -56,10 +56,10 @@ func TestWithRepeatedToolCallLimit_CountsDuplicatesInCurrentResponse(t *testing.
 	tool := kittest.NewTool(t, "add", "add numbers")
 	model := kittest.NewModel(t, kittest.ModelResult{
 		Response: kit.ModelResponse{
-			Message: kit.NewModelMessage([]kit.Content{
+			Message: kit.NewModelMessage(
 				kit.NewToolCallContent(firstCall),
 				kit.NewToolCallContent(repeatedCall),
-			}),
+			),
 			FinishReason: kit.FinishReasonToolCall,
 		},
 	})
@@ -69,7 +69,7 @@ func TestWithRepeatedToolCallLimit_CountsDuplicatesInCurrentResponse(t *testing.
 		t.Fatalf("New: %v", err)
 	}
 
-	_, err = a.Run(context.Background(), kit.NewUserMessage([]kit.Content{kit.NewTextContent("add 3 and 4 twice")}))
+	_, err = a.Run(context.Background(), kit.NewUserMessage(kit.NewTextContent("add 3 and 4 twice")))
 	if !errors.Is(err, ErrToolLoopDetected) {
 		t.Fatalf("Run error = %v, want ErrToolLoopDetected", err)
 	}
@@ -93,25 +93,25 @@ func TestWithRepeatedToolCallLimit_OnlyCountsWithinWindow(t *testing.T) {
 	model := kittest.NewModel(t,
 		kittest.ModelResult{
 			Response: kit.ModelResponse{
-				Message:      kit.NewModelMessage([]kit.Content{kit.NewToolCallContent(firstCall)}),
+				Message:      kit.NewModelMessage(kit.NewToolCallContent(firstCall)),
 				FinishReason: kit.FinishReasonToolCall,
 			},
 		},
 		kittest.ModelResult{
 			Response: kit.ModelResponse{
-				Message:      kit.NewModelMessage([]kit.Content{kit.NewToolCallContent(differentCall)}),
+				Message:      kit.NewModelMessage(kit.NewToolCallContent(differentCall)),
 				FinishReason: kit.FinishReasonToolCall,
 			},
 		},
 		kittest.ModelResult{
 			Response: kit.ModelResponse{
-				Message:      kit.NewModelMessage([]kit.Content{kit.NewToolCallContent(repeatedLaterCall)}),
+				Message:      kit.NewModelMessage(kit.NewToolCallContent(repeatedLaterCall)),
 				FinishReason: kit.FinishReasonToolCall,
 			},
 		},
 		kittest.ModelResult{
 			Response: kit.ModelResponse{
-				Message:      kit.NewModelMessage([]kit.Content{kit.NewTextContent("done")}),
+				Message:      kit.NewModelMessage(kit.NewTextContent("done")),
 				FinishReason: kit.FinishReasonStop,
 			},
 		},
@@ -122,7 +122,7 @@ func TestWithRepeatedToolCallLimit_OnlyCountsWithinWindow(t *testing.T) {
 		t.Fatalf("New: %v", err)
 	}
 
-	resp, err := a.Run(context.Background(), kit.NewUserMessage([]kit.Content{kit.NewTextContent("add numbers")}))
+	resp, err := a.Run(context.Background(), kit.NewUserMessage(kit.NewTextContent("add numbers")))
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}

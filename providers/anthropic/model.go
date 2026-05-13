@@ -271,7 +271,7 @@ func convertResponse(resp *anthropicsdk.Message) kit.ModelResponse {
 	}
 
 	return kit.ModelResponse{
-		Message:      kit.NewModelMessage(content),
+		Message:      kit.NewModelMessage(content...),
 		FinishReason: convertResponseFinishReason(resp),
 		Usage:        convertResponseUsage(resp),
 	}

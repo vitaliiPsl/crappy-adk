@@ -8,7 +8,7 @@ import (
 )
 
 func TestHistoryContextReturnsInitialMessages(t *testing.T) {
-	msg := kit.NewUserMessage([]kit.Content{kit.NewTextContent("hello")})
+	msg := kit.NewUserMessage(kit.NewTextContent("hello"))
 	mem := NewHistory(msg)
 
 	got, err := mem.Context(context.Background())
@@ -28,8 +28,8 @@ func TestHistoryContextReturnsInitialMessages(t *testing.T) {
 func TestHistoryRecordAppendsMessages(t *testing.T) {
 	mem := NewHistory()
 
-	first := kit.NewUserMessage([]kit.Content{kit.NewTextContent("first")})
-	second := kit.NewModelMessage([]kit.Content{kit.NewTextContent("second")})
+	first := kit.NewUserMessage(kit.NewTextContent("first"))
+	second := kit.NewModelMessage(kit.NewTextContent("second"))
 
 	if err := mem.Record(context.Background(), first); err != nil {
 		t.Fatalf("Record first: %v", err)
@@ -54,13 +54,13 @@ func TestHistoryRecordAppendsMessages(t *testing.T) {
 }
 
 func TestHistoryContextStartsAtLatestSummary(t *testing.T) {
-	old := kit.NewUserMessage([]kit.Content{kit.NewTextContent("old")})
-	firstSummary := kit.NewSummaryMessage("first summary")
+	old := kit.NewUserMessage(kit.NewTextContent("old"))
+	firstSummary := kit.NewUserMessage(kit.NewSummaryContent("first summary"))
 
-	middle := kit.NewUserMessage([]kit.Content{kit.NewTextContent("middle")})
+	middle := kit.NewUserMessage(kit.NewTextContent("middle"))
 
-	latestSummary := kit.NewSummaryMessage("latest summary")
-	recent := kit.NewUserMessage([]kit.Content{kit.NewTextContent("recent")})
+	latestSummary := kit.NewUserMessage(kit.NewSummaryContent("latest summary"))
+	recent := kit.NewUserMessage(kit.NewTextContent("recent"))
 
 	mem := NewHistory(old, firstSummary, middle, latestSummary, recent)
 

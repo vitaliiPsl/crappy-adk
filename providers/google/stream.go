@@ -187,7 +187,7 @@ func (a *streamAcc) result() kit.ModelResponse {
 	}
 
 	return kit.ModelResponse{
-		Message:      kit.NewModelMessage(content),
+		Message:      kit.NewModelMessage(content...),
 		FinishReason: finishReason,
 		Usage:        usage,
 	}

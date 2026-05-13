@@ -69,9 +69,8 @@ func main() {
 		log.Fatalf("failed to create agent: %v", err)
 	}
 
-	input := kit.NewUserMessage([]kit.Content{
-		kit.NewTextContent("I attempt to pick the lock on the dragon's vault."),
-	})
+	input := kit.NewUserMessage(
+		kit.NewTextContent("I attempt to pick the lock on the dragon's vault."))
 
 	resp, err := a.Run(context.Background(), input)
 	if err != nil {

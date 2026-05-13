@@ -109,7 +109,7 @@ func (a *Agent) run(
 			return rc.Response(), err
 		}
 
-		toolMessage := kit.NewToolMessage(results)
+		toolMessage := kit.NewToolMessage(results...)
 		if err := a.appendMessage(rc, toolMessage); err != nil {
 			return rc.Response(), err
 		}

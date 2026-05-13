@@ -16,14 +16,14 @@ func TestRun_ReturnsFinalResponse(t *testing.T) {
 
 	model := kittest.NewModel(t, kittest.ModelResult{
 		Response: kit.ModelResponse{
-			Message:      kit.NewModelMessage([]kit.Content{kit.NewTextContent("done")}),
+			Message:      kit.NewModelMessage(kit.NewTextContent("done")),
 			FinishReason: kit.FinishReasonStop,
 			Usage:        kit.Usage{InputTokens: 3, OutputTokens: 2},
 		},
 	})
 
 	messages := []kit.Message{
-		kit.NewUserMessage([]kit.Content{kit.NewTextContent("hello")}),
+		kit.NewUserMessage(kit.NewTextContent("hello")),
 	}
 
 	a, err := New(model, xmemory.NewHistory(), WithTools(tool), WithInstructions("be brief"))
@@ -66,7 +66,7 @@ func TestRun_ReturnsModelError(t *testing.T) {
 
 	model := kittest.NewModel(t, kittest.ModelResult{Error: wantErr})
 
-	input := kit.NewUserMessage([]kit.Content{kit.NewTextContent("hello")})
+	input := kit.NewUserMessage(kit.NewTextContent("hello"))
 
 	a, err := New(model, xmemory.NewHistory(), WithInstructions("be brief"))
 	if err != nil {
@@ -84,7 +84,7 @@ func TestRun_ReturnsModelError(t *testing.T) {
 func TestRun_ReturnsCanceledContextBeforeModelCall(t *testing.T) {
 	model := kittest.NewModel(t)
 
-	input := kit.NewUserMessage([]kit.Content{kit.NewTextContent("hello")})
+	input := kit.NewUserMessage(kit.NewTextContent("hello"))
 
 	a, err := New(model, xmemory.NewHistory(), WithInstructions("be brief"))
 	if err != nil {
@@ -108,8 +108,8 @@ func TestRun_ReturnsCanceledContextBeforeModelCall(t *testing.T) {
 
 func TestRun_ExecutesToolCallAndContinues(t *testing.T) {
 	call := kit.NewToolCall("call-1", "add", map[string]any{"a": 3, "b": 4})
-	toolCallMessage := kit.NewModelMessage([]kit.Content{kit.NewToolCallContent(call)})
-	finalMessage := kit.NewModelMessage([]kit.Content{kit.NewTextContent("3 + 4 = 7")})
+	toolCallMessage := kit.NewModelMessage(kit.NewToolCallContent(call))
+	finalMessage := kit.NewModelMessage(kit.NewTextContent("3 + 4 = 7"))
 
 	tool := kittest.NewTool(t, "add", "add numbers", kittest.ToolResult{Result: "7"})
 
@@ -131,7 +131,7 @@ func TestRun_ExecutesToolCallAndContinues(t *testing.T) {
 	)
 
 	messages := []kit.Message{
-		kit.NewUserMessage([]kit.Content{kit.NewTextContent("add 3 and 4")}),
+		kit.NewUserMessage(kit.NewTextContent("add 3 and 4")),
 	}
 
 	a, err := New(model, xmemory.NewHistory(), WithTools(tool), WithInstructions("use tools"))
@@ -168,9 +168,8 @@ func TestRun_ExecutesToolCallAndContinues(t *testing.T) {
 		Instructions: "use tools",
 		Messages: append(messages,
 			toolCallMessage,
-			kit.NewToolMessage([]kit.Content{
-				kit.NewToolResultContent(kit.NewToolResult(call, "7", nil)),
-			}),
+			kit.NewToolMessage(
+				kit.NewToolResultContent(kit.NewToolResult(call, "7", nil))),
 		),
 		Tools: []kit.Tool{tool},
 	})
@@ -179,7 +178,7 @@ func TestRun_ExecutesToolCallAndContinues(t *testing.T) {
 func TestRun_SendsToolErrorBackToModel(t *testing.T) {
 	toolErr := errors.New("tool failed")
 	call := kit.NewToolCall("call-1", "fail", map[string]any{"input": "x"})
-	toolCallMessage := kit.NewModelMessage([]kit.Content{kit.NewToolCallContent(call)})
+	toolCallMessage := kit.NewModelMessage(kit.NewToolCallContent(call))
 
 	tool := kittest.NewTool(t, "fail", "failing tool", kittest.ToolResult{Error: toolErr})
 
@@ -192,13 +191,13 @@ func TestRun_SendsToolErrorBackToModel(t *testing.T) {
 		},
 		kittest.ModelResult{
 			Response: kit.ModelResponse{
-				Message:      kit.NewModelMessage([]kit.Content{kit.NewTextContent("handled")}),
+				Message:      kit.NewModelMessage(kit.NewTextContent("handled")),
 				FinishReason: kit.FinishReasonStop,
 			},
 		},
 	)
 
-	input := kit.NewUserMessage([]kit.Content{kit.NewTextContent("try failing tool")})
+	input := kit.NewUserMessage(kit.NewTextContent("try failing tool"))
 
 	a, err := New(model, xmemory.NewHistory(), WithTools(tool), WithInstructions("use tools"))
 	if err != nil {
@@ -232,19 +231,19 @@ func TestRun_SendsMissingToolErrorBackToModel(t *testing.T) {
 	model := kittest.NewModel(t,
 		kittest.ModelResult{
 			Response: kit.ModelResponse{
-				Message:      kit.NewModelMessage([]kit.Content{kit.NewToolCallContent(call)}),
+				Message:      kit.NewModelMessage(kit.NewToolCallContent(call)),
 				FinishReason: kit.FinishReasonToolCall,
 			},
 		},
 		kittest.ModelResult{
 			Response: kit.ModelResponse{
-				Message:      kit.NewModelMessage([]kit.Content{kit.NewTextContent("handled")}),
+				Message:      kit.NewModelMessage(kit.NewTextContent("handled")),
 				FinishReason: kit.FinishReasonStop,
 			},
 		},
 	)
 
-	input := kit.NewUserMessage([]kit.Content{kit.NewTextContent("try missing tool")})
+	input := kit.NewUserMessage(kit.NewTextContent("try missing tool"))
 
 	a, err := New(model, xmemory.NewHistory(), WithInstructions("use tools"))
 	if err != nil {
@@ -380,7 +379,7 @@ func TestExecuteTool_RecoversPanic(t *testing.T) {
 
 func TestRun_ContextCanceledDuringToolAbortsRun(t *testing.T) {
 	call := kit.NewToolCall("call-1", "cancel", nil)
-	toolCallMessage := kit.NewModelMessage([]kit.Content{kit.NewToolCallContent(call)})
+	toolCallMessage := kit.NewModelMessage(kit.NewToolCallContent(call))
 
 	model := kittest.NewModel(t, kittest.ModelResult{
 		Response: kit.ModelResponse{
@@ -392,7 +391,7 @@ func TestRun_ContextCanceledDuringToolAbortsRun(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	tool := &cancelTool{cancel: cancel}
 
-	input := kit.NewUserMessage([]kit.Content{kit.NewTextContent("cancel during tool")})
+	input := kit.NewUserMessage(kit.NewTextContent("cancel during tool"))
 
 	a, err := New(model, xmemory.NewHistory(), WithTools(tool), WithInstructions("use tools"))
 	if err != nil {
@@ -426,13 +425,13 @@ func TestStream_ReturnsEventsAndResult(t *testing.T) {
 			kit.NewModelContentDoneEvent(kit.NewTextContent("done")),
 		},
 		Response: kit.ModelResponse{
-			Message:      kit.NewModelMessage([]kit.Content{kit.NewTextContent("done")}),
+			Message:      kit.NewModelMessage(kit.NewTextContent("done")),
 			FinishReason: kit.FinishReasonStop,
 			Usage:        kit.Usage{InputTokens: 3, OutputTokens: 2},
 		},
 	})
 
-	input := kit.NewUserMessage([]kit.Content{kit.NewTextContent("hello")})
+	input := kit.NewUserMessage(kit.NewTextContent("hello"))
 
 	a, err := New(model, xmemory.NewHistory(), WithInstructions("be brief"))
 	if err != nil {
@@ -486,8 +485,8 @@ func TestStream_ReturnsEventsAndResult(t *testing.T) {
 
 func TestStream_EmitsToolResultAndContinues(t *testing.T) {
 	call := kit.NewToolCall("call-1", "add", map[string]any{"a": 3, "b": 4})
-	toolCallMessage := kit.NewModelMessage([]kit.Content{kit.NewToolCallContent(call)})
-	finalMessage := kit.NewModelMessage([]kit.Content{kit.NewTextContent("3 + 4 = 7")})
+	toolCallMessage := kit.NewModelMessage(kit.NewToolCallContent(call))
+	finalMessage := kit.NewModelMessage(kit.NewTextContent("3 + 4 = 7"))
 
 	tool := kittest.NewTool(t, "add", "add numbers", kittest.ToolResult{Result: "7"})
 
@@ -506,7 +505,7 @@ func TestStream_EmitsToolResultAndContinues(t *testing.T) {
 		},
 	)
 
-	input := kit.NewUserMessage([]kit.Content{kit.NewTextContent("add 3 and 4")})
+	input := kit.NewUserMessage(kit.NewTextContent("add 3 and 4"))
 
 	a, err := New(model, xmemory.NewHistory(), WithTools(tool), WithInstructions("use tools"))
 	if err != nil {
@@ -551,13 +550,13 @@ func TestStream_ResultAfterEarlyStopReturnsPartialResponse(t *testing.T) {
 			kit.NewModelContentDoneEvent(kit.NewTextContent("done")),
 		},
 		Response: kit.ModelResponse{
-			Message:      kit.NewModelMessage([]kit.Content{kit.NewTextContent("done")}),
+			Message:      kit.NewModelMessage(kit.NewTextContent("done")),
 			FinishReason: kit.FinishReasonStop,
 			Usage:        kit.Usage{InputTokens: 3, OutputTokens: 2},
 		},
 	})
 
-	input := kit.NewUserMessage([]kit.Content{kit.NewTextContent("hello")})
+	input := kit.NewUserMessage(kit.NewTextContent("hello"))
 
 	a, err := New(model, xmemory.NewHistory(), WithInstructions("be brief"))
 	if err != nil {
@@ -697,19 +696,19 @@ func TestRun_ToolHookErrorIsSentBackToModel(t *testing.T) {
 	model := kittest.NewModel(t,
 		kittest.ModelResult{
 			Response: kit.ModelResponse{
-				Message:      kit.NewModelMessage([]kit.Content{kit.NewToolCallContent(call)}),
+				Message:      kit.NewModelMessage(kit.NewToolCallContent(call)),
 				FinishReason: kit.FinishReasonToolCall,
 			},
 		},
 		kittest.ModelResult{
 			Response: kit.ModelResponse{
-				Message:      kit.NewModelMessage([]kit.Content{kit.NewTextContent("recovered")}),
+				Message:      kit.NewModelMessage(kit.NewTextContent("recovered")),
 				FinishReason: kit.FinishReasonStop,
 			},
 		},
 	)
 
-	input := kit.NewUserMessage([]kit.Content{kit.NewTextContent("search go")})
+	input := kit.NewUserMessage(kit.NewTextContent("search go"))
 
 	a, err := New(model, xmemory.NewHistory(),
 		WithTools(tool),
@@ -747,9 +746,9 @@ func TestRun_ToolHookErrorIsSentBackToModel(t *testing.T) {
 }
 
 func TestRun_WithMemoryLoadsContextAndRecordsMessages(t *testing.T) {
-	remembered := kit.NewUserMessage([]kit.Content{kit.NewTextContent("remember me")})
-	input := kit.NewUserMessage([]kit.Content{kit.NewTextContent("what do you remember?")})
-	final := kit.NewModelMessage([]kit.Content{kit.NewTextContent("I remember you.")})
+	remembered := kit.NewUserMessage(kit.NewTextContent("remember me"))
+	input := kit.NewUserMessage(kit.NewTextContent("what do you remember?"))
+	final := kit.NewModelMessage(kit.NewTextContent("I remember you."))
 
 	mem := xmemory.NewHistory(remembered)
 	model := kittest.NewModel(t, kittest.ModelResult{

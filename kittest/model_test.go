@@ -12,7 +12,7 @@ func TestModel_Generate(t *testing.T) {
 	wantErr := errors.New("boom")
 	model := NewModel(t, ModelResult{
 		Response: kit.ModelResponse{
-			Message:      kit.NewModelMessage([]kit.Content{kit.NewTextContent("hello")}),
+			Message:      kit.NewModelMessage(kit.NewTextContent("hello")),
 			FinishReason: kit.FinishReasonStop,
 		},
 		Error: wantErr,
@@ -20,7 +20,7 @@ func TestModel_Generate(t *testing.T) {
 	request := kit.ModelRequest{
 		Instructions: "be helpful",
 		Messages: []kit.Message{
-			kit.NewUserMessage([]kit.Content{kit.NewTextContent("hi")}),
+			kit.NewUserMessage(kit.NewTextContent("hi")),
 		},
 	}
 
@@ -67,7 +67,7 @@ func TestModel_AssertNeverCalled(t *testing.T) {
 
 func TestModel_Stream(t *testing.T) {
 	wantResp := kit.ModelResponse{
-		Message:      kit.NewModelMessage([]kit.Content{kit.NewTextContent("hello")}),
+		Message:      kit.NewModelMessage(kit.NewTextContent("hello")),
 		FinishReason: kit.FinishReasonStop,
 	}
 	events := []kit.ModelEvent{

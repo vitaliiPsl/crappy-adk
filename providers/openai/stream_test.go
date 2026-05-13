@@ -244,7 +244,7 @@ func TestHandleStreamEvent_FunctionCallLifecycle(t *testing.T) {
 		t.Errorf("events[1].Type = %q, want %q", got, kit.EventContentDone)
 	}
 
-	started := kit.NewModelMessage([]kit.Content{*events.events[0].Content})
+	started := kit.NewModelMessage(*events.events[0].Content)
 
 	startedCalls := started.ToolCalls()
 	if len(startedCalls) != 1 {
@@ -255,7 +255,7 @@ func TestHandleStreamEvent_FunctionCallLifecycle(t *testing.T) {
 		t.Errorf("started Arguments = %v, want nil", startedCalls[0].Arguments)
 	}
 
-	done := kit.NewModelMessage([]kit.Content{*events.events[1].Content})
+	done := kit.NewModelMessage(*events.events[1].Content)
 
 	calls := done.ToolCalls()
 	if len(calls) != 1 {

@@ -54,9 +54,8 @@ func main() {
 		log.Fatalf("failed to create agent: %v", err)
 	}
 
-	resp, err := a.Run(context.Background(), kit.NewUserMessage([]kit.Content{
-		kit.NewTextContent("In one sentence, what is a transformer in machine learning?"),
-	}))
+	resp, err := a.Run(context.Background(), kit.NewUserMessage(
+		kit.NewTextContent("In one sentence, what is a transformer in machine learning?")))
 	if err != nil {
 		log.Fatalf("agent run failed: %v", err)
 	}

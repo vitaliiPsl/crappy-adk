@@ -14,7 +14,7 @@ import (
 func TestWithBudget_AllowsUsageAtLimit(t *testing.T) {
 	model := kittest.NewModel(t, kittest.ModelResult{
 		Response: kit.ModelResponse{
-			Message:      kit.NewModelMessage([]kit.Content{kit.NewTextContent("done")}),
+			Message:      kit.NewModelMessage(kit.NewTextContent("done")),
 			FinishReason: kit.FinishReasonStop,
 			Usage:        kit.Usage{InputTokens: 7, OutputTokens: 3},
 		},
@@ -29,7 +29,7 @@ func TestWithBudget_AllowsUsageAtLimit(t *testing.T) {
 		t.Fatalf("New: %v", err)
 	}
 
-	resp, err := a.Run(context.Background(), kit.NewUserMessage([]kit.Content{kit.NewTextContent("hello")}))
+	resp, err := a.Run(context.Background(), kit.NewUserMessage(kit.NewTextContent("hello")))
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -45,8 +45,8 @@ func TestWithBudget_AllowsUsageAtLimit(t *testing.T) {
 
 func TestWithBudget_RejectsResponseThatExceedsCumulativeBudget(t *testing.T) {
 	call := kit.NewToolCall("call-1", "add", map[string]any{"a": 3, "b": 4})
-	toolCallMessage := kit.NewModelMessage([]kit.Content{kit.NewToolCallContent(call)})
-	finalMessage := kit.NewModelMessage([]kit.Content{kit.NewTextContent("should not be appended")})
+	toolCallMessage := kit.NewModelMessage(kit.NewToolCallContent(call))
+	finalMessage := kit.NewModelMessage(kit.NewTextContent("should not be appended"))
 
 	tool := kittest.NewTool(t, "add", "add numbers", kittest.ToolResult{Result: "7"})
 	model := kittest.NewModel(t,
@@ -71,7 +71,7 @@ func TestWithBudget_RejectsResponseThatExceedsCumulativeBudget(t *testing.T) {
 		t.Fatalf("New: %v", err)
 	}
 
-	resp, err := a.Run(context.Background(), kit.NewUserMessage([]kit.Content{kit.NewTextContent("add 3 and 4")}))
+	resp, err := a.Run(context.Background(), kit.NewUserMessage(kit.NewTextContent("add 3 and 4")))
 	if !errors.Is(err, ErrBudgetExceeded) {
 		t.Fatalf("Run error = %v, want ErrBudgetExceeded", err)
 	}
@@ -95,7 +95,7 @@ func TestWithBudget_RejectsResponseThatExceedsCumulativeBudget(t *testing.T) {
 func TestWithInputTokenBudget_RejectsInputBudget(t *testing.T) {
 	model := kittest.NewModel(t, kittest.ModelResult{
 		Response: kit.ModelResponse{
-			Message:      kit.NewModelMessage([]kit.Content{kit.NewTextContent("done")}),
+			Message:      kit.NewModelMessage(kit.NewTextContent("done")),
 			FinishReason: kit.FinishReasonStop,
 			Usage:        kit.Usage{InputTokens: 4},
 		},
@@ -106,7 +106,7 @@ func TestWithInputTokenBudget_RejectsInputBudget(t *testing.T) {
 		t.Fatalf("New: %v", err)
 	}
 
-	resp, err := a.Run(context.Background(), kit.NewUserMessage([]kit.Content{kit.NewTextContent("think")}))
+	resp, err := a.Run(context.Background(), kit.NewUserMessage(kit.NewTextContent("think")))
 	if !errors.Is(err, ErrBudgetExceeded) {
 		t.Fatalf("Run error = %v, want ErrBudgetExceeded", err)
 	}
@@ -119,7 +119,7 @@ func TestWithInputTokenBudget_RejectsInputBudget(t *testing.T) {
 func TestWithOutputTokenBudget_RejectsOutputBudget(t *testing.T) {
 	model := kittest.NewModel(t, kittest.ModelResult{
 		Response: kit.ModelResponse{
-			Message:      kit.NewModelMessage([]kit.Content{kit.NewTextContent("done")}),
+			Message:      kit.NewModelMessage(kit.NewTextContent("done")),
 			FinishReason: kit.FinishReasonStop,
 			Usage:        kit.Usage{OutputTokens: 4},
 		},
@@ -130,7 +130,7 @@ func TestWithOutputTokenBudget_RejectsOutputBudget(t *testing.T) {
 		t.Fatalf("New: %v", err)
 	}
 
-	resp, err := a.Run(context.Background(), kit.NewUserMessage([]kit.Content{kit.NewTextContent("write")}))
+	resp, err := a.Run(context.Background(), kit.NewUserMessage(kit.NewTextContent("write")))
 	if !errors.Is(err, ErrBudgetExceeded) {
 		t.Fatalf("Run error = %v, want ErrBudgetExceeded", err)
 	}

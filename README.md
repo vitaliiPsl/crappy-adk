@@ -74,9 +74,9 @@ if err != nil {
     log.Fatal(err)
 }
 
-resp, err := a.Run(ctx, kit.NewUserMessage([]kit.Content{
+resp, err := a.Run(ctx, kit.NewUserMessage(
     kit.NewTextContent("What's the weather in Vienna?"),
-}))
+))
 if err != nil {
     log.Fatal(err)
 }
@@ -97,13 +97,13 @@ a, err := agent.New(model, mem,
     agent.WithInstructions("You are a helpful assistant."),
 )
 
-resp, err := a.Run(ctx, kit.NewUserMessage([]kit.Content{
+resp, err := a.Run(ctx, kit.NewUserMessage(
     kit.NewTextContent("My name is Vitalii."),
-}))
+))
 
-resp, err = a.Run(ctx, kit.NewUserMessage([]kit.Content{
+resp, err = a.Run(ctx, kit.NewUserMessage(
     kit.NewTextContent("What is my name?"),
-}))
+))
 ```
 
 ## Models
@@ -179,9 +179,9 @@ Anything implementing `kit.Tool` works — `Generic` is the convenience wrapper,
 The stream emits content lifecycle events (`content_started`, `content_delta`, `content_done`) for every kind of content — text, thinking, tool calls, and tool results — plus a higher-level `message` event once each message is fully assembled.
 
 ```go
-stream := a.Stream(ctx, kit.NewUserMessage([]kit.Content{
+stream := a.Stream(ctx, kit.NewUserMessage(
     kit.NewTextContent("Tell me a story."),
-}))
+))
 
 for event := range stream.Iter() {
     switch event.Type {
@@ -305,14 +305,14 @@ Guard failures are exported sentinel errors: `ErrMaxTurnsExceeded`, `ErrMaxToolC
 m := kittest.NewModel(t,
     kittest.ModelResult{
         Response: kit.ModelResponse{
-            Message:      kit.NewModelMessage([]kit.Content{kit.NewTextContent("hello")}),
+            Message:      kit.NewModelMessage(kit.NewTextContent("hello")),
             FinishReason: kit.FinishReasonStop,
         },
     },
 )
 
 a, _ := agent.New(m, memory.NewHistory())
-resp, err := a.Run(ctx, kit.NewUserMessage([]kit.Content{kit.NewTextContent("hi")}))
+resp, err := a.Run(ctx, kit.NewUserMessage(kit.NewTextContent("hi")))
 ```
 
 The test double records every request it receives, fails the test if the agent makes more calls than scripted, and ships with assertion helpers for inspecting recorded calls.

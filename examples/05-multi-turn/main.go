@@ -57,9 +57,8 @@ func main() {
 
 	ctx := context.Background()
 	for i, prompt := range turns {
-		input := kit.NewUserMessage([]kit.Content{
-			kit.NewTextContent(prompt),
-		})
+		input := kit.NewUserMessage(
+			kit.NewTextContent(prompt))
 
 		resp, err := a.Run(ctx, input)
 		if err != nil {

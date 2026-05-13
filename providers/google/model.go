@@ -249,7 +249,7 @@ func convertResponse(resp *genai.GenerateContentResponse) kit.ModelResponse {
 	}
 
 	return kit.ModelResponse{
-		Message:      kit.NewModelMessage(content),
+		Message:      kit.NewModelMessage(content...),
 		FinishReason: convertResponseFinishReason(candidate),
 		Usage:        convertResponseUsage(resp),
 	}
