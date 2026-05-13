@@ -1,4 +1,4 @@
-package compaction
+package summarization
 
 import (
 	"fmt"
@@ -13,7 +13,7 @@ func Summarize(model kit.Model, instructions string) Strategy {
 	return func(rc *kit.RunContext) error {
 		messages, err := rc.Memory.Context(rc.Context)
 		if err != nil {
-			return fmt.Errorf("compaction: failed to read memory context: %w", err)
+			return fmt.Errorf("summarization: failed to read memory context: %w", err)
 		}
 
 		if len(messages) == 0 {
@@ -25,19 +25,19 @@ func Summarize(model kit.Model, instructions string) Strategy {
 			Messages:     messages,
 		})
 		if err != nil {
-			return fmt.Errorf("compaction: summarizer call failed: %w", err)
+			return fmt.Errorf("summarization: summarizer call failed: %w", err)
 		}
 
 		text := resp.Message.TextContent()
 		if text == nil || text.Text == "" {
-			return fmt.Errorf("compaction: summarizer returned empty response")
+			return fmt.Errorf("summarization: summarizer returned empty response")
 		}
 
 		rc.Usage.Add(resp.Usage)
 
 		summary := kit.NewSummaryMessage(text.Text)
 		if err := rc.Memory.Record(rc.Context, summary); err != nil {
-			return fmt.Errorf("compaction: failed to record summary: %w", err)
+			return fmt.Errorf("summarization: failed to record summary: %w", err)
 		}
 
 		return nil

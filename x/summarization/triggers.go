@@ -1,4 +1,4 @@
-package compaction
+package summarization
 
 import "github.com/vitaliiPsl/crappy-adk/kit"
 

@@ -42,7 +42,7 @@ func NewToolMessage(content []Content) Message {
 }
 
 // NewSummaryMessage creates a [RoleUser] message wrapping a single summary content.
-// Compactors should use this so callers can identify summary messages by both
+// Summarizers should use this so callers can identify summary messages by both
 // role and the [ContentTypeSummary] block in [Message.Content].
 func NewSummaryMessage(text string) Message {
 	return NewUserMessage([]Content{NewSummaryContent(text)})
@@ -124,7 +124,7 @@ type Text struct {
 	Text string
 }
 
-// Summary represents a compaction summary that stands in for a range of older
+// Summary represents a summary that stands in for a range of older
 // conversation messages.
 type Summary struct {
 	// Text is the natural-language summary of the replaced messages.

@@ -1,4 +1,4 @@
-package compaction
+package summarization
 
 import (
 	"context"
@@ -11,7 +11,7 @@ import (
 	"github.com/vitaliiPsl/crappy-adk/x/memory"
 )
 
-func TestCompactionHook_RunsStrategyWhenTriggerFires(t *testing.T) {
+func TestSummarizationHook_RunsStrategyWhenTriggerFires(t *testing.T) {
 	called := false
 	hook := onTurnStart(
 		func(*kit.RunContext) bool { return true },
@@ -31,7 +31,7 @@ func TestCompactionHook_RunsStrategyWhenTriggerFires(t *testing.T) {
 	}
 }
 
-func TestCompactionHook_SkipsStrategyWhenTriggerDoesNotFire(t *testing.T) {
+func TestSummarizationHook_SkipsStrategyWhenTriggerDoesNotFire(t *testing.T) {
 	hook := onTurnStart(
 		func(*kit.RunContext) bool { return false },
 		func(*kit.RunContext) error {
@@ -46,7 +46,7 @@ func TestCompactionHook_SkipsStrategyWhenTriggerDoesNotFire(t *testing.T) {
 	}
 }
 
-func TestWithCompaction_ConfiguresAgentCompaction(t *testing.T) {
+func TestWithSummarization_ConfiguresAgentSummarization(t *testing.T) {
 	model := kittest.NewModel(t, kittest.ModelResult{
 		Response: kit.ModelResponse{
 			Message:      kit.NewModelMessage([]kit.Content{kit.NewTextContent("done")}),
@@ -60,12 +60,12 @@ func TestWithCompaction_ConfiguresAgentCompaction(t *testing.T) {
 	a, err := agent.New(
 		model,
 		mem,
-		WithCompaction(
+		WithSummarization(
 			func(*kit.RunContext) bool { return true },
 			func(rc *kit.RunContext) error {
 				called = true
 
-				return rc.Memory.Record(rc.Context, kit.NewSummaryMessage("compacted"))
+				return rc.Memory.Record(rc.Context, kit.NewSummaryMessage("summarized"))
 			},
 		),
 	)

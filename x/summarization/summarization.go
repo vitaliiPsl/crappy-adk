@@ -1,4 +1,4 @@
-package compaction
+package summarization
 
 import (
 	"github.com/vitaliiPsl/crappy-adk/agent"
@@ -8,11 +8,11 @@ import (
 // Trigger reports whether [Strategy] should run on the current turn.
 type Trigger func(rc *kit.RunContext) bool
 
-// Strategy mutates memory through [kit.RunContext] to reduce the working conversation.
+// Strategy records summary state through [kit.RunContext].
 type Strategy func(rc *kit.RunContext) error
 
-// WithCompaction configures an agent to run strategy whenever trigger fires.
-func WithCompaction(trigger Trigger, strategy Strategy) agent.Option {
+// WithSummarization configures an agent to run strategy whenever trigger fires.
+func WithSummarization(trigger Trigger, strategy Strategy) agent.Option {
 	return agent.WithOnTurnStart(onTurnStart(trigger, strategy))
 }
 

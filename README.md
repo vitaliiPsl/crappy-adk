@@ -23,7 +23,7 @@ Felt bored while on vacation, so decided to learn more about AI agents and build
 - [Tools](#tools)
 - [Streaming](#streaming)
 - [Hooks](#hooks)
-- [Compaction](#compaction)
+- [Summarization](#summarization)
 - [Guards](#guards)
 - [Testing](#testing)
 - [Extending](#extending)
@@ -222,7 +222,7 @@ fmt.Printf("final text: %s\n", resp.Output.Text)
 
 Six hooks cover every stage of the ReAct loop. Each hook receives a pointer to `*kit.RunContext` and may inspect or mutate it. Returning a modified value replaces the original; returning an error aborts the run. Tool hooks are the exception: an error becomes a tool result and the loop continues so the model can react to the failure.
 
-**`WithOnTurnStart`** — start of each turn, before the model is called. Compaction strategies plug in here.
+**`WithOnTurnStart`** — start of each turn, before the model is called. Summarization strategies plug in here.
 ```go
 func(rc *kit.RunContext) error
 ```
@@ -252,18 +252,18 @@ func(rc *kit.RunContext, call kit.ToolCall) (kit.ToolCall, error)
 func(rc *kit.RunContext, result kit.ToolResult) (kit.ToolResult, error)
 ```
 
-`RunContext` carries memory, run messages, cumulative and last-call usage, and the stream emitter. Hooks can inspect or mutate memory to reshape what the model sees on the next turn.
+`RunContext` carries memory, run messages, cumulative and last-call usage, and the stream emitter. Hooks can inspect memory, record messages, and influence what the model sees on the next turn.
 
-## Compaction
+## Summarization
 
-`x/compaction` plugs into `OnTurnStart` to keep long conversations within the model's context window. A `Trigger` decides when to compact; a `Strategy` does the work.
+`x/summarization` plugs into `OnTurnStart` to summarize long conversations. A `Trigger` decides when to summarize; a `Strategy` records the summary.
 
 ```go
 a, err := agent.New(model, memory.NewHistory(),
     agent.WithInstructions("You are a helpful assistant."),
-    compaction.WithCompaction(
-        compaction.WhenUsageTokensExceed(80_000),
-        compaction.Summarize(summarizerModel, "Summarize the conversation so far."),
+    summarization.WithSummarization(
+        summarization.WhenUsageTokensExceed(80_000),
+        summarization.Summarize(summarizerModel, "Summarize the conversation so far."),
     ),
 )
 ```
@@ -324,7 +324,7 @@ Everything is an interface. If something doesn't fit, replace it.
 - **Memory** — `kit.Memory`. Use `memory.NewHistory()` for short-term history and summary-derived context, or implement your own.
 - **Model** — `kit.Model`. Point at any inference backend via a model adapter package or implement your own.
 - **Tool** — `kit.Tool`, or use `tool.New[I, O]` from `x/tool` for auto-schema from a Go struct.
-- **Compactor** — a `Trigger` plus a `Strategy` registered with `compaction.WithCompaction(...)`.
+- **Summarizer** — a `Trigger` plus a `Strategy` registered with `summarization.WithSummarization(...)`.
 - **Guard** — runtime policies from `x/guard`, such as turn, tool-call, token-budget, and repeated-tool-call limits.
 - **Hooks** — typed function values registered with `WithOn...` options.
 - **Extension** — `agent.WithExtensions(opts...)` bundles a set of options into a reusable capability.
