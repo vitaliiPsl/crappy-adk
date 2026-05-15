@@ -26,7 +26,9 @@ func Summarize(model kit.Model, instructions string) Strategy {
 
 		resp, err := model.Generate(rc.Context, kit.ModelRequest{
 			Instructions: instructions,
-			Messages:     messages,
+			Messages: []kit.Message{
+				kit.NewUserMessage(kit.NewTextContent(Flatten(messages))),
+			},
 		})
 		if err != nil {
 			return fmt.Errorf("summarization: summarizer call failed: %w", err)
