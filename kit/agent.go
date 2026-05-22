@@ -32,4 +32,6 @@ type AgentResponse struct {
 	Messages []Message
 	// Usage is the accumulated token usage across all turns.
 	Usage Usage
+	// LastUsage is the usage from the most recent model call.
+	LastUsage Usage
 }

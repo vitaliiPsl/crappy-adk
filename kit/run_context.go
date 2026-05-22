@@ -40,8 +40,9 @@ func (rc *RunContext) RecordUsage(u Usage) {
 // from the latest run message when that message is a model message.
 func (rc *RunContext) Response() AgentResponse {
 	resp := AgentResponse{
-		Messages: rc.Messages,
-		Usage:    rc.Usage,
+		Messages:  rc.Messages,
+		Usage:     rc.Usage,
+		LastUsage: rc.LastUsage,
 	}
 
 	if len(rc.Messages) == 0 {
