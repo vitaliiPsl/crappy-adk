@@ -13,33 +13,33 @@ type Tool interface {
 // ToolDefinition describes a tool to the model.
 type ToolDefinition struct {
 	// The unique name of the tool.
-	Name string
+	Name string `json:"name"`
 	// Description explains what the tool does and how to use it.
-	Description string
+	Description string `json:"description,omitempty"`
 	// Schema defines the expected input structure for the tool.
-	Schema map[string]any
+	Schema map[string]any `json:"schema,omitempty"`
 }
 
 // ToolCall represents a request to execute a tool.
 type ToolCall struct {
 	// Unique identifier for this call, used to match results back to the model.
-	ID string
+	ID string `json:"id"`
 	// Name of the tool to execute.
-	Name string
+	Name string `json:"name"`
 	// Arguments parsed to the tool.
-	Arguments map[string]any
+	Arguments map[string]any `json:"arguments,omitempty"`
 	// Signature is opaque provider metadata required by some models to replay signed tool calls.
-	Signature string
+	Signature string `json:"signature,omitempty"`
 }
 
 // ToolResult represents the output of a tool execution.
 type ToolResult struct {
 	// Call contains the original tool call details.
-	Call ToolCall
+	Call ToolCall `json:"call"`
 	// Output is the successful output from the tool, if any.
-	Output string
+	Output string `json:"output,omitempty"`
 	// Error is the error message if the tool execution failed.
-	Error string
+	Error string `json:"error,omitempty"`
 }
 
 // NewToolCall creates a new [ToolCall] with the given parameters.

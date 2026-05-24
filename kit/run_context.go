@@ -6,20 +6,15 @@ import "context"
 // Hooks receive a pointer to it and may inspect it or mutate memory.
 type RunContext struct {
 	context.Context
-
 	// Memory is the memory configured for this run.
 	Memory Memory
-
 	// Messages holds every message produced during this run, in order.
 	// It is returned to the caller in [AgentResponse.Messages].
 	Messages []Message
-
 	// Usage is the cumulative token usage across all completed model calls.
 	Usage Usage
-
 	// LastUsage is the usage reported by the most recent model response.
 	LastUsage Usage
-
 	// Events emits agent stream events. It is a no-op for non-streaming runs.
 	Events Emitter[AgentEvent]
 }

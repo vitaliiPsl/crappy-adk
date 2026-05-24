@@ -13,13 +13,10 @@ type Agent interface {
 type AgentConfig struct {
 	// Instructions describe the agent's behavior and role.
 	Instructions string
-
 	// Temperature controls response randomness. Higher values produce more varied output.
 	Temperature *float32
-
 	// MaxOutputTokens limits the length of each response.
 	MaxOutputTokens *int32
-
 	// Thinking controls the level of extended reasoning. Defaults to [ThinkingDisabled].
 	Thinking *ThinkingLevel
 }

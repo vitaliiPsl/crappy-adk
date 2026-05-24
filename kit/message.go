@@ -12,9 +12,9 @@ const (
 // Message is a single entry in the conversation history.
 type Message struct {
 	// Role indicates who sent the message.
-	Role Role
+	Role Role `json:"role"`
 	// Content is the text of the message.
-	Content []Content
+	Content []Content `json:"content,omitempty"`
 }
 
 // NewUserMessage creates a new user message with the given content.
@@ -101,37 +101,37 @@ const (
 // Content is a single typed piece of message content.
 type Content struct {
 	// Type indicates what kind of content this part carries
-	Type ContentType
+	Type ContentType `json:"type"`
 
-	Text     *Text
-	Thinking *Thinking
+	Text     *Text     `json:"text,omitempty"`
+	Thinking *Thinking `json:"thinking,omitempty"`
 
-	ToolCall   *ToolCall
-	ToolResult *ToolResult
+	ToolCall   *ToolCall   `json:"tool_call,omitempty"`
+	ToolResult *ToolResult `json:"tool_result,omitempty"`
 
-	Summary *Summary
+	Summary *Summary `json:"summary,omitempty"`
 }
 
 // Text represents a text content.
 type Text struct {
-	Text string
+	Text string `json:"text,omitempty"`
 }
 
 // Summary represents a summary that stands in for a range of older
 // conversation messages.
 type Summary struct {
 	// Text is the natural-language summary of the replaced messages.
-	Text string
+	Text string `json:"text,omitempty"`
 }
 
 // Thinking represents a thought or internal reasoning process of the model.
 type Thinking struct {
 	// ID is a unique identifier for this thought.
-	ID string
+	ID string `json:"id,omitempty"`
 	// Text is the content of the thought, which may include reasoning, plans, or other internal dialogue.
-	Text string
+	Text string `json:"text,omitempty"`
 	// Signature is a cryptographic signature of the thought, used to verify its authenticity and integrity.
-	Signature string
+	Signature string `json:"signature,omitempty"`
 }
 
 // NewTextContent creates a new [ContentTypeText] content with the given text.

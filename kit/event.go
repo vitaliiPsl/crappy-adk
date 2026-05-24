@@ -12,18 +12,18 @@ const (
 
 // ModelEvent is emitted by a model stream while a model message is produced.
 type ModelEvent struct {
-	Type EventType
+	Type EventType `json:"type"`
 
-	Content *Content
+	Content *Content `json:"content,omitempty"`
 }
 
 // AgentEvent is emitted by an agent stream while an agent run progresses.
 type AgentEvent struct {
-	Type EventType
+	Type EventType `json:"type"`
 
-	Message    *Message
-	Content    *Content
-	ToolResult *ToolResult
+	Message    *Message    `json:"message,omitempty"`
+	Content    *Content    `json:"content,omitempty"`
+	ToolResult *ToolResult `json:"tool_result,omitempty"`
 }
 
 // NewModelContentStartedEvent creates a model event for the start of content.
