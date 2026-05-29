@@ -8,6 +8,7 @@ import (
 	"github.com/vitaliiPsl/crappy-adk/kit"
 	"github.com/vitaliiPsl/crappy-adk/kittest"
 	"github.com/vitaliiPsl/crappy-adk/x/memory"
+	"github.com/vitaliiPsl/crappy-adk/x/tool"
 )
 
 func TestSummarizationHook_RunsStrategyWhenTriggerFires(t *testing.T) {
@@ -68,10 +69,12 @@ func TestWithSummarization_ConfiguresAgentSummarization(t *testing.T) {
 
 	called := false
 	mem := memory.NewHistory()
+	toolSet := tool.NewSet()
 
 	a, err := agent.New(
 		model,
 		mem,
+		toolSet,
 		WithSummarization(
 			func(*kit.RunContext) bool { return true },
 			func(rc *kit.RunContext) error {

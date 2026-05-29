@@ -58,12 +58,12 @@ func main() {
 	a, err := agent.New(
 		model,
 		memory.NewHistory(),
+		tool.NewSet(rollDie),
 		agent.WithInstructions(
 			"You are a dramatic dungeon master. Roll a d20 to determine the adventurer's fate, "+
 				"then narrate the outcome in two vivid sentences. Never reveal the raw number.",
 		),
 		agent.WithThinking(kit.ThinkingLevelLow),
-		agent.WithTools(rollDie),
 	)
 	if err != nil {
 		log.Fatalf("failed to create agent: %v", err)

@@ -54,15 +54,7 @@ func WithThinking(v kit.ThinkingLevel) Option {
 // are ignored.
 func WithTools(tools ...kit.Tool) Option {
 	return func(a *Agent) error {
-		for _, t := range tools {
-			name := t.Definition().Name
-			if _, exists := a.toolIndex[name]; exists {
-				continue
-			}
-
-			a.tools = append(a.tools, t)
-			a.toolIndex[name] = t
-		}
+		a.tools.Add(tools...)
 
 		return nil
 	}

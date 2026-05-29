@@ -3,7 +3,7 @@
 <div align="center">
   <img src="docs/icon.png" alt="crappy-adk" width="260" /><br/><br/>
 
-  [![Go](https://img.shields.io/badge/Go-1.26.1-00ADD8?style=flat&logo=go&logoColor=white)](https://golang.org)
+  [![Go](https://img.shields.io/badge/Go-1.26.2-00ADD8?style=flat&logo=go&logoColor=white)](https://golang.org)
   [![GoDoc](https://pkg.go.dev/badge/github.com/vitaliiPsl/crappy-adk.svg)](https://pkg.go.dev/github.com/vitaliiPsl/crappy-adk)
   [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 </div>
@@ -36,7 +36,7 @@ Felt bored while on vacation, so decided to learn more about AI agents and build
 go get github.com/vitaliiPsl/crappy-adk
 ```
 
-Requires Go 1.26.1.
+Requires Go 1.26.2.
 
 API documentation: https://pkg.go.dev/github.com/vitaliiPsl/crappy-adk
 
@@ -66,9 +66,8 @@ if err != nil {
     log.Fatal(err)
 }
 
-a, err := agent.New(model, mem,
+a, err := agent.New(model, mem, tool.NewSet(weather),
     agent.WithInstructions("You are a helpful assistant. Use tools when useful."),
-    agent.WithTools(weather),
 )
 if err != nil {
     log.Fatal(err)
@@ -93,7 +92,7 @@ The agent stores conversation state in `kit.Memory`. Memory records full history
 ```go
 mem := memory.NewHistory()
 
-a, err := agent.New(model, mem,
+a, err := agent.New(model, mem, tool.NewSet(),
     agent.WithInstructions("You are a helpful assistant."),
 )
 
@@ -171,6 +170,16 @@ getTime, err := tool.New(
 Use `tool.MustNew(...)` for the panic-on-error variant in test code or top-level vars.
 
 Anything implementing `kit.Tool` works — `Generic` is the convenience wrapper, not a requirement.
+
+An agent's tools are passed to `agent.New` as a `kit.ToolSet`, built with `tool.NewSet(...)`.
+
+```go
+a, err := agent.New(model, mem, tool.NewSet(getTime),
+    agent.WithInstructions("You are a helpful assistant. Use tools when useful."),
+)
+```
+
+The `WithTools(...)` option adds more tools after the set is built — this is how extensions register tools of their own.
 
 ## Streaming
 
@@ -259,7 +268,7 @@ func(rc *kit.RunContext, result kit.ToolResult) (kit.ToolResult, error)
 `x/summarization` plugs into `OnTurnStart` to summarize long conversations. A `Trigger` decides when to summarize; a `Strategy` records the summary.
 
 ```go
-a, err := agent.New(model, memory.NewHistory(),
+a, err := agent.New(model, memory.NewHistory(), tool.NewSet(),
     agent.WithInstructions("You are a helpful assistant."),
     summarization.WithSummarization(
         summarization.WhenUsageTokensExceed(80_000),
@@ -277,7 +286,7 @@ a, err := agent.New(model, memory.NewHistory(),
 `x/guard` provides hook-based runtime policies for stopping runaway or unexpectedly expensive runs. Guards are regular `agent.Option` values, so compose them with the rest of your agent setup.
 
 ```go
-a, err := agent.New(model, memory.NewHistory(),
+a, err := agent.New(model, memory.NewHistory(), tool.NewSet(),
     agent.WithInstructions("You are a helpful assistant."),
     guard.WithMaxTurns(12),
     guard.WithMaxToolCalls(40),
@@ -311,7 +320,7 @@ m := kittest.NewModel(t,
     },
 )
 
-a, _ := agent.New(m, memory.NewHistory())
+a, _ := agent.New(m, memory.NewHistory(), tool.NewSet())
 resp, err := a.Run(ctx, kit.NewUserMessage(kit.NewTextContent("hi")))
 ```
 
@@ -323,7 +332,7 @@ Everything is an interface. If something doesn't fit, replace it.
 
 - **Memory** — `kit.Memory`. Use `memory.NewHistory()` for short-term history and summary-derived context, or implement your own.
 - **Model** — `kit.Model`. Point at any inference backend via a model adapter package or implement your own.
-- **Tool** — `kit.Tool`, or use `tool.New[I, O]` from `x/tool` for auto-schema from a Go struct.
+- **Tool** — `kit.Tool`, or use `tool.New[I, O]` from `x/tool` for auto-schema from a Go struct. Group tools into a `kit.ToolSet` with `tool.NewSet(...)`.
 - **Summarizer** — a `Trigger` plus a `Strategy` registered with `summarization.WithSummarization(...)`.
 - **Guard** — runtime policies from `x/guard`, such as turn, tool-call, token-budget, and repeated-tool-call limits.
 - **Hooks** — typed function values registered with `WithOn...` options.

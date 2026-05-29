@@ -26,6 +26,7 @@ import (
 	"github.com/vitaliiPsl/crappy-adk/providers/google"
 	"github.com/vitaliiPsl/crappy-adk/providers/openai"
 	"github.com/vitaliiPsl/crappy-adk/x/memory"
+	tool "github.com/vitaliiPsl/crappy-adk/x/tool"
 )
 
 func main() {
@@ -56,7 +57,7 @@ func main() {
 }
 
 func run(ctx context.Context, label string, model kit.Model, prompt string) {
-	a, err := agent.New(model, memory.NewHistory(), agent.WithInstructions("You are a helpful assistant."))
+	a, err := agent.New(model, memory.NewHistory(), tool.NewSet(), agent.WithInstructions("You are a helpful assistant."))
 	if err != nil {
 		log.Printf("[%s] failed to create agent: %v", label, err)
 

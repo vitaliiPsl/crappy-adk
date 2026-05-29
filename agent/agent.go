@@ -17,19 +17,17 @@ type Agent struct {
 
 	model  kit.Model
 	memory kit.Memory
-
-	tools     []kit.Tool
-	toolIndex map[string]kit.Tool
+	tools  kit.ToolSet
 
 	hooks hooks
 }
 
-// New creates a new Agent with the given model, memory, and options.
-func New(model kit.Model, memory kit.Memory, options ...Option) (*Agent, error) {
+// New creates a new Agent with the given model, memory, tools, and options.
+func New(model kit.Model, memory kit.Memory, tools kit.ToolSet, options ...Option) (*Agent, error) {
 	agent := &Agent{
-		memory:    memory,
-		model:     model,
-		toolIndex: make(map[string]kit.Tool),
+		memory: memory,
+		model:  model,
+		tools:  tools,
 	}
 
 	for _, opt := range options {
@@ -139,7 +137,7 @@ func (a *Agent) callModel(rc *kit.RunContext) (kit.ModelResponse, error) {
 	req := kit.ModelRequest{
 		Instructions: a.config.Instructions,
 		Messages:     messages,
-		Tools:        a.tools,
+		Tools:        a.tools.List(),
 		Config: kit.GenerationConfig{
 			Temperature:     a.config.Temperature,
 			MaxOutputTokens: a.config.MaxOutputTokens,
@@ -207,7 +205,7 @@ func (a *Agent) executeTool(rc *kit.RunContext, call kit.ToolCall) (result kit.T
 		}
 	}()
 
-	tool, ok := a.toolIndex[call.Name]
+	tool, ok := a.tools.Get(call.Name)
 	if !ok {
 		result = kit.NewToolResult(call, "", fmt.Errorf("tool %q not found", call.Name))
 
