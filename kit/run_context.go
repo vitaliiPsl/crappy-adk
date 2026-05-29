@@ -19,6 +19,15 @@ type RunContext struct {
 	Events Emitter[AgentEvent]
 }
 
+// NewRunContext creates a minimal run context for direct tool execution.
+func NewRunContext(ctx context.Context) *RunContext {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	return &RunContext{Context: ctx}
+}
+
 // Append records a message in the append-only log returned to the caller.
 func (rc *RunContext) Append(msg Message) {
 	rc.Messages = append(rc.Messages, msg)

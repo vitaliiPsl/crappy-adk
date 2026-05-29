@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"testing"
+
+	"github.com/vitaliiPsl/crappy-adk/kit"
 )
 
 func TestTool_Definition(t *testing.T) {
@@ -23,7 +25,7 @@ func TestTool_Execute(t *testing.T) {
 	wantErr := errors.New("boom")
 	tool := NewTool(t, "search", "search things", ToolResult{Result: "done", Error: wantErr})
 
-	output, err := tool.Execute(context.Background(), map[string]any{"query": "hello"})
+	output, err := tool.Execute(kit.NewRunContext(context.Background()), map[string]any{"query": "hello"})
 	if output != "done" {
 		t.Fatalf("output = %q, want %q", output, "done")
 	}
@@ -43,12 +45,12 @@ func TestTool_Execute_ConsumesResponsesInOrder(t *testing.T) {
 		ToolResult{Result: "second"},
 	)
 
-	first, err := tool.Execute(context.Background(), map[string]any{"value": 1})
+	first, err := tool.Execute(kit.NewRunContext(context.Background()), map[string]any{"value": 1})
 	if err != nil || first != "first" {
 		t.Fatalf("first Execute = %q, %v; want first, nil", first, err)
 	}
 
-	second, err := tool.Execute(context.Background(), map[string]any{"value": 2})
+	second, err := tool.Execute(kit.NewRunContext(context.Background()), map[string]any{"value": 2})
 	if err != nil || second != "second" {
 		t.Fatalf("second Execute = %q, %v; want second, nil", second, err)
 	}

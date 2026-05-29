@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"testing"
+
+	"github.com/vitaliiPsl/crappy-adk/kit"
 )
 
 type addArgs struct {
@@ -16,7 +18,7 @@ type addArgs struct {
 func newAddTool(t *testing.T) *Generic[addArgs, string] {
 	t.Helper()
 
-	tool, err := New("add", "adds two numbers", func(_ context.Context, args addArgs) (string, error) {
+	tool, err := New("add", "adds two numbers", func(_ *kit.RunContext, args addArgs) (string, error) {
 		return fmt.Sprintf("%d", args.A+args.B), nil
 	})
 	if err != nil {
@@ -70,7 +72,7 @@ func TestNew_Execute(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := tool.Execute(context.Background(), map[string]any{"a": tt.a, "b": tt.b})
+			result, err := tool.Execute(kit.NewRunContext(context.Background()), map[string]any{"a": tt.a, "b": tt.b})
 			if err != nil {
 				t.Fatalf("Execute: %v", err)
 			}
@@ -85,21 +87,21 @@ func TestNew_Execute(t *testing.T) {
 func TestNew_Execute_InvalidArgs(t *testing.T) {
 	tool := newAddTool(t)
 
-	_, err := tool.Execute(context.Background(), map[string]any{"a": "not-a-number", "b": 1})
+	_, err := tool.Execute(kit.NewRunContext(context.Background()), map[string]any{"a": "not-a-number", "b": 1})
 	if err == nil {
 		t.Fatal("expected error for invalid argument type")
 	}
 }
 
 func TestNew_Execute_FnError(t *testing.T) {
-	tool, err := New("fail", "always fails", func(_ context.Context, _ addArgs) (string, error) {
+	tool, err := New("fail", "always fails", func(_ *kit.RunContext, _ addArgs) (string, error) {
 		return "", errors.New("boom")
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
 
-	_, err = tool.Execute(context.Background(), map[string]any{"a": 1, "b": 2})
+	_, err = tool.Execute(kit.NewRunContext(context.Background()), map[string]any{"a": 1, "b": 2})
 	if err == nil {
 		t.Fatal("expected error from fn")
 	}
@@ -110,10 +112,10 @@ func TestNew_Execute_ContextPropagation(t *testing.T) {
 
 	const want = "sentinel"
 
-	tool, err := New("ctx-check", "checks context value", func(ctx context.Context, _ addArgs) (string, error) {
-		val, ok := ctx.Value(ctxKey{}).(string)
+	tool, err := New("ctx-check", "checks context value", func(rc *kit.RunContext, _ addArgs) (string, error) {
+		val, ok := rc.Value(ctxKey{}).(string)
 		if !ok || val != want {
-			return "", fmt.Errorf("unexpected context value: %v", ctx.Value(ctxKey{}))
+			return "", fmt.Errorf("unexpected context value: %v", rc.Value(ctxKey{}))
 		}
 
 		return val, nil
@@ -124,7 +126,7 @@ func TestNew_Execute_ContextPropagation(t *testing.T) {
 
 	ctx := context.WithValue(context.Background(), ctxKey{}, want)
 
-	result, err := tool.Execute(ctx, map[string]any{"a": 0, "b": 0})
+	result, err := tool.Execute(kit.NewRunContext(ctx), map[string]any{"a": 0, "b": 0})
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
@@ -140,7 +142,7 @@ type annotatedArgs struct {
 }
 
 func TestNew_Schema_Descriptions(t *testing.T) {
-	tool, err := New("search", "search things", func(_ context.Context, args annotatedArgs) (string, error) {
+	tool, err := New("search", "search things", func(_ *kit.RunContext, args annotatedArgs) (string, error) {
 		return args.Query, nil
 	})
 	if err != nil {
@@ -166,14 +168,14 @@ func TestNew_Schema_Descriptions(t *testing.T) {
 }
 
 func TestNew_OptionalField(t *testing.T) {
-	tool, err := New("search", "search things", func(_ context.Context, args annotatedArgs) (string, error) {
+	tool, err := New("search", "search things", func(_ *kit.RunContext, args annotatedArgs) (string, error) {
 		return fmt.Sprintf("%s:%d", args.Query, args.Limit), nil
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
 
-	result, err := tool.Execute(context.Background(), map[string]any{"query": "hello"})
+	result, err := tool.Execute(kit.NewRunContext(context.Background()), map[string]any{"query": "hello"})
 	if err != nil {
 		t.Fatalf("Execute without optional field: %v", err)
 	}
@@ -189,7 +191,7 @@ type addResult struct {
 }
 
 func TestNew_Execute_StructuredOutput(t *testing.T) {
-	tool, err := New("add", "adds two numbers", func(_ context.Context, args addArgs) (addResult, error) {
+	tool, err := New("add", "adds two numbers", func(_ *kit.RunContext, args addArgs) (addResult, error) {
 		sum := args.A + args.B
 
 		return addResult{Sum: sum, Label: fmt.Sprintf("%d + %d = %d", args.A, args.B, sum)}, nil
@@ -198,7 +200,7 @@ func TestNew_Execute_StructuredOutput(t *testing.T) {
 		t.Fatalf("New: %v", err)
 	}
 
-	raw, err := tool.Execute(context.Background(), map[string]any{"a": 3, "b": 4})
+	raw, err := tool.Execute(kit.NewRunContext(context.Background()), map[string]any{"a": 3, "b": 4})
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
 	}

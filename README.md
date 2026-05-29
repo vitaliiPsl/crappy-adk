@@ -58,7 +58,7 @@ type WeatherArgs struct {
 weather, err := tool.New(
     "get_weather",
     "Get the current weather for a city.",
-    func(_ context.Context, args WeatherArgs) (string, error) {
+    func(_ *kit.RunContext, args WeatherArgs) (string, error) {
         return fmt.Sprintf("%s: 21°C and clear", args.City), nil
     },
 )
@@ -158,7 +158,7 @@ type GetTimeInput struct {
 getTime, err := tool.New(
     "get_time",
     "Get the current time in a given IANA timezone.",
-    func(_ context.Context, args GetTimeInput) (string, error) {
+    func(_ *kit.RunContext, args GetTimeInput) (string, error) {
         loc, err := time.LoadLocation(args.Timezone)
         if err != nil {
             return "", fmt.Errorf("unknown timezone: %s", args.Timezone)

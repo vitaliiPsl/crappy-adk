@@ -1,7 +1,6 @@
 package tool
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 
@@ -20,7 +19,7 @@ type Generic[I, O any] struct {
 	description string
 	schema      map[string]any
 	resolved    *jsonschema.Resolved
-	fn          func(ctx context.Context, input I) (O, error)
+	fn          func(rc *kit.RunContext, input I) (O, error)
 }
 
 // New constructs a [Generic] tool whose input schema is derived from I.
@@ -36,13 +35,13 @@ type Generic[I, O any] struct {
 // O is the handler's return type. If O is string the value is used as-is;
 // any other type is JSON-marshalled before being returned to the agent.
 //
-//	t, err := tool.New("search", "Search the web", func(ctx context.Context, args SearchArgs) (string, error) {
+//	t, err := tool.New("search", "Search the web", func(rc *kit.RunContext, args SearchArgs) (string, error) {
 //		...
 //	})
 func New[I, O any](
 	name,
 	description string,
-	fn func(ctx context.Context, args I) (O, error),
+	fn func(rc *kit.RunContext, args I) (O, error),
 ) (*Generic[I, O], error) {
 	schema, err := jsonschema.For[I](nil)
 	if err != nil {
@@ -77,7 +76,7 @@ func New[I, O any](
 func MustNew[I, O any](
 	name,
 	description string,
-	fn func(ctx context.Context, args I) (O, error),
+	fn func(rc *kit.RunContext, args I) (O, error),
 ) *Generic[I, O] {
 	t, err := New(name, description, fn)
 	if err != nil {
@@ -99,7 +98,7 @@ func (g *Generic[I, O]) Definition() kit.ToolDefinition {
 // Execute validates args against the derived schema, unmarshals them into I,
 // calls the handler, and returns the result as a string. If O is string the
 // value is returned as-is; otherwise it is JSON-marshalled.
-func (g *Generic[I, O]) Execute(ctx context.Context, args map[string]any) (string, error) {
+func (g *Generic[I, O]) Execute(rc *kit.RunContext, args map[string]any) (string, error) {
 	if err := g.resolved.Validate(args); err != nil {
 		return "", fmt.Errorf("invalid arguments: %w", err)
 	}
@@ -114,7 +113,7 @@ func (g *Generic[I, O]) Execute(ctx context.Context, args map[string]any) (strin
 		return "", fmt.Errorf("failed to unmarshal input: %w", err)
 	}
 
-	result, err := g.fn(ctx, input)
+	result, err := g.fn(rc, input)
 	if err != nil {
 		return "", err
 	}

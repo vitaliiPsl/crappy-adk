@@ -1,7 +1,6 @@
 package google
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"testing"
@@ -20,7 +19,7 @@ func (m *mockTool) Definition() kit.ToolDefinition {
 	return kit.ToolDefinition{Name: m.name, Description: m.description, Schema: m.schema}
 }
 
-func (m *mockTool) Execute(_ context.Context, _ map[string]any) (string, error) {
+func (m *mockTool) Execute(_ *kit.RunContext, _ map[string]any) (string, error) {
 	return "", nil
 }
 

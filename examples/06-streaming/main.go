@@ -41,7 +41,7 @@ func main() {
 	rollDie := tool.MustNew(
 		"roll_die",
 		"Roll a die with the given number of sides and return the result.",
-		func(_ context.Context, args rollArgs) (string, error) {
+		func(_ *kit.RunContext, args rollArgs) (string, error) {
 			if args.Sides < 2 {
 				return "", fmt.Errorf("a die needs at least 2 sides")
 			}

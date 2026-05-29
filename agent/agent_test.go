@@ -275,7 +275,7 @@ func (p panicTool) Definition() kit.ToolDefinition {
 	return kit.ToolDefinition{Name: p.name}
 }
 
-func (p panicTool) Execute(context.Context, map[string]any) (string, error) {
+func (p panicTool) Execute(*kit.RunContext, map[string]any) (string, error) {
 	panic("bad things")
 }
 
@@ -288,11 +288,11 @@ func (c *cancelTool) Definition() kit.ToolDefinition {
 	return kit.ToolDefinition{Name: "cancel"}
 }
 
-func (c *cancelTool) Execute(ctx context.Context, _ map[string]any) (string, error) {
+func (c *cancelTool) Execute(rc *kit.RunContext, _ map[string]any) (string, error) {
 	c.called = true
 	c.cancel()
 
-	return "", ctx.Err()
+	return "", rc.Err()
 }
 
 func TestExecuteTool_Success(t *testing.T) {

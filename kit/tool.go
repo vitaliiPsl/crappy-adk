@@ -1,13 +1,11 @@
 package kit
 
-import "context"
-
 // Tool is an action the agent can take.
 type Tool interface {
 	// Definition returns the tool's metadata, used to describe it to the model.
 	Definition() ToolDefinition
 	// Execute runs the tool with the given arguments and returns its output.
-	Execute(ctx context.Context, input map[string]any) (string, error)
+	Execute(rc *RunContext, input map[string]any) (string, error)
 }
 
 // ToolDefinition describes a tool to the model.
