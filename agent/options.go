@@ -12,14 +12,31 @@ type Option func(*Agent) error
 // WithInstructions sets or appends to the agent's system prompt.
 func WithInstructions(sources ...string) Option {
 	return func(a *Agent) error {
-		if a.config.Instructions != "" {
-			sources = append([]string{a.config.Instructions}, sources...)
+		for _, source := range sources {
+			a.config.Instructions = appendInstructions(a.config.Instructions, source)
 		}
-
-		a.config.Instructions = strings.Join(sources, "\n\n")
 
 		return nil
 	}
+}
+
+// DynamicInstructions resolves instructions before each model request.
+type DynamicInstructions func(*kit.RunContext) (string, error)
+
+// WithDynamicInstructions appends resolved instructions before each model request.
+func WithDynamicInstructions(resolvers ...DynamicInstructions) Option {
+	return WithOnModelRequest(func(rc *kit.RunContext, req kit.ModelRequest) (kit.ModelRequest, error) {
+		for _, resolve := range resolvers {
+			instructions, err := resolve(rc)
+			if err != nil {
+				return kit.ModelRequest{}, err
+			}
+
+			req.Instructions = appendInstructions(req.Instructions, instructions)
+		}
+
+		return req, nil
+	})
 }
 
 // WithTemperature sets the sampling temperature.
@@ -125,4 +142,17 @@ func WithExtensions(extensions ...Option) Option {
 
 		return nil
 	}
+}
+
+func appendInstructions(existing, addition string) string {
+	addition = strings.TrimSpace(addition)
+	if addition == "" {
+		return existing
+	}
+
+	if strings.TrimSpace(existing) == "" {
+		return addition
+	}
+
+	return existing + "\n\n" + addition
 }
