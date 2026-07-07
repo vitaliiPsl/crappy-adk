@@ -2,6 +2,7 @@ package openai
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"strings"
 
@@ -167,11 +168,9 @@ func convertRequestMessage(msg kit.Message) responses.ResponseInputParam {
 func convertRequestUserMessage(msg kit.Message) responses.ResponseInputParam {
 	list := make(responses.ResponseInputMessageContentListParam, 0, len(msg.Content))
 	for _, c := range msg.Content {
-		switch {
-		case c.Type == kit.ContentTypeText && c.Text != nil:
-			list = append(list, responses.ResponseInputContentParamOfInputText(c.Text.Text))
-		case c.Type == kit.ContentTypeSummary && c.Summary != nil:
-			list = append(list, responses.ResponseInputContentParamOfInputText(c.Summary.Text))
+		item, ok := convertRequestContentListItem(c)
+		if ok {
+			list = append(list, item)
 		}
 	}
 
@@ -236,6 +235,18 @@ func convertRequestContentItem(content kit.Content, role responses.EasyInputMess
 		}
 
 		return responses.ResponseInputItemUnionParam{OfReasoning: &reasoning}, true
+	case kit.ContentTypeImage, kit.ContentTypeAudio, kit.ContentTypeResource:
+		item, ok := convertRequestContentListItem(content)
+		if !ok {
+			return responses.ResponseInputItemUnionParam{}, false
+		}
+
+		return responses.ResponseInputItemUnionParam{
+			OfMessage: &responses.EasyInputMessageParam{
+				Role:    role,
+				Content: responses.EasyInputMessageContentUnionParam{OfInputItemContentList: responses.ResponseInputMessageContentListParam{item}},
+			},
+		}, true
 	case kit.ContentTypeToolCall:
 		if content.ToolCall == nil {
 			return responses.ResponseInputItemUnionParam{}, false
@@ -289,6 +300,127 @@ func convertRequestContentItem(content kit.Content, role responses.EasyInputMess
 	}
 
 	return responses.ResponseInputItemUnionParam{}, false
+}
+
+func convertRequestContentListItem(content kit.Content) (responses.ResponseInputContentUnionParam, bool) {
+	switch content.Type {
+	case kit.ContentTypeText:
+		if content.Text == nil {
+			return responses.ResponseInputContentUnionParam{}, false
+		}
+
+		return responses.ResponseInputContentParamOfInputText(content.Text.Text), true
+	case kit.ContentTypeSummary:
+		if content.Summary == nil {
+			return responses.ResponseInputContentUnionParam{}, false
+		}
+
+		return responses.ResponseInputContentParamOfInputText(content.Summary.Text), true
+	case kit.ContentTypeImage:
+		image, ok := convertInputImage(content.Image)
+
+		return responses.ResponseInputContentUnionParam{OfInputImage: image}, ok
+	case kit.ContentTypeResource:
+		if content.Resource == nil {
+			return responses.ResponseInputContentUnionParam{}, false
+		}
+
+		if content.Resource.Text != "" {
+			return responses.ResponseInputContentParamOfInputText(content.Resource.Text), true
+		}
+
+		if strings.HasPrefix(content.Resource.MIMEType, "image/") {
+			image, ok := convertInputImage(&kit.Image{
+				MIMEType: content.Resource.MIMEType,
+				Data:     content.Resource.Blob,
+				URI:      content.Resource.URI,
+			})
+
+			return responses.ResponseInputContentUnionParam{OfInputImage: image}, ok
+		}
+
+		file, ok := convertInputFile(content.Resource)
+
+		return responses.ResponseInputContentUnionParam{OfInputFile: file}, ok
+	case kit.ContentTypeAudio:
+		text, ok := kit.ContentTextFallback(content)
+		if !ok {
+			return responses.ResponseInputContentUnionParam{}, false
+		}
+
+		return responses.ResponseInputContentParamOfInputText(text), true
+	default:
+		text, ok := kit.ContentTextFallback(content)
+		if !ok {
+			return responses.ResponseInputContentUnionParam{}, false
+		}
+
+		return responses.ResponseInputContentParamOfInputText(text), true
+	}
+}
+
+func convertInputImage(image *kit.Image) (*responses.ResponseInputImageParam, bool) {
+	if image == nil {
+		return nil, false
+	}
+
+	out := &responses.ResponseInputImageParam{Detail: responses.ResponseInputImageDetailAuto}
+	switch {
+	case len(image.Data) > 0:
+		out.ImageURL = openai.String(dataURL(image.MIMEType, image.Data))
+	case image.URI != "":
+		out.ImageURL = openai.String(image.URI)
+	default:
+		return nil, false
+	}
+
+	return out, true
+}
+
+func convertInputFile(resource *kit.Resource) (*responses.ResponseInputFileParam, bool) {
+	if resource == nil {
+		return nil, false
+	}
+
+	out := &responses.ResponseInputFileParam{
+		Detail:   responses.ResponseInputFileDetailLow,
+		Filename: openai.String(resourceFilename(resource)),
+	}
+
+	switch {
+	case len(resource.Blob) > 0:
+		out.FileData = openai.String(base64.StdEncoding.EncodeToString(resource.Blob))
+	case resource.URI != "":
+		out.FileURL = openai.String(resource.URI)
+	default:
+		return nil, false
+	}
+
+	return out, true
+}
+
+func dataURL(mimeType string, data []byte) string {
+	if mimeType == "" {
+		mimeType = "application/octet-stream"
+	}
+
+	return "data:" + mimeType + ";base64," + base64.StdEncoding.EncodeToString(data)
+}
+
+func resourceFilename(resource *kit.Resource) string {
+	switch {
+	case resource.Name != "":
+		return resource.Name
+	case resource.Title != "":
+		return resource.Title
+	case resource.URI != "":
+		parts := strings.Split(strings.TrimRight(resource.URI, "/"), "/")
+		if len(parts) > 0 && parts[len(parts)-1] != "" {
+			return parts[len(parts)-1]
+		}
+	}
+
+	return "resource"
 }
 
 func convertRequestReasoningEffort(level kit.ThinkingLevel) shared.ReasoningEffort {

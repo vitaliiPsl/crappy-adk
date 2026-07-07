@@ -111,6 +111,64 @@ func TestConvertRequestTools(t *testing.T) {
 	})
 }
 
+func TestConvertRequestContentListItem(t *testing.T) {
+	t.Run("image bytes", func(t *testing.T) {
+		item, ok := convertRequestContentListItem(kit.NewImageContent("image/png", []byte{1, 2, 3}))
+
+		if !ok {
+			t.Fatal("ok = false, want true")
+		}
+
+		if item.OfInputImage == nil {
+			t.Fatal("OfInputImage is nil")
+		}
+
+		if item.OfInputImage.ImageURL.Value != "data:image/png;base64,AQID" {
+			t.Errorf("ImageURL = %q, want data URL", item.OfInputImage.ImageURL.Value)
+		}
+	})
+
+	t.Run("resource blob", func(t *testing.T) {
+		item, ok := convertRequestContentListItem(kit.NewResourceContent(kit.Resource{
+			Name:     "report.pdf",
+			MIMEType: "application/pdf",
+			Blob:     []byte{1, 2, 3},
+		}))
+
+		if !ok {
+			t.Fatal("ok = false, want true")
+		}
+
+		if item.OfInputFile == nil {
+			t.Fatal("OfInputFile is nil")
+		}
+
+		if item.OfInputFile.FileData.Value != "AQID" {
+			t.Errorf("FileData = %q, want base64 file data", item.OfInputFile.FileData.Value)
+		}
+
+		if item.OfInputFile.Filename.Value != "report.pdf" {
+			t.Errorf("Filename = %q, want report.pdf", item.OfInputFile.Filename.Value)
+		}
+	})
+
+	t.Run("audio falls back to text", func(t *testing.T) {
+		item, ok := convertRequestContentListItem(kit.NewAudioContent("audio/mpeg", []byte{1, 2, 3}))
+
+		if !ok {
+			t.Fatal("ok = false, want true")
+		}
+
+		if item.OfInputText == nil {
+			t.Fatal("OfInputText is nil")
+		}
+
+		if item.OfInputText.Text != "[audio: audio/mpeg, 3 bytes]" {
+			t.Errorf("Text = %q, want audio fallback", item.OfInputText.Text)
+		}
+	})
+}
+
 func TestConvertResponseContent(t *testing.T) {
 	t.Run("message single text part", func(t *testing.T) {
 		item := mustParseOutputItem(t, `{

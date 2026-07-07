@@ -1,5 +1,10 @@
 package kit
 
+import (
+	"fmt"
+	"strings"
+)
+
 // Role represents the role of a message sender, either user, tool, or model.
 type Role string
 
@@ -93,6 +98,9 @@ type ContentType string
 const (
 	ContentTypeText       ContentType = "text"
 	ContentTypeThinking   ContentType = "thinking"
+	ContentTypeImage      ContentType = "image"
+	ContentTypeAudio      ContentType = "audio"
+	ContentTypeResource   ContentType = "resource"
 	ContentTypeToolCall   ContentType = "tool_call"
 	ContentTypeToolResult ContentType = "tool_result"
 	ContentTypeSummary    ContentType = "summary"
@@ -106,6 +114,10 @@ type Content struct {
 	Text     *Text     `json:"text,omitempty"`
 	Thinking *Thinking `json:"thinking,omitempty"`
 
+	Image    *Image    `json:"image,omitempty"`
+	Audio    *Audio    `json:"audio,omitempty"`
+	Resource *Resource `json:"resource,omitempty"`
+
 	ToolCall   *ToolCall   `json:"tool_call,omitempty"`
 	ToolResult *ToolResult `json:"tool_result,omitempty"`
 
@@ -115,6 +127,31 @@ type Content struct {
 // Text represents a text content.
 type Text struct {
 	Text string `json:"text,omitempty"`
+}
+
+// Image represents image content. Data is raw bytes and is JSON-encoded as base64.
+type Image struct {
+	MIMEType string `json:"mime_type,omitempty"`
+	Data     []byte `json:"data,omitempty"`
+	URI      string `json:"uri,omitempty"`
+}
+
+// Audio represents audio content. Data is raw bytes and is JSON-encoded as base64.
+type Audio struct {
+	MIMEType string `json:"mime_type,omitempty"`
+	Data     []byte `json:"data,omitempty"`
+	URI      string `json:"uri,omitempty"`
+}
+
+// Resource represents a referenced or embedded resource.
+type Resource struct {
+	URI         string `json:"uri,omitempty"`
+	Name        string `json:"name,omitempty"`
+	Title       string `json:"title,omitempty"`
+	Description string `json:"description,omitempty"`
+	MIMEType    string `json:"mime_type,omitempty"`
+	Text        string `json:"text,omitempty"`
+	Blob        []byte `json:"blob,omitempty"`
 }
 
 // Summary represents a summary that stands in for a range of older
@@ -139,6 +176,48 @@ func NewTextContent(text string) Content {
 	return Content{
 		Type: ContentTypeText,
 		Text: &Text{Text: text},
+	}
+}
+
+// NewImageContent creates a new [ContentTypeImage] content with inline bytes.
+func NewImageContent(mimeType string, data []byte) Content {
+	return Content{
+		Type:  ContentTypeImage,
+		Image: &Image{MIMEType: mimeType, Data: append([]byte(nil), data...)},
+	}
+}
+
+// NewImageURLContent creates a new [ContentTypeImage] content with a URI.
+func NewImageURLContent(mimeType, uri string) Content {
+	return Content{
+		Type:  ContentTypeImage,
+		Image: &Image{MIMEType: mimeType, URI: uri},
+	}
+}
+
+// NewAudioContent creates a new [ContentTypeAudio] content with inline bytes.
+func NewAudioContent(mimeType string, data []byte) Content {
+	return Content{
+		Type:  ContentTypeAudio,
+		Audio: &Audio{MIMEType: mimeType, Data: append([]byte(nil), data...)},
+	}
+}
+
+// NewAudioURLContent creates a new [ContentTypeAudio] content with a URI.
+func NewAudioURLContent(mimeType, uri string) Content {
+	return Content{
+		Type:  ContentTypeAudio,
+		Audio: &Audio{MIMEType: mimeType, URI: uri},
+	}
+}
+
+// NewResourceContent creates a new [ContentTypeResource] content.
+func NewResourceContent(resource Resource) Content {
+	resource.Blob = append([]byte(nil), resource.Blob...)
+
+	return Content{
+		Type:     ContentTypeResource,
+		Resource: &resource,
 	}
 }
 
@@ -171,5 +250,89 @@ func NewSummaryContent(text string) Content {
 	return Content{
 		Type:    ContentTypeSummary,
 		Summary: &Summary{Text: text},
+	}
+}
+
+// ContentsTextFallback joins text representations of content blocks.
+func ContentsTextFallback(content []Content) string {
+	parts := make([]string, 0, len(content))
+	for _, item := range content {
+		text, ok := ContentTextFallback(item)
+		if !ok || text == "" {
+			continue
+		}
+
+		parts = append(parts, text)
+	}
+
+	return strings.Join(parts, "\n")
+}
+
+// ContentTextFallback returns a text representation of a content block when a
+// provider or subsystem cannot handle its richer form directly.
+func ContentTextFallback(content Content) (string, bool) {
+	switch content.Type {
+	case ContentTypeText:
+		if content.Text == nil {
+			return "", false
+		}
+
+		return content.Text.Text, true
+	case ContentTypeSummary:
+		if content.Summary == nil {
+			return "", false
+		}
+
+		return content.Summary.Text, true
+	case ContentTypeImage:
+		if content.Image == nil {
+			return "", false
+		}
+
+		return mediaFallback("image", content.Image.MIMEType, content.Image.URI, len(content.Image.Data)), true
+	case ContentTypeAudio:
+		if content.Audio == nil {
+			return "", false
+		}
+
+		return mediaFallback("audio", content.Audio.MIMEType, content.Audio.URI, len(content.Audio.Data)), true
+	case ContentTypeResource:
+		if content.Resource == nil {
+			return "", false
+		}
+
+		return resourceFallback(content.Resource), true
+	default:
+		return "", false
+	}
+}
+
+func mediaFallback(kind, mimeType, uri string, size int) string {
+	switch {
+	case uri != "" && mimeType != "":
+		return fmt.Sprintf("[%s: %s, %s]", kind, uri, mimeType)
+	case uri != "":
+		return fmt.Sprintf("[%s: %s]", kind, uri)
+	case mimeType != "":
+		return fmt.Sprintf("[%s: %s, %d bytes]", kind, mimeType, size)
+	default:
+		return fmt.Sprintf("[%s: %d bytes]", kind, size)
+	}
+}
+
+func resourceFallback(resource *Resource) string {
+	if resource.Text != "" {
+		return resource.Text
+	}
+
+	switch {
+	case resource.URI != "" && resource.MIMEType != "":
+		return fmt.Sprintf("[resource: %s, %s, %d bytes]", resource.URI, resource.MIMEType, len(resource.Blob))
+	case resource.URI != "":
+		return fmt.Sprintf("[resource: %s, %d bytes]", resource.URI, len(resource.Blob))
+	case resource.MIMEType != "":
+		return fmt.Sprintf("[resource: %s, %d bytes]", resource.MIMEType, len(resource.Blob))
+	default:
+		return fmt.Sprintf("[resource: %d bytes]", len(resource.Blob))
 	}
 }

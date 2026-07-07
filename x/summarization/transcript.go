@@ -42,6 +42,8 @@ func writeContent(b *strings.Builder, c kit.Content) {
 		writeText(b, c.Text)
 	case kit.ContentTypeSummary:
 		writeSummary(b, c.Summary)
+	case kit.ContentTypeImage, kit.ContentTypeAudio, kit.ContentTypeResource:
+		writeContentFallback(b, c)
 	case kit.ContentTypeToolCall:
 		writeToolCall(b, c.ToolCall)
 	case kit.ContentTypeToolResult:
@@ -65,6 +67,16 @@ func writeSummary(b *strings.Builder, s *kit.Summary) {
 
 	b.WriteString("[Previous summary]\n")
 	b.WriteString(s.Text)
+	b.WriteByte('\n')
+}
+
+func writeContentFallback(b *strings.Builder, c kit.Content) {
+	text, ok := kit.ContentTextFallback(c)
+	if !ok {
+		return
+	}
+
+	b.WriteString(text)
 	b.WriteByte('\n')
 }
 

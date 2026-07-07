@@ -2,7 +2,9 @@ package anthropic
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
+	"strings"
 
 	anthropicsdk "github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
@@ -231,6 +233,12 @@ func convertRequestContentItem(content kit.Content) (anthropicsdk.ContentBlockPa
 		t := content.Thinking
 
 		return anthropicsdk.NewThinkingBlock(t.Signature, t.Text), true
+	case kit.ContentTypeImage:
+		return convertImageContent(content.Image)
+	case kit.ContentTypeAudio:
+		return fallbackContent(content)
+	case kit.ContentTypeResource:
+		return convertResourceContent(content.Resource)
 	case kit.ContentTypeToolCall:
 		if content.ToolCall == nil {
 			return anthropicsdk.ContentBlockParamUnion{}, false
@@ -261,6 +269,61 @@ func convertRequestContentItem(content kit.Content) (anthropicsdk.ContentBlockPa
 	}
 
 	return anthropicsdk.ContentBlockParamUnion{}, false
+}
+
+func convertImageContent(image *kit.Image) (anthropicsdk.ContentBlockParamUnion, bool) {
+	if image == nil {
+		return anthropicsdk.ContentBlockParamUnion{}, false
+	}
+
+	if len(image.Data) > 0 {
+		return anthropicsdk.NewImageBlockBase64(image.MIMEType, base64.StdEncoding.EncodeToString(image.Data)), true
+	}
+
+	if image.URI != "" {
+		return anthropicsdk.NewImageBlock(anthropicsdk.URLImageSourceParam{URL: image.URI}), true
+	}
+
+	return fallbackContent(kit.Content{Type: kit.ContentTypeImage, Image: image})
+}
+
+func convertResourceContent(resource *kit.Resource) (anthropicsdk.ContentBlockParamUnion, bool) {
+	if resource == nil {
+		return anthropicsdk.ContentBlockParamUnion{}, false
+	}
+
+	if resource.Text != "" {
+		return anthropicsdk.NewDocumentBlock(anthropicsdk.PlainTextSourceParam{Data: resource.Text}), true
+	}
+
+	if strings.EqualFold(resource.MIMEType, "application/pdf") && len(resource.Blob) > 0 {
+		return anthropicsdk.NewDocumentBlock(anthropicsdk.Base64PDFSourceParam{
+			Data: base64.StdEncoding.EncodeToString(resource.Blob),
+		}), true
+	}
+
+	if strings.EqualFold(resource.MIMEType, "application/pdf") && resource.URI != "" {
+		return anthropicsdk.NewDocumentBlock(anthropicsdk.URLPDFSourceParam{URL: resource.URI}), true
+	}
+
+	if strings.HasPrefix(resource.MIMEType, "image/") {
+		return convertImageContent(&kit.Image{
+			MIMEType: resource.MIMEType,
+			Data:     resource.Blob,
+			URI:      resource.URI,
+		})
+	}
+
+	return fallbackContent(kit.Content{Type: kit.ContentTypeResource, Resource: resource})
+}
+
+func fallbackContent(content kit.Content) (anthropicsdk.ContentBlockParamUnion, bool) {
+	text, ok := kit.ContentTextFallback(content)
+	if !ok {
+		return anthropicsdk.ContentBlockParamUnion{}, false
+	}
+
+	return anthropicsdk.NewTextBlock(text), true
 }
 
 func convertResponse(resp *anthropicsdk.Message) kit.ModelResponse {

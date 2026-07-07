@@ -3,6 +3,7 @@ package google
 import (
 	"context"
 	"encoding/base64"
+	"strings"
 
 	"google.golang.org/genai"
 
@@ -195,6 +196,12 @@ func convertRequestContentItem(content kit.Content) (*genai.Part, bool) {
 			Text:             t.Text,
 			ThoughtSignature: decodeSignature(t.Signature),
 		}, true
+	case kit.ContentTypeImage:
+		return convertImageContent(content.Image)
+	case kit.ContentTypeAudio:
+		return convertAudioContent(content.Audio)
+	case kit.ContentTypeResource:
+		return convertResourceContent(content.Resource)
 	case kit.ContentTypeToolCall:
 		if content.ToolCall == nil {
 			return nil, false
@@ -234,6 +241,67 @@ func convertRequestContentItem(content kit.Content) (*genai.Part, bool) {
 	return nil, false
 }
 
+func convertImageContent(image *kit.Image) (*genai.Part, bool) {
+	if image == nil {
+		return nil, false
+	}
+
+	if len(image.Data) > 0 {
+		return genai.NewPartFromBytes(image.Data, image.MIMEType), true
+	}
+
+	if image.URI != "" {
+		return genai.NewPartFromURI(image.URI, image.MIMEType), true
+	}
+
+	return fallbackPart(kit.Content{Type: kit.ContentTypeImage, Image: image})
+}
+
+func convertAudioContent(audio *kit.Audio) (*genai.Part, bool) {
+	if audio == nil {
+		return nil, false
+	}
+
+	if len(audio.Data) > 0 {
+		return genai.NewPartFromBytes(audio.Data, audio.MIMEType), true
+	}
+
+	if audio.URI != "" {
+		return genai.NewPartFromURI(audio.URI, audio.MIMEType), true
+	}
+
+	return fallbackPart(kit.Content{Type: kit.ContentTypeAudio, Audio: audio})
+}
+
+func convertResourceContent(resource *kit.Resource) (*genai.Part, bool) {
+	if resource == nil {
+		return nil, false
+	}
+
+	if resource.Text != "" {
+		return genai.NewPartFromText(resource.Text), true
+	}
+
+	if len(resource.Blob) > 0 {
+		return genai.NewPartFromBytes(resource.Blob, resource.MIMEType), true
+	}
+
+	if resource.URI != "" {
+		return genai.NewPartFromURI(resource.URI, resource.MIMEType), true
+	}
+
+	return fallbackPart(kit.Content{Type: kit.ContentTypeResource, Resource: resource})
+}
+
+func fallbackPart(content kit.Content) (*genai.Part, bool) {
+	text, ok := kit.ContentTextFallback(content)
+	if !ok {
+		return nil, false
+	}
+
+	return genai.NewPartFromText(text), true
+}
+
 func convertResponse(resp *genai.GenerateContentResponse) kit.ModelResponse {
 	if len(resp.Candidates) == 0 {
 		return kit.ModelResponse{}
@@ -264,6 +332,17 @@ func convertResponseContent(part *genai.Part) []kit.Content {
 		return []kit.Content{kit.NewTextContent(part.Text)}
 	}
 
+	if part.InlineData != nil {
+		return []kit.Content{convertResponseBlob(part.InlineData)}
+	}
+
+	if part.FileData != nil {
+		return []kit.Content{kit.NewResourceContent(kit.Resource{
+			URI:      part.FileData.FileURI,
+			MIMEType: part.FileData.MIMEType,
+		})}
+	}
+
 	if part.FunctionCall != nil {
 		if tc, ok := convertResponseToolCall(part); ok {
 			return []kit.Content{kit.NewToolCallContent(tc)}
@@ -271,6 +350,24 @@ func convertResponseContent(part *genai.Part) []kit.Content {
 	}
 
 	return nil
+}
+
+func convertResponseBlob(blob *genai.Blob) kit.Content {
+	if blob == nil {
+		return kit.Content{}
+	}
+
+	switch {
+	case strings.HasPrefix(blob.MIMEType, "image/"):
+		return kit.NewImageContent(blob.MIMEType, blob.Data)
+	case strings.HasPrefix(blob.MIMEType, "audio/"):
+		return kit.NewAudioContent(blob.MIMEType, blob.Data)
+	default:
+		return kit.NewResourceContent(kit.Resource{
+			MIMEType: blob.MIMEType,
+			Blob:     blob.Data,
+		})
+	}
 }
 
 func convertResponseToolCall(part *genai.Part) (kit.ToolCall, bool) {

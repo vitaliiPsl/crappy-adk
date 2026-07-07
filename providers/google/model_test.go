@@ -1,6 +1,7 @@
 package google
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"testing"
@@ -140,6 +141,64 @@ func TestConvertRequestContentItem(t *testing.T) {
 
 		if _, ok := convertRequestContentItem(content); ok {
 			t.Error("expected false, got true")
+		}
+	})
+
+	t.Run("image bytes", func(t *testing.T) {
+		content := kit.NewImageContent("image/png", []byte{1, 2, 3})
+
+		part, ok := convertRequestContentItem(content)
+
+		if !ok {
+			t.Fatal("ok = false, want true")
+		}
+
+		if part.InlineData == nil {
+			t.Fatal("InlineData is nil")
+		}
+
+		if part.InlineData.MIMEType != "image/png" {
+			t.Errorf("MIMEType = %q, want image/png", part.InlineData.MIMEType)
+		}
+
+		if !bytes.Equal(part.InlineData.Data, []byte{1, 2, 3}) {
+			t.Errorf("Data = %v, want [1 2 3]", part.InlineData.Data)
+		}
+	})
+
+	t.Run("audio uri", func(t *testing.T) {
+		content := kit.NewAudioURLContent("audio/mpeg", "gs://bucket/audio.mp3")
+
+		part, ok := convertRequestContentItem(content)
+
+		if !ok {
+			t.Fatal("ok = false, want true")
+		}
+
+		if part.FileData == nil {
+			t.Fatal("FileData is nil")
+		}
+
+		if part.FileData.FileURI != "gs://bucket/audio.mp3" {
+			t.Errorf("FileURI = %q, want audio URI", part.FileData.FileURI)
+		}
+
+		if part.FileData.MIMEType != "audio/mpeg" {
+			t.Errorf("MIMEType = %q, want audio/mpeg", part.FileData.MIMEType)
+		}
+	})
+
+	t.Run("resource text", func(t *testing.T) {
+		content := kit.NewResourceContent(kit.Resource{Text: "# README"})
+
+		part, ok := convertRequestContentItem(content)
+
+		if !ok {
+			t.Fatal("ok = false, want true")
+		}
+
+		if part.Text != "# README" {
+			t.Errorf("Text = %q, want README text", part.Text)
 		}
 	})
 
@@ -363,6 +422,28 @@ func TestConvertResponseContent(t *testing.T) {
 
 		if tc.Signature != "c2lnX3Rvb2w=" {
 			t.Errorf("Signature = %q, want %q", tc.Signature, "c2lnX3Rvb2w=")
+		}
+	})
+
+	t.Run("inline image part", func(t *testing.T) {
+		part := genai.NewPartFromBytes([]byte{1, 2, 3}, "image/png")
+
+		got := convertResponseContent(part)
+
+		if len(got) != 1 {
+			t.Fatalf("len = %d, want 1", len(got))
+		}
+
+		if got[0].Type != kit.ContentTypeImage {
+			t.Fatalf("Type = %q, want image", got[0].Type)
+		}
+
+		if got[0].Image.MIMEType != "image/png" {
+			t.Errorf("MIMEType = %q, want image/png", got[0].Image.MIMEType)
+		}
+
+		if !bytes.Equal(got[0].Image.Data, []byte{1, 2, 3}) {
+			t.Errorf("Data = %v, want [1 2 3]", got[0].Image.Data)
 		}
 	})
 

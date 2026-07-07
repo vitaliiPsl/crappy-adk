@@ -1,6 +1,7 @@
 package anthropic
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -163,6 +164,56 @@ func TestConvertRequestContentItem(t *testing.T) {
 
 		if _, ok := convertRequestContentItem(content); ok {
 			t.Error("expected false, got true")
+		}
+	})
+
+	t.Run("image bytes", func(t *testing.T) {
+		content := kit.NewImageContent("image/png", []byte{1, 2, 3})
+
+		item, ok := convertRequestContentItem(content)
+
+		if !ok {
+			t.Fatal("ok = false, want true")
+		}
+
+		if item.OfImage == nil {
+			t.Fatal("OfImage is nil")
+		}
+
+		source := item.OfImage.Source.OfBase64
+		if source == nil {
+			t.Fatal("OfBase64 is nil")
+		}
+
+		if source.MediaType != "image/png" {
+			t.Errorf("MediaType = %q, want image/png", source.MediaType)
+		}
+
+		if source.Data != base64.StdEncoding.EncodeToString([]byte{1, 2, 3}) {
+			t.Errorf("Data = %q, want base64 image bytes", source.Data)
+		}
+	})
+
+	t.Run("resource text document", func(t *testing.T) {
+		content := kit.NewResourceContent(kit.Resource{Text: "# README"})
+
+		item, ok := convertRequestContentItem(content)
+
+		if !ok {
+			t.Fatal("ok = false, want true")
+		}
+
+		if item.OfDocument == nil {
+			t.Fatal("OfDocument is nil")
+		}
+
+		source := item.OfDocument.Source.OfText
+		if source == nil {
+			t.Fatal("OfText is nil")
+		}
+
+		if source.Data != "# README" {
+			t.Errorf("Data = %q, want README text", source.Data)
 		}
 	})
 
