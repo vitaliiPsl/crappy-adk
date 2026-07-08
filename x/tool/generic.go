@@ -95,21 +95,17 @@ func (g *Generic[I, O]) Definition() kit.ToolDefinition {
 	}
 }
 
-// Execute validates args against the derived schema, unmarshals them into I,
+// Execute validates the call arguments against the derived schema, unmarshals them into I,
 // calls the handler, and adapts the result into a [kit.ToolOutput].
-func (g *Generic[I, O]) Execute(rc *kit.RunContext, args map[string]any) (kit.ToolOutput, error) {
+func (g *Generic[I, O]) Execute(rc *kit.RunContext, call kit.ToolCall) (kit.ToolOutput, error) {
+	args := call.Arguments
 	if err := g.resolved.Validate(args); err != nil {
 		return kit.ToolOutput{}, fmt.Errorf("invalid arguments: %w", err)
 	}
 
-	argsJSON, err := json.Marshal(args)
+	input, err := inputValue[I](args)
 	if err != nil {
-		return kit.ToolOutput{}, fmt.Errorf("failed to marshal arguments: %w", err)
-	}
-
-	var input I
-	if err := json.Unmarshal(argsJSON, &input); err != nil {
-		return kit.ToolOutput{}, fmt.Errorf("failed to unmarshal input: %w", err)
+		return kit.ToolOutput{}, err
 	}
 
 	result, err := g.fn(rc, input)
@@ -143,6 +139,20 @@ func toolOutput(value any) (kit.ToolOutput, error) {
 
 		return kit.NewStructuredToolOutput(structured), nil
 	}
+}
+
+func inputValue[I any](args map[string]any) (I, error) {
+	data, err := json.Marshal(args)
+	if err != nil {
+		return *new(I), fmt.Errorf("failed to marshal arguments: %w", err)
+	}
+
+	var input I
+	if err := json.Unmarshal(data, &input); err != nil {
+		return *new(I), fmt.Errorf("failed to unmarshal input: %w", err)
+	}
+
+	return input, nil
 }
 
 func structuredToolValue(value any) (any, error) {

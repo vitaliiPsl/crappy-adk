@@ -221,7 +221,7 @@ func (a *Agent) executeTool(rc *kit.RunContext, call kit.ToolCall) (result kit.T
 
 	call = hookedCall
 
-	output, execErr := tool.Execute(rc, call.Arguments)
+	output, execErr := tool.Execute(rc, call)
 	if errors.Is(execErr, context.Canceled) || errors.Is(execErr, context.DeadlineExceeded) {
 		return kit.ToolResult{}, execErr
 	}

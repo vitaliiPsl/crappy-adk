@@ -23,7 +23,7 @@ func (m *mockTool) Definition() kit.ToolDefinition {
 	return kit.ToolDefinition{Name: m.name, Description: m.description, Schema: m.schema}
 }
 
-func (m *mockTool) Execute(_ *kit.RunContext, _ map[string]any) (kit.ToolOutput, error) {
+func (m *mockTool) Execute(_ *kit.RunContext, _ kit.ToolCall) (kit.ToolOutput, error) {
 	return kit.ToolOutput{}, nil
 }
 

@@ -92,6 +92,7 @@ func writeToolResult(b *strings.Builder, r *kit.ToolResult) {
 	}
 
 	fmt.Fprintf(b, "[Tool result from %s]\n", r.Call.Name)
+
 	for _, c := range r.Output.Content {
 		writeContent(b, c)
 	}

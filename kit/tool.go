@@ -4,8 +4,8 @@ package kit
 type Tool interface {
 	// Definition returns the tool's metadata, used to describe it to the model.
 	Definition() ToolDefinition
-	// Execute runs the tool with the given arguments and returns its output.
-	Execute(rc *RunContext, input map[string]any) (ToolOutput, error)
+	// Execute runs the given tool call and returns its output.
+	Execute(rc *RunContext, call ToolCall) (ToolOutput, error)
 }
 
 // ToolDefinition describes a tool to the model.

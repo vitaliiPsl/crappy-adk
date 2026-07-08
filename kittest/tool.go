@@ -45,8 +45,8 @@ func (tool *Tool) Definition() kit.ToolDefinition {
 }
 
 // Execute records the call and returns the next queued response.
-func (tool *Tool) Execute(_ *kit.RunContext, args map[string]any) (kit.ToolOutput, error) {
-	tool.calls = append(tool.calls, args)
+func (tool *Tool) Execute(_ *kit.RunContext, call kit.ToolCall) (kit.ToolOutput, error) {
+	tool.calls = append(tool.calls, call.Arguments)
 
 	resp := tool.response()
 

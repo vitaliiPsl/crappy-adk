@@ -107,6 +107,7 @@ func convertRequestContentItem(content kit.Content) (*genai.Part, bool) {
 		if output := kit.ContentsText(tr.Output.Content); output != "" {
 			response["output"] = output
 		}
+
 		if tr.Output.Structured != nil {
 			response["structured"] = tr.Output.Structured
 		}
@@ -114,6 +115,7 @@ func convertRequestContentItem(content kit.Content) (*genai.Part, bool) {
 		if tr.Error != "" {
 			response["error"] = tr.Error
 		}
+
 		if len(response) == 0 {
 			response["output"] = ""
 		}

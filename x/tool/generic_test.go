@@ -28,6 +28,10 @@ func newAddTool(t *testing.T) *Generic[addArgs, string] {
 	return tool
 }
 
+func testCall(args map[string]any) kit.ToolCall {
+	return kit.NewToolCall("call-1", "test", args)
+}
+
 func TestNew_Definition(t *testing.T) {
 	tool := newAddTool(t)
 
@@ -72,7 +76,7 @@ func TestNew_Execute(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := tool.Execute(kit.NewRunContext(context.Background()), map[string]any{"a": tt.a, "b": tt.b})
+			result, err := tool.Execute(kit.NewRunContext(context.Background()), testCall(map[string]any{"a": tt.a, "b": tt.b}))
 			if err != nil {
 				t.Fatalf("Execute: %v", err)
 			}
@@ -87,7 +91,7 @@ func TestNew_Execute(t *testing.T) {
 func TestNew_Execute_InvalidArgs(t *testing.T) {
 	tool := newAddTool(t)
 
-	_, err := tool.Execute(kit.NewRunContext(context.Background()), map[string]any{"a": "not-a-number", "b": 1})
+	_, err := tool.Execute(kit.NewRunContext(context.Background()), testCall(map[string]any{"a": "not-a-number", "b": 1}))
 	if err == nil {
 		t.Fatal("expected error for invalid argument type")
 	}
@@ -101,7 +105,7 @@ func TestNew_Execute_FnError(t *testing.T) {
 		t.Fatalf("New: %v", err)
 	}
 
-	_, err = tool.Execute(kit.NewRunContext(context.Background()), map[string]any{"a": 1, "b": 2})
+	_, err = tool.Execute(kit.NewRunContext(context.Background()), testCall(map[string]any{"a": 1, "b": 2}))
 	if err == nil {
 		t.Fatal("expected error from fn")
 	}
@@ -126,7 +130,7 @@ func TestNew_Execute_ContextPropagation(t *testing.T) {
 
 	ctx := context.WithValue(context.Background(), ctxKey{}, want)
 
-	result, err := tool.Execute(kit.NewRunContext(ctx), map[string]any{"a": 0, "b": 0})
+	result, err := tool.Execute(kit.NewRunContext(ctx), testCall(map[string]any{"a": 0, "b": 0}))
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
@@ -175,7 +179,7 @@ func TestNew_OptionalField(t *testing.T) {
 		t.Fatalf("New: %v", err)
 	}
 
-	result, err := tool.Execute(kit.NewRunContext(context.Background()), map[string]any{"query": "hello"})
+	result, err := tool.Execute(kit.NewRunContext(context.Background()), testCall(map[string]any{"query": "hello"}))
 	if err != nil {
 		t.Fatalf("Execute without optional field: %v", err)
 	}
@@ -200,12 +204,13 @@ func TestNew_Execute_StructuredOutput(t *testing.T) {
 		t.Fatalf("New: %v", err)
 	}
 
-	output, err := tool.Execute(kit.NewRunContext(context.Background()), map[string]any{"a": 3, "b": 4})
+	output, err := tool.Execute(kit.NewRunContext(context.Background()), testCall(map[string]any{"a": 3, "b": 4}))
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
 
 	var got addResult
+
 	raw, err := json.Marshal(output.Structured)
 	if err != nil {
 		t.Fatalf("marshal structured result: %v", err)
@@ -235,7 +240,7 @@ func TestNew_Execute_ToolOutput(t *testing.T) {
 		t.Fatalf("New: %v", err)
 	}
 
-	output, err := tool.Execute(kit.NewRunContext(context.Background()), map[string]any{"a": 1, "b": 2})
+	output, err := tool.Execute(kit.NewRunContext(context.Background()), testCall(map[string]any{"a": 1, "b": 2}))
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
@@ -257,7 +262,7 @@ func TestNew_Execute_ContentOutput(t *testing.T) {
 		t.Fatalf("New: %v", err)
 	}
 
-	output, err := tool.Execute(kit.NewRunContext(context.Background()), map[string]any{"a": 1, "b": 2})
+	output, err := tool.Execute(kit.NewRunContext(context.Background()), testCall(map[string]any{"a": 1, "b": 2}))
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
 	}

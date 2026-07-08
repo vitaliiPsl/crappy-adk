@@ -25,7 +25,7 @@ func TestTool_Execute(t *testing.T) {
 	wantErr := errors.New("boom")
 	tool := NewTool(t, "search", "search things", ToolResult{Result: "done", Error: wantErr})
 
-	output, err := tool.Execute(kit.NewRunContext(context.Background()), map[string]any{"query": "hello"})
+	output, err := tool.Execute(kit.NewRunContext(context.Background()), kit.NewToolCall("call-1", "search", map[string]any{"query": "hello"}))
 	if got := kit.ContentsText(output.Content); got != "done" {
 		t.Fatalf("output = %q, want %q", got, "done")
 	}
@@ -45,12 +45,12 @@ func TestTool_Execute_ConsumesResponsesInOrder(t *testing.T) {
 		ToolResult{Result: "second"},
 	)
 
-	first, err := tool.Execute(kit.NewRunContext(context.Background()), map[string]any{"value": 1})
+	first, err := tool.Execute(kit.NewRunContext(context.Background()), kit.NewToolCall("call-1", "search", map[string]any{"value": 1}))
 	if got := kit.ContentsText(first.Content); err != nil || got != "first" {
 		t.Fatalf("first Execute = %q, %v; want first, nil", got, err)
 	}
 
-	second, err := tool.Execute(kit.NewRunContext(context.Background()), map[string]any{"value": 2})
+	second, err := tool.Execute(kit.NewRunContext(context.Background()), kit.NewToolCall("call-2", "search", map[string]any{"value": 2}))
 	if got := kit.ContentsText(second.Content); err != nil || got != "second" {
 		t.Fatalf("second Execute = %q, %v; want second, nil", got, err)
 	}
