@@ -45,12 +45,16 @@ func (tool *Tool) Definition() kit.ToolDefinition {
 }
 
 // Execute records the call and returns the next queued response.
-func (tool *Tool) Execute(_ *kit.RunContext, args map[string]any) (string, error) {
+func (tool *Tool) Execute(_ *kit.RunContext, args map[string]any) (kit.ToolOutput, error) {
 	tool.calls = append(tool.calls, args)
 
 	resp := tool.response()
 
-	return resp.Result, resp.Error
+	if resp.Result != "" {
+		return kit.NewToolOutput(kit.NewTextContent(resp.Result)), resp.Error
+	}
+
+	return kit.ToolOutput{}, resp.Error
 }
 
 func (tool *Tool) response() ToolResult {

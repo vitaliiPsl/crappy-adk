@@ -5,7 +5,7 @@ type Tool interface {
 	// Definition returns the tool's metadata, used to describe it to the model.
 	Definition() ToolDefinition
 	// Execute runs the tool with the given arguments and returns its output.
-	Execute(rc *RunContext, input map[string]any) (string, error)
+	Execute(rc *RunContext, input map[string]any) (ToolOutput, error)
 }
 
 // ToolDefinition describes a tool to the model.
@@ -30,12 +30,20 @@ type ToolCall struct {
 	Signature string `json:"signature,omitempty"`
 }
 
+// ToolOutput is the output produced by a tool.
+type ToolOutput struct {
+	// Content is the model-facing rich output.
+	Content []Content `json:"content,omitempty"`
+	// Structured is the machine-readable output.
+	Structured any `json:"structured,omitempty"`
+}
+
 // ToolResult represents the output of a tool execution.
 type ToolResult struct {
 	// Call contains the original tool call details.
 	Call ToolCall `json:"call"`
 	// Output is the successful output from the tool, if any.
-	Output string `json:"output,omitempty"`
+	Output ToolOutput `json:"output"`
 	// Error is the error message if the tool execution failed.
 	Error string `json:"error,omitempty"`
 }
@@ -49,8 +57,22 @@ func NewToolCall(id, name string, arguments map[string]any) ToolCall {
 	}
 }
 
+// NewToolOutput creates model-facing tool output.
+func NewToolOutput(content ...Content) ToolOutput {
+	return ToolOutput{
+		Content: append([]Content(nil), content...),
+	}
+}
+
+// NewStructuredToolOutput creates machine-readable tool output.
+func NewStructuredToolOutput(structured any) ToolOutput {
+	return ToolOutput{
+		Structured: structured,
+	}
+}
+
 // NewToolResult creates a new [ToolResult] for the given call, output, and error.
-func NewToolResult(call ToolCall, output string, err error) ToolResult {
+func NewToolResult(call ToolCall, output ToolOutput, err error) ToolResult {
 	var errMsg string
 	if err != nil {
 		errMsg = err.Error()

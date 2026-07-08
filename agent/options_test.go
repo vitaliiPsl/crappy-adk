@@ -190,7 +190,7 @@ func TestHookOptionsRunInOrder(t *testing.T) {
 			return call, nil
 		}),
 		WithOnToolResult(func(_ *kit.RunContext, result kit.ToolResult) (kit.ToolResult, error) {
-			result.Output = "hooked result"
+			result.Output.Content = []kit.Content{kit.NewTextContent("hooked result")}
 
 			return result, nil
 		}),
@@ -223,7 +223,7 @@ func TestHookOptionsRunInOrder(t *testing.T) {
 	lastMessage := secondRequest.Messages[len(secondRequest.Messages)-1]
 
 	results := lastMessage.ToolResults()
-	if len(results) != 1 || results[0].Output != "hooked result" {
+	if len(results) != 1 || kit.ContentsText(results[0].Output.Content) != "hooked result" {
 		t.Fatalf("tool results = %+v, want hooked result", results)
 	}
 

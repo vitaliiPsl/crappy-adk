@@ -254,12 +254,7 @@ func convertRequestContentItem(content kit.Content) (anthropicsdk.ContentBlockPa
 
 		tr := content.ToolResult
 
-		output := tr.Output
-		if output == "" {
-			output = tr.Error
-		}
-
-		return anthropicsdk.NewToolResultBlock(tr.Call.ID, output, tr.Error != ""), true
+		return convertToolResultContent(tr), true
 	case kit.ContentTypeSummary:
 		if content.Summary == nil {
 			return anthropicsdk.ContentBlockParamUnion{}, false
@@ -318,12 +313,149 @@ func convertResourceContent(resource *kit.Resource) (anthropicsdk.ContentBlockPa
 }
 
 func fallbackContent(content kit.Content) (anthropicsdk.ContentBlockParamUnion, bool) {
-	text, ok := kit.ContentTextFallback(content)
+	text, ok := kit.ContentText(content)
 	if !ok {
 		return anthropicsdk.ContentBlockParamUnion{}, false
 	}
 
 	return anthropicsdk.NewTextBlock(text), true
+}
+
+func convertToolResultContent(result *kit.ToolResult) anthropicsdk.ContentBlockParamUnion {
+	content := convertToolResultItems(result.Output.Content)
+	if len(content) == 0 {
+		content = []anthropicsdk.ToolResultBlockParamContentUnion{{
+			OfText: &anthropicsdk.TextBlockParam{Text: toolResultTextFallback(result)},
+		}}
+	}
+
+	return anthropicsdk.ContentBlockParamUnion{
+		OfToolResult: &anthropicsdk.ToolResultBlockParam{
+			ToolUseID: result.Call.ID,
+			IsError:   anthropicsdk.Bool(result.Error != ""),
+			Content:   content,
+		},
+	}
+}
+
+func convertToolResultItems(content []kit.Content) []anthropicsdk.ToolResultBlockParamContentUnion {
+	items := make([]anthropicsdk.ToolResultBlockParamContentUnion, 0, len(content))
+	for _, content := range content {
+		if item, ok := convertToolResultItem(content); ok {
+			items = append(items, item)
+		}
+	}
+
+	return items
+}
+
+func convertToolResultItem(content kit.Content) (anthropicsdk.ToolResultBlockParamContentUnion, bool) {
+	switch content.Type {
+	case kit.ContentTypeText:
+		if content.Text == nil {
+			return anthropicsdk.ToolResultBlockParamContentUnion{}, false
+		}
+
+		return anthropicsdk.ToolResultBlockParamContentUnion{OfText: &anthropicsdk.TextBlockParam{Text: content.Text.Text}}, true
+	case kit.ContentTypeImage:
+		image, ok := convertToolResultImage(content.Image)
+
+		return anthropicsdk.ToolResultBlockParamContentUnion{OfImage: image}, ok
+	case kit.ContentTypeResource:
+		if content.Resource == nil {
+			return anthropicsdk.ToolResultBlockParamContentUnion{}, false
+		}
+
+		if strings.HasPrefix(content.Resource.MIMEType, "image/") {
+			image, ok := convertToolResultImage(&kit.Image{
+				MIMEType: content.Resource.MIMEType,
+				Data:     content.Resource.Blob,
+				URI:      content.Resource.URI,
+			})
+
+			return anthropicsdk.ToolResultBlockParamContentUnion{OfImage: image}, ok
+		}
+
+		document, ok := convertToolResultDocument(content.Resource)
+
+		return anthropicsdk.ToolResultBlockParamContentUnion{OfDocument: document}, ok
+	case kit.ContentTypeAudio:
+		text, ok := kit.ContentText(content)
+		if !ok {
+			return anthropicsdk.ToolResultBlockParamContentUnion{}, false
+		}
+
+		return anthropicsdk.ToolResultBlockParamContentUnion{OfText: &anthropicsdk.TextBlockParam{Text: text}}, true
+	default:
+		text, ok := kit.ContentText(content)
+		if !ok {
+			return anthropicsdk.ToolResultBlockParamContentUnion{}, false
+		}
+
+		return anthropicsdk.ToolResultBlockParamContentUnion{OfText: &anthropicsdk.TextBlockParam{Text: text}}, true
+	}
+}
+
+func convertToolResultImage(image *kit.Image) (*anthropicsdk.ImageBlockParam, bool) {
+	if image == nil {
+		return nil, false
+	}
+
+	out := &anthropicsdk.ImageBlockParam{}
+	switch {
+	case len(image.Data) > 0:
+		out.Source.OfBase64 = &anthropicsdk.Base64ImageSourceParam{
+			Data:      base64.StdEncoding.EncodeToString(image.Data),
+			MediaType: anthropicsdk.Base64ImageSourceMediaType(image.MIMEType),
+		}
+	case image.URI != "":
+		out.Source.OfURL = &anthropicsdk.URLImageSourceParam{URL: image.URI}
+	default:
+		return nil, false
+	}
+
+	return out, true
+}
+
+func convertToolResultDocument(resource *kit.Resource) (*anthropicsdk.DocumentBlockParam, bool) {
+	if resource == nil {
+		return nil, false
+	}
+
+	out := &anthropicsdk.DocumentBlockParam{}
+	switch {
+	case resource.Text != "":
+		out.Source.OfText = &anthropicsdk.PlainTextSourceParam{Data: resource.Text}
+	case strings.EqualFold(resource.MIMEType, "application/pdf") && len(resource.Blob) > 0:
+		out.Source.OfBase64 = &anthropicsdk.Base64PDFSourceParam{Data: base64.StdEncoding.EncodeToString(resource.Blob)}
+	case strings.EqualFold(resource.MIMEType, "application/pdf") && resource.URI != "":
+		out.Source.OfURL = &anthropicsdk.URLPDFSourceParam{URL: resource.URI}
+	default:
+		return nil, false
+	}
+
+	return out, true
+}
+
+func toolResultTextFallback(result *kit.ToolResult) string {
+	if result.Error != "" {
+		return result.Error
+	}
+
+	if text := kit.ContentsText(result.Output.Content); text != "" {
+		return text
+	}
+
+	if result.Output.Structured == nil {
+		return ""
+	}
+
+	data, err := json.Marshal(result.Output.Structured)
+	if err != nil {
+		return ""
+	}
+
+	return string(data)
 }
 
 func convertResponse(resp *anthropicsdk.Message) kit.ModelResponse {

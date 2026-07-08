@@ -26,8 +26,8 @@ func TestTool_Execute(t *testing.T) {
 	tool := NewTool(t, "search", "search things", ToolResult{Result: "done", Error: wantErr})
 
 	output, err := tool.Execute(kit.NewRunContext(context.Background()), map[string]any{"query": "hello"})
-	if output != "done" {
-		t.Fatalf("output = %q, want %q", output, "done")
+	if got := kit.ContentsText(output.Content); got != "done" {
+		t.Fatalf("output = %q, want %q", got, "done")
 	}
 
 	if !errors.Is(err, wantErr) {
@@ -46,13 +46,13 @@ func TestTool_Execute_ConsumesResponsesInOrder(t *testing.T) {
 	)
 
 	first, err := tool.Execute(kit.NewRunContext(context.Background()), map[string]any{"value": 1})
-	if err != nil || first != "first" {
-		t.Fatalf("first Execute = %q, %v; want first, nil", first, err)
+	if got := kit.ContentsText(first.Content); err != nil || got != "first" {
+		t.Fatalf("first Execute = %q, %v; want first, nil", got, err)
 	}
 
 	second, err := tool.Execute(kit.NewRunContext(context.Background()), map[string]any{"value": 2})
-	if err != nil || second != "second" {
-		t.Fatalf("second Execute = %q, %v; want second, nil", second, err)
+	if got := kit.ContentsText(second.Content); err != nil || got != "second" {
+		t.Fatalf("second Execute = %q, %v; want second, nil", got, err)
 	}
 
 	tool.AssertCallCount(t, 2)

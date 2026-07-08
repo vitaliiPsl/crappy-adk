@@ -253,11 +253,11 @@ func NewSummaryContent(text string) Content {
 	}
 }
 
-// ContentsTextFallback joins text representations of content blocks.
-func ContentsTextFallback(content []Content) string {
+// ContentsText renders content blocks as text and joins them with newlines.
+func ContentsText(content []Content) string {
 	parts := make([]string, 0, len(content))
 	for _, item := range content {
-		text, ok := ContentTextFallback(item)
+		text, ok := ContentText(item)
 		if !ok || text == "" {
 			continue
 		}
@@ -268,9 +268,8 @@ func ContentsTextFallback(content []Content) string {
 	return strings.Join(parts, "\n")
 }
 
-// ContentTextFallback returns a text representation of a content block when a
-// provider or subsystem cannot handle its richer form directly.
-func ContentTextFallback(content Content) (string, bool) {
+// ContentText renders a content block as text.
+func ContentText(content Content) (string, bool) {
 	switch content.Type {
 	case ContentTypeText:
 		if content.Text == nil {
@@ -289,25 +288,25 @@ func ContentTextFallback(content Content) (string, bool) {
 			return "", false
 		}
 
-		return mediaFallback("image", content.Image.MIMEType, content.Image.URI, len(content.Image.Data)), true
+		return mediaText("image", content.Image.MIMEType, content.Image.URI, len(content.Image.Data)), true
 	case ContentTypeAudio:
 		if content.Audio == nil {
 			return "", false
 		}
 
-		return mediaFallback("audio", content.Audio.MIMEType, content.Audio.URI, len(content.Audio.Data)), true
+		return mediaText("audio", content.Audio.MIMEType, content.Audio.URI, len(content.Audio.Data)), true
 	case ContentTypeResource:
 		if content.Resource == nil {
 			return "", false
 		}
 
-		return resourceFallback(content.Resource), true
+		return resourceText(content.Resource), true
 	default:
 		return "", false
 	}
 }
 
-func mediaFallback(kind, mimeType, uri string, size int) string {
+func mediaText(kind, mimeType, uri string, size int) string {
 	switch {
 	case uri != "" && mimeType != "":
 		return fmt.Sprintf("[%s: %s, %s]", kind, uri, mimeType)
@@ -320,7 +319,7 @@ func mediaFallback(kind, mimeType, uri string, size int) string {
 	}
 }
 
-func resourceFallback(resource *Resource) string {
+func resourceText(resource *Resource) string {
 	if resource.Text != "" {
 		return resource.Text
 	}

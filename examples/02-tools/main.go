@@ -83,7 +83,11 @@ func main() {
 		}
 
 		for _, result := range msg.ToolResults() {
-			fmt.Printf("[tool result] %s → %s\n", result.Call.Name, result.Output)
+			if result.Error != "" {
+				fmt.Printf("[tool error] %s: %s\n", result.Call.Name, result.Error)
+			} else {
+				fmt.Printf("[tool result] %s\n", result.Call.Name)
+			}
 		}
 	}
 

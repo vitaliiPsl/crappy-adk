@@ -200,21 +200,21 @@ func (a *Agent) executeTools(rc *kit.RunContext, toolCalls []kit.ToolCall) ([]ki
 func (a *Agent) executeTool(rc *kit.RunContext, call kit.ToolCall) (result kit.ToolResult, err error) {
 	defer func() {
 		if recovered := recover(); recovered != nil {
-			result = kit.NewToolResult(call, "", fmt.Errorf("tool %q panicked: %v", call.Name, recovered))
+			result = kit.NewToolResult(call, kit.ToolOutput{}, fmt.Errorf("tool %q panicked: %v", call.Name, recovered))
 			err = nil
 		}
 	}()
 
 	tool, ok := a.tools.Get(call.Name)
 	if !ok {
-		result = kit.NewToolResult(call, "", fmt.Errorf("tool %q not found", call.Name))
+		result = kit.NewToolResult(call, kit.ToolOutput{}, fmt.Errorf("tool %q not found", call.Name))
 
 		return
 	}
 
 	hookedCall, hookErr := a.hooks.onToolCall(rc, call)
 	if hookErr != nil {
-		result = kit.NewToolResult(call, "", hookErr)
+		result = kit.NewToolResult(call, kit.ToolOutput{}, hookErr)
 
 		return
 	}
@@ -230,7 +230,7 @@ func (a *Agent) executeTool(rc *kit.RunContext, call kit.ToolCall) (result kit.T
 
 	hookedResult, hookErr := a.hooks.onToolResult(rc, result)
 	if hookErr != nil {
-		result = kit.NewToolResult(call, "", hookErr)
+		result = kit.NewToolResult(call, kit.ToolOutput{}, hookErr)
 
 		return
 	}

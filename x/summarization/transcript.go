@@ -38,26 +38,17 @@ func writeTurn(b *strings.Builder, msg kit.Message) {
 
 func writeContent(b *strings.Builder, c kit.Content) {
 	switch c.Type {
-	case kit.ContentTypeText:
-		writeText(b, c.Text)
 	case kit.ContentTypeSummary:
 		writeSummary(b, c.Summary)
-	case kit.ContentTypeImage, kit.ContentTypeAudio, kit.ContentTypeResource:
-		writeContentFallback(b, c)
 	case kit.ContentTypeToolCall:
 		writeToolCall(b, c.ToolCall)
 	case kit.ContentTypeToolResult:
 		writeToolResult(b, c.ToolResult)
-	}
-}
-
-func writeText(b *strings.Builder, t *kit.Text) {
-	if t == nil {
+	case kit.ContentTypeThinking:
 		return
+	default:
+		writeContentText(b, c)
 	}
-
-	b.WriteString(t.Text)
-	b.WriteByte('\n')
 }
 
 func writeSummary(b *strings.Builder, s *kit.Summary) {
@@ -70,8 +61,8 @@ func writeSummary(b *strings.Builder, s *kit.Summary) {
 	b.WriteByte('\n')
 }
 
-func writeContentFallback(b *strings.Builder, c kit.Content) {
-	text, ok := kit.ContentTextFallback(c)
+func writeContentText(b *strings.Builder, c kit.Content) {
+	text, ok := kit.ContentText(c)
 	if !ok {
 		return
 	}
@@ -100,7 +91,23 @@ func writeToolResult(b *strings.Builder, r *kit.ToolResult) {
 		return
 	}
 
-	fmt.Fprintf(b, "[Tool result from %s: %s]\n", r.Call.Name, r.Output)
+	fmt.Fprintf(b, "[Tool result from %s]\n", r.Call.Name)
+	for _, c := range r.Output.Content {
+		writeContent(b, c)
+	}
+
+	if r.Output.Structured != nil {
+		writeStructuredOutput(b, r.Output.Structured)
+	}
+}
+
+func writeStructuredOutput(b *strings.Builder, output any) {
+	data, err := json.Marshal(output)
+	if err != nil {
+		return
+	}
+
+	fmt.Fprintf(b, "[Structured output]\n%s\n", data)
 }
 
 func roleLabel(r kit.Role) string {

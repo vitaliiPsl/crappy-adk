@@ -72,7 +72,7 @@ func TestFlatten_RendersSummary(t *testing.T) {
 
 func TestFlatten_RendersToolCallAndResult(t *testing.T) {
 	call := kit.NewToolCall("call-1", "bash", map[string]any{"cmd": "ls"})
-	result := kit.NewToolResult(call, "file.txt\n", nil)
+	result := kit.NewToolResult(call, kit.NewToolOutput(kit.NewTextContent("file.txt\n")), nil)
 
 	msgs := []kit.Message{
 		kit.NewModelMessage(kit.NewToolCallContent(call)),
@@ -85,14 +85,14 @@ func TestFlatten_RendersToolCallAndResult(t *testing.T) {
 		t.Errorf("missing tool call:\n%s", got)
 	}
 
-	if !strings.Contains(got, "[Tool result from bash: file.txt") {
+	if !strings.Contains(got, "[Tool result from bash]\nfile.txt") {
 		t.Errorf("missing tool result:\n%s", got)
 	}
 }
 
 func TestFlatten_RendersToolError(t *testing.T) {
 	call := kit.NewToolCall("call-1", "bash", map[string]any{"cmd": "boom"})
-	result := kit.NewToolResult(call, "", errString("permission denied"))
+	result := kit.NewToolResult(call, kit.ToolOutput{}, errString("permission denied"))
 
 	msgs := []kit.Message{
 		kit.NewToolMessage(kit.NewToolResultContent(result)),

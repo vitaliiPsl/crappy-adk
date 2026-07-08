@@ -20,8 +20,8 @@ func (m *mockTool) Definition() kit.ToolDefinition {
 	return kit.ToolDefinition{Name: m.name, Description: m.description, Schema: m.schema}
 }
 
-func (m *mockTool) Execute(_ *kit.RunContext, _ map[string]any) (string, error) {
-	return "", nil
+func (m *mockTool) Execute(_ *kit.RunContext, _ map[string]any) (kit.ToolOutput, error) {
+	return kit.ToolOutput{}, nil
 }
 
 func TestConvertRequestTools(t *testing.T) {
@@ -247,7 +247,7 @@ func TestConvertRequestContentItem(t *testing.T) {
 
 	t.Run("tool result success", func(t *testing.T) {
 		call := kit.ToolCall{ID: "call_1", Name: "search"}
-		content := kit.NewToolResultContent(kit.NewToolResult(call, "result output", nil))
+		content := kit.NewToolResultContent(kit.NewToolResult(call, kit.NewToolOutput(kit.NewTextContent("result output")), nil))
 
 		part, ok := convertRequestContentItem(content)
 
@@ -278,7 +278,7 @@ func TestConvertRequestContentItem(t *testing.T) {
 
 	t.Run("tool result error", func(t *testing.T) {
 		call := kit.ToolCall{ID: "call_1", Name: "search"}
-		content := kit.NewToolResultContent(kit.NewToolResult(call, "", fmt.Errorf("tool failed")))
+		content := kit.NewToolResultContent(kit.NewToolResult(call, kit.ToolOutput{}, fmt.Errorf("tool failed")))
 
 		part, ok := convertRequestContentItem(content)
 
@@ -336,7 +336,7 @@ func TestConvertRequestMessage(t *testing.T) {
 	t.Run("tool message produces user role", func(t *testing.T) {
 		call := kit.ToolCall{ID: "call_1", Name: "fn"}
 		msg := kit.NewToolMessage(
-			kit.NewToolResultContent(kit.NewToolResult(call, "ok", nil)))
+			kit.NewToolResultContent(kit.NewToolResult(call, kit.NewToolOutput(kit.NewTextContent("ok")), nil)))
 
 		result := convertRequestMessage(msg)
 

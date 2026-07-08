@@ -77,8 +77,8 @@ func TestNew_Execute(t *testing.T) {
 				t.Fatalf("Execute: %v", err)
 			}
 
-			if result != tt.want {
-				t.Errorf("result = %q, want %q", result, tt.want)
+			if got := kit.ContentsText(result.Content); got != tt.want {
+				t.Errorf("result = %q, want %q", got, tt.want)
 			}
 		})
 	}
@@ -131,8 +131,8 @@ func TestNew_Execute_ContextPropagation(t *testing.T) {
 		t.Fatalf("Execute: %v", err)
 	}
 
-	if result != want {
-		t.Errorf("result = %q, want %q", result, want)
+	if got := kit.ContentsText(result.Content); got != want {
+		t.Errorf("result = %q, want %q", got, want)
 	}
 }
 
@@ -180,8 +180,8 @@ func TestNew_OptionalField(t *testing.T) {
 		t.Fatalf("Execute without optional field: %v", err)
 	}
 
-	if result != "hello:0" {
-		t.Errorf("result = %q, want %q", result, "hello:0")
+	if got := kit.ContentsText(result.Content); got != "hello:0" {
+		t.Errorf("result = %q, want %q", got, "hello:0")
 	}
 }
 
@@ -200,13 +200,18 @@ func TestNew_Execute_StructuredOutput(t *testing.T) {
 		t.Fatalf("New: %v", err)
 	}
 
-	raw, err := tool.Execute(kit.NewRunContext(context.Background()), map[string]any{"a": 3, "b": 4})
+	output, err := tool.Execute(kit.NewRunContext(context.Background()), map[string]any{"a": 3, "b": 4})
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
 
 	var got addResult
-	if err := json.Unmarshal([]byte(raw), &got); err != nil {
+	raw, err := json.Marshal(output.Structured)
+	if err != nil {
+		t.Fatalf("marshal structured result: %v", err)
+	}
+
+	if err := json.Unmarshal(raw, &got); err != nil {
 		t.Fatalf("unmarshal result: %v", err)
 	}
 
@@ -216,5 +221,52 @@ func TestNew_Execute_StructuredOutput(t *testing.T) {
 
 	if got.Label != "3 + 4 = 7" {
 		t.Errorf("Label = %q, want %q", got.Label, "3 + 4 = 7")
+	}
+}
+
+func TestNew_Execute_ToolOutput(t *testing.T) {
+	tool, err := New("render", "renders content", func(_ *kit.RunContext, _ addArgs) (kit.ToolOutput, error) {
+		return kit.ToolOutput{
+			Content:    []kit.Content{kit.NewImageContent("image/png", []byte{1, 2, 3})},
+			Structured: map[string]any{"ok": true},
+		}, nil
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	output, err := tool.Execute(kit.NewRunContext(context.Background()), map[string]any{"a": 1, "b": 2})
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+
+	if len(output.Content) != 1 || output.Content[0].Image == nil {
+		t.Fatalf("Content = %+v, want image content", output.Content)
+	}
+
+	if output.Structured.(map[string]any)["ok"] != true {
+		t.Fatalf("Structured = %+v, want ok=true", output.Structured)
+	}
+}
+
+func TestNew_Execute_ContentOutput(t *testing.T) {
+	tool, err := New("content", "returns content", func(_ *kit.RunContext, _ addArgs) ([]kit.Content, error) {
+		return []kit.Content{kit.NewTextContent("hello"), kit.NewResourceContent(kit.Resource{URI: "file:///README.md"})}, nil
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	output, err := tool.Execute(kit.NewRunContext(context.Background()), map[string]any{"a": 1, "b": 2})
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+
+	if got := kit.ContentsText(output.Content); got != "hello\n[resource: file:///README.md, 0 bytes]" {
+		t.Fatalf("content fallback = %q, want content fallback", got)
+	}
+
+	if len(output.Content) != 2 {
+		t.Fatalf("len(Content) = %d, want 2", len(output.Content))
 	}
 }

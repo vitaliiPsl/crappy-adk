@@ -273,17 +273,10 @@ func convertRequestContentItem(content kit.Content, role responses.EasyInputMess
 
 		tr := content.ToolResult
 
-		output := tr.Output
-		if output == "" {
-			output = tr.Error
-		}
-
 		return responses.ResponseInputItemUnionParam{
 			OfFunctionCallOutput: &responses.ResponseInputItemFunctionCallOutputParam{
 				CallID: tr.Call.ID,
-				Output: responses.ResponseInputItemFunctionCallOutputOutputUnionParam{
-					OfString: openai.String(output),
-				},
+				Output: convertFunctionCallOutput(tr),
 			},
 		}, true
 	case kit.ContentTypeSummary:
@@ -343,14 +336,14 @@ func convertRequestContentListItem(content kit.Content) (responses.ResponseInput
 
 		return responses.ResponseInputContentUnionParam{OfInputFile: file}, ok
 	case kit.ContentTypeAudio:
-		text, ok := kit.ContentTextFallback(content)
+		text, ok := kit.ContentText(content)
 		if !ok {
 			return responses.ResponseInputContentUnionParam{}, false
 		}
 
 		return responses.ResponseInputContentParamOfInputText(text), true
 	default:
-		text, ok := kit.ContentTextFallback(content)
+		text, ok := kit.ContentText(content)
 		if !ok {
 			return responses.ResponseInputContentUnionParam{}, false
 		}
@@ -397,6 +390,138 @@ func convertInputFile(resource *kit.Resource) (*responses.ResponseInputFileParam
 	}
 
 	return out, true
+}
+
+func convertFunctionCallOutput(result *kit.ToolResult) responses.ResponseInputItemFunctionCallOutputOutputUnionParam {
+	items := convertFunctionCallOutputItems(result)
+	if len(items) > 0 {
+		return responses.ResponseInputItemFunctionCallOutputOutputUnionParam{OfResponseFunctionCallOutputItemArray: items}
+	}
+
+	return responses.ResponseInputItemFunctionCallOutputOutputUnionParam{OfString: openai.String(toolResultTextFallback(result))}
+}
+
+func convertFunctionCallOutputItems(result *kit.ToolResult) responses.ResponseFunctionCallOutputItemListParam {
+	items := make(responses.ResponseFunctionCallOutputItemListParam, 0, len(result.Output.Content))
+	for _, content := range result.Output.Content {
+		if item, ok := convertFunctionCallOutputItem(content); ok {
+			items = append(items, item)
+		}
+	}
+
+	return items
+}
+
+func convertFunctionCallOutputItem(content kit.Content) (responses.ResponseFunctionCallOutputItemUnionParam, bool) {
+	switch content.Type {
+	case kit.ContentTypeText:
+		if content.Text == nil {
+			return responses.ResponseFunctionCallOutputItemUnionParam{}, false
+		}
+
+		return responses.ResponseFunctionCallOutputItemParamOfInputText(content.Text.Text), true
+	case kit.ContentTypeImage:
+		image, ok := convertFunctionOutputImage(content.Image)
+
+		return responses.ResponseFunctionCallOutputItemUnionParam{OfInputImage: image}, ok
+	case kit.ContentTypeResource:
+		if content.Resource == nil {
+			return responses.ResponseFunctionCallOutputItemUnionParam{}, false
+		}
+
+		if content.Resource.Text != "" {
+			return responses.ResponseFunctionCallOutputItemParamOfInputText(content.Resource.Text), true
+		}
+
+		if strings.HasPrefix(content.Resource.MIMEType, "image/") {
+			image, ok := convertFunctionOutputImage(&kit.Image{
+				MIMEType: content.Resource.MIMEType,
+				Data:     content.Resource.Blob,
+				URI:      content.Resource.URI,
+			})
+
+			return responses.ResponseFunctionCallOutputItemUnionParam{OfInputImage: image}, ok
+		}
+
+		file, ok := convertFunctionOutputFile(content.Resource)
+
+		return responses.ResponseFunctionCallOutputItemUnionParam{OfInputFile: file}, ok
+	case kit.ContentTypeAudio:
+		text, ok := kit.ContentText(content)
+		if !ok {
+			return responses.ResponseFunctionCallOutputItemUnionParam{}, false
+		}
+
+		return responses.ResponseFunctionCallOutputItemParamOfInputText(text), true
+	default:
+		text, ok := kit.ContentText(content)
+		if !ok {
+			return responses.ResponseFunctionCallOutputItemUnionParam{}, false
+		}
+
+		return responses.ResponseFunctionCallOutputItemParamOfInputText(text), true
+	}
+}
+
+func convertFunctionOutputImage(image *kit.Image) (*responses.ResponseInputImageContentParam, bool) {
+	if image == nil {
+		return nil, false
+	}
+
+	out := &responses.ResponseInputImageContentParam{Detail: responses.ResponseInputImageContentDetailAuto}
+	switch {
+	case len(image.Data) > 0:
+		out.ImageURL = openai.String(dataURL(image.MIMEType, image.Data))
+	case image.URI != "":
+		out.ImageURL = openai.String(image.URI)
+	default:
+		return nil, false
+	}
+
+	return out, true
+}
+
+func convertFunctionOutputFile(resource *kit.Resource) (*responses.ResponseInputFileContentParam, bool) {
+	if resource == nil {
+		return nil, false
+	}
+
+	out := &responses.ResponseInputFileContentParam{
+		Detail:   responses.ResponseInputFileContentDetailLow,
+		Filename: openai.String(resourceFilename(resource)),
+	}
+
+	switch {
+	case len(resource.Blob) > 0:
+		out.FileData = openai.String(base64.StdEncoding.EncodeToString(resource.Blob))
+	case resource.URI != "":
+		out.FileURL = openai.String(resource.URI)
+	default:
+		return nil, false
+	}
+
+	return out, true
+}
+
+func toolResultTextFallback(result *kit.ToolResult) string {
+	if result.Error != "" {
+		return result.Error
+	}
+
+	if text := kit.ContentsText(result.Output.Content); text != "" {
+		return text
+	}
+
+	if result.Output.Structured == nil {
+		return ""
+	}
+
+	data, err := json.Marshal(result.Output.Structured)
+	if err != nil {
+		return ""
+	}
+
+	return string(data)
 }
 
 func dataURL(mimeType string, data []byte) string {

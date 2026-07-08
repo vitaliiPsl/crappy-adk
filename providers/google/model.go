@@ -221,12 +221,30 @@ func convertRequestContentItem(content kit.Content) (*genai.Part, bool) {
 
 		tr := content.ToolResult
 
-		response := map[string]any{"output": tr.Output}
+		response := map[string]any{}
+		if output := kit.ContentsText(tr.Output.Content); output != "" {
+			response["output"] = output
+		}
+		if tr.Output.Structured != nil {
+			response["structured"] = tr.Output.Structured
+		}
+
 		if tr.Error != "" {
 			response["error"] = tr.Error
 		}
+		if len(response) == 0 {
+			response["output"] = ""
+		}
 
-		part := genai.NewPartFromFunctionResponse(tr.Call.Name, response)
+		parts := convertFunctionResponseParts(tr.Output.Content)
+
+		var part *genai.Part
+		if len(parts) > 0 {
+			part = genai.NewPartFromFunctionResponseWithParts(tr.Call.Name, response, parts)
+		} else {
+			part = genai.NewPartFromFunctionResponse(tr.Call.Name, response)
+		}
+
 		part.FunctionResponse.ID = tr.Call.ID
 
 		return part, true
@@ -294,12 +312,66 @@ func convertResourceContent(resource *kit.Resource) (*genai.Part, bool) {
 }
 
 func fallbackPart(content kit.Content) (*genai.Part, bool) {
-	text, ok := kit.ContentTextFallback(content)
+	text, ok := kit.ContentText(content)
 	if !ok {
 		return nil, false
 	}
 
 	return genai.NewPartFromText(text), true
+}
+
+func convertFunctionResponseParts(content []kit.Content) []*genai.FunctionResponsePart {
+	parts := make([]*genai.FunctionResponsePart, 0, len(content))
+	for _, item := range content {
+		if part, ok := convertFunctionResponsePart(item); ok {
+			parts = append(parts, part)
+		}
+	}
+
+	return parts
+}
+
+func convertFunctionResponsePart(content kit.Content) (*genai.FunctionResponsePart, bool) {
+	switch content.Type {
+	case kit.ContentTypeImage:
+		if content.Image == nil {
+			return nil, false
+		}
+
+		if len(content.Image.Data) > 0 {
+			return genai.NewFunctionResponsePartFromBytes(content.Image.Data, content.Image.MIMEType), true
+		}
+
+		if content.Image.URI != "" {
+			return genai.NewFunctionResponsePartFromURI(content.Image.URI, content.Image.MIMEType), true
+		}
+	case kit.ContentTypeAudio:
+		if content.Audio == nil {
+			return nil, false
+		}
+
+		if len(content.Audio.Data) > 0 {
+			return genai.NewFunctionResponsePartFromBytes(content.Audio.Data, content.Audio.MIMEType), true
+		}
+
+		if content.Audio.URI != "" {
+			return genai.NewFunctionResponsePartFromURI(content.Audio.URI, content.Audio.MIMEType), true
+		}
+	case kit.ContentTypeResource:
+		if content.Resource == nil {
+			return nil, false
+		}
+
+		if len(content.Resource.Blob) > 0 {
+			return genai.NewFunctionResponsePartFromBytes(content.Resource.Blob, content.Resource.MIMEType), true
+		}
+
+		if content.Resource.URI != "" {
+			return genai.NewFunctionResponsePartFromURI(content.Resource.URI, content.Resource.MIMEType), true
+		}
+	}
+
+	return nil, false
 }
 
 func convertResponse(resp *genai.GenerateContentResponse) kit.ModelResponse {

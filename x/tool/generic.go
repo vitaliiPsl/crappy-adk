@@ -12,8 +12,7 @@ import (
 var _ kit.Tool = (*Generic[any, any])(nil)
 
 // Generic is a type-safe tool whose input schema is derived from I and whose
-// handler returns O. O is returned to the agent as a JSON string; if O is
-// already a string it is passed through without re-encoding.
+// handler returns O. O is adapted into a [kit.ToolOutput].
 type Generic[I, O any] struct {
 	name        string
 	description string
@@ -32,8 +31,9 @@ type Generic[I, O any] struct {
 //		Limit int    `json:"limit,omitempty" jsonschema:"Maximum number of results to return"`
 //	}
 //
-// O is the handler's return type. If O is string the value is used as-is;
-// any other type is JSON-marshalled before being returned to the agent.
+// O is the handler's return type. Strings become text output, []kit.Content
+// becomes rich content output, kit.ToolOutput is used as-is, and any other
+// value becomes structured output.
 //
 //	t, err := tool.New("search", "Search the web", func(rc *kit.RunContext, args SearchArgs) (string, error) {
 //		...
@@ -96,36 +96,65 @@ func (g *Generic[I, O]) Definition() kit.ToolDefinition {
 }
 
 // Execute validates args against the derived schema, unmarshals them into I,
-// calls the handler, and returns the result as a string. If O is string the
-// value is returned as-is; otherwise it is JSON-marshalled.
-func (g *Generic[I, O]) Execute(rc *kit.RunContext, args map[string]any) (string, error) {
+// calls the handler, and adapts the result into a [kit.ToolOutput].
+func (g *Generic[I, O]) Execute(rc *kit.RunContext, args map[string]any) (kit.ToolOutput, error) {
 	if err := g.resolved.Validate(args); err != nil {
-		return "", fmt.Errorf("invalid arguments: %w", err)
+		return kit.ToolOutput{}, fmt.Errorf("invalid arguments: %w", err)
 	}
 
 	argsJSON, err := json.Marshal(args)
 	if err != nil {
-		return "", fmt.Errorf("failed to marshal arguments: %w", err)
+		return kit.ToolOutput{}, fmt.Errorf("failed to marshal arguments: %w", err)
 	}
 
 	var input I
 	if err := json.Unmarshal(argsJSON, &input); err != nil {
-		return "", fmt.Errorf("failed to unmarshal input: %w", err)
+		return kit.ToolOutput{}, fmt.Errorf("failed to unmarshal input: %w", err)
 	}
 
 	result, err := g.fn(rc, input)
 	if err != nil {
-		return "", err
+		return kit.ToolOutput{}, err
 	}
 
-	if s, ok := any(result).(string); ok {
-		return s, nil
-	}
-
-	out, err := json.Marshal(result)
+	output, err := toolOutput(result)
 	if err != nil {
-		return "", fmt.Errorf("failed to marshal output: %w", err)
+		return kit.ToolOutput{}, err
 	}
 
-	return string(out), nil
+	return output, nil
+}
+
+func toolOutput(value any) (kit.ToolOutput, error) {
+	switch v := value.(type) {
+	case string:
+		return kit.NewToolOutput(kit.NewTextContent(v)), nil
+	case kit.Content:
+		return kit.NewToolOutput(v), nil
+	case []kit.Content:
+		return kit.NewToolOutput(v...), nil
+	case kit.ToolOutput:
+		return v, nil
+	default:
+		structured, err := structuredToolValue(value)
+		if err != nil {
+			return kit.ToolOutput{}, err
+		}
+
+		return kit.NewStructuredToolOutput(structured), nil
+	}
+}
+
+func structuredToolValue(value any) (any, error) {
+	data, err := json.Marshal(value)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal tool output: %w", err)
+	}
+
+	var structured any
+	if err := json.Unmarshal(data, &structured); err != nil {
+		return nil, fmt.Errorf("failed to normalize tool output: %w", err)
+	}
+
+	return structured, nil
 }

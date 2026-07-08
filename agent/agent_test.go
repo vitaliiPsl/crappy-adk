@@ -170,7 +170,7 @@ func TestRun_ExecutesToolCallAndContinues(t *testing.T) {
 		Messages: append(messages,
 			toolCallMessage,
 			kit.NewToolMessage(
-				kit.NewToolResultContent(kit.NewToolResult(call, "7", nil))),
+				kit.NewToolResultContent(kit.NewToolResult(call, kit.NewToolOutput(kit.NewTextContent("7")), nil))),
 		),
 		Tools: []kit.Tool{tool},
 	})
@@ -221,8 +221,8 @@ func TestRun_SendsToolErrorBackToModel(t *testing.T) {
 		t.Fatalf("tool result error = %q, want tool failed", results[0].Error)
 	}
 
-	if results[0].Output != "" {
-		t.Fatalf("tool result output = %q, want empty", results[0].Output)
+	if got := kit.ContentsText(results[0].Output.Content); got != "" {
+		t.Fatalf("tool result content = %q, want empty", got)
 	}
 }
 
@@ -276,7 +276,7 @@ func (p panicTool) Definition() kit.ToolDefinition {
 	return kit.ToolDefinition{Name: p.name}
 }
 
-func (p panicTool) Execute(*kit.RunContext, map[string]any) (string, error) {
+func (p panicTool) Execute(*kit.RunContext, map[string]any) (kit.ToolOutput, error) {
 	panic("bad things")
 }
 
@@ -289,11 +289,11 @@ func (c *cancelTool) Definition() kit.ToolDefinition {
 	return kit.ToolDefinition{Name: "cancel"}
 }
 
-func (c *cancelTool) Execute(rc *kit.RunContext, _ map[string]any) (string, error) {
+func (c *cancelTool) Execute(rc *kit.RunContext, _ map[string]any) (kit.ToolOutput, error) {
 	c.called = true
 	c.cancel()
 
-	return "", rc.Err()
+	return kit.ToolOutput{}, rc.Err()
 }
 
 func TestExecuteTool_Success(t *testing.T) {
@@ -311,8 +311,8 @@ func TestExecuteTool_Success(t *testing.T) {
 		t.Fatalf("executeTool: %v", err)
 	}
 
-	if result.Output != "done" {
-		t.Fatalf("Output = %q, want %q", result.Output, "done")
+	if got := kit.ContentsText(result.Output.Content); got != "done" {
+		t.Fatalf("Content = %q, want %q", got, "done")
 	}
 
 	if result.Error != "" {
@@ -369,8 +369,8 @@ func TestExecuteTool_RecoversPanic(t *testing.T) {
 		t.Fatalf("executeTool: %v", err)
 	}
 
-	if result.Output != "" {
-		t.Fatalf("Output = %q, want empty", result.Output)
+	if got := kit.ContentsText(result.Output.Content); got != "" {
+		t.Fatalf("Content = %q, want empty", got)
 	}
 
 	if !strings.Contains(result.Error, `tool "panic" panicked: bad things`) {
@@ -521,8 +521,8 @@ func TestStream_EmitsToolResultAndContinues(t *testing.T) {
 		if event.ToolResult != nil {
 			sawToolResult = true
 
-			if event.ToolResult.Output != "7" {
-				t.Fatalf("ToolResult.Output = %q, want 7", event.ToolResult.Output)
+			if got := kit.ContentsText(event.ToolResult.Output.Content); got != "7" {
+				t.Fatalf("ToolResult.Content = %q, want 7", got)
 			}
 		}
 	}
@@ -610,8 +610,8 @@ func TestExecuteTool_OnToolCallHookErrorBecomesResult(t *testing.T) {
 		t.Fatalf("Error = %q, want policy denied", result.Error)
 	}
 
-	if result.Output != "" {
-		t.Fatalf("Output = %q, want empty (tool must not run)", result.Output)
+	if got := kit.ContentsText(result.Output.Content); got != "" {
+		t.Fatalf("Content = %q, want empty (tool must not run)", got)
 	}
 
 	tool.AssertNeverCalled(t)
@@ -647,8 +647,8 @@ func TestExecuteTool_OnToolResultHookErrorBecomesResult(t *testing.T) {
 		t.Fatalf("Error = %q, want redaction failed", result.Error)
 	}
 
-	if result.Output != "" {
-		t.Fatalf("Output = %q, want empty (output replaced by hook error)", result.Output)
+	if got := kit.ContentsText(result.Output.Content); got != "" {
+		t.Fatalf("Content = %q, want empty (output replaced by hook error)", got)
 	}
 
 	tool.AssertCallCount(t, 1)
@@ -682,8 +682,8 @@ func TestWithTools_DuplicateNameKeepsFirst(t *testing.T) {
 		t.Fatalf("executeTool: %v", err)
 	}
 
-	if result.Output != "from v1" {
-		t.Fatalf("Output = %q, want from v1 (first registration wins)", result.Output)
+	if got := kit.ContentsText(result.Output.Content); got != "from v1" {
+		t.Fatalf("Content = %q, want from v1 (first registration wins)", got)
 	}
 
 	first.AssertCallCount(t, 1)

@@ -79,7 +79,11 @@ func main() {
 		case event.Content != nil:
 			handleContentEvent(event)
 		case event.ToolResult != nil:
-			fmt.Printf("[tool result] %s → %s\n\n", event.ToolResult.Call.Name, event.ToolResult.Output)
+			if event.ToolResult.Error != "" {
+				fmt.Printf("[tool error] %s: %s\n", event.ToolResult.Call.Name, event.ToolResult.Error)
+			} else {
+				fmt.Printf("[tool result] %s\n", event.ToolResult.Call.Name)
+			}
 		}
 	}
 

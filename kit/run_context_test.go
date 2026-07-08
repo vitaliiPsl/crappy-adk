@@ -25,7 +25,7 @@ func TestRunContextResponse_LastNonModelMessageLeavesOutputNil(t *testing.T) {
 		Messages: []Message{
 			NewModelMessage(NewTextContent("older text")),
 			NewToolMessage(
-				NewToolResultContent(NewToolResult(ToolCall{ID: "call-1", Name: "tool"}, "tool output", nil)),
+				NewToolResultContent(NewToolResult(ToolCall{ID: "call-1", Name: "tool"}, NewToolOutput(NewTextContent("tool output")), nil)),
 			),
 		},
 	}

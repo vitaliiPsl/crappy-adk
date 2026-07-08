@@ -23,8 +23,8 @@ func (m *mockTool) Definition() kit.ToolDefinition {
 	return kit.ToolDefinition{Name: m.name, Description: m.description, Schema: m.schema}
 }
 
-func (m *mockTool) Execute(_ *kit.RunContext, _ map[string]any) (string, error) {
-	return "", nil
+func (m *mockTool) Execute(_ *kit.RunContext, _ map[string]any) (kit.ToolOutput, error) {
+	return kit.ToolOutput{}, nil
 }
 
 func mustParseOutputItem(t *testing.T, data string) responses.ResponseOutputItemUnion {

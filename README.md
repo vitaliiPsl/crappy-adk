@@ -212,7 +212,11 @@ for event := range stream.Iter() {
         }
     case kit.EventContentDone:
         if event.ToolResult != nil {
-            fmt.Printf("[tool result] %s → %s\n", event.ToolResult.Call.Name, event.ToolResult.Output)
+            if event.ToolResult.Error != "" {
+                fmt.Printf("[tool error] %s: %s\n", event.ToolResult.Call.Name, event.ToolResult.Error)
+            } else {
+                fmt.Printf("[tool result] %s\n", event.ToolResult.Call.Name)
+            }
         }
     case kit.EventMessage:
         fmt.Printf("[message %s complete]\n", event.Message.Role)
