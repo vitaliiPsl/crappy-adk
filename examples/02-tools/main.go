@@ -24,6 +24,7 @@ import (
 
 	"github.com/vitaliiPsl/crappy-adk/agent"
 	"github.com/vitaliiPsl/crappy-adk/kit"
+	"github.com/vitaliiPsl/crappy-adk/providers"
 	"github.com/vitaliiPsl/crappy-adk/providers/openai"
 	"github.com/vitaliiPsl/crappy-adk/x/memory"
 	tool "github.com/vitaliiPsl/crappy-adk/x/tool"
@@ -51,7 +52,7 @@ func main() {
 		},
 	)
 
-	model, err := openai.New(apiKey, "gpt-5.4-nano")
+	model, err := openai.New("gpt-5.4-nano", providers.WithAPIKey(apiKey))
 	if err != nil {
 		log.Fatalf("failed to create model: %v", err)
 	}

@@ -6,6 +6,7 @@ import (
 	"google.golang.org/genai"
 
 	"github.com/vitaliiPsl/crappy-adk/kit"
+	"github.com/vitaliiPsl/crappy-adk/providers"
 )
 
 var _ kit.Model = (*Model)(nil)
@@ -16,28 +17,6 @@ var thinkingLevels = map[kit.ThinkingLevel]genai.ThinkingLevel{
 	kit.ThinkingLevelHigh:   genai.ThinkingLevelHigh,
 }
 
-type options struct {
-	baseURL string
-	config  kit.ModelConfig
-}
-
-// Option customizes the Google provider.
-type Option func(*options)
-
-// WithBaseURL points the provider at a Gemini-compatible endpoint.
-func WithBaseURL(baseURL string) Option {
-	return func(o *options) {
-		o.baseURL = baseURL
-	}
-}
-
-// WithModelConfig overrides the static metadata returned by [Model.Config].
-func WithModelConfig(config kit.ModelConfig) Option {
-	return func(o *options) {
-		o.config = config
-	}
-}
-
 // Model implements the [kit.Model] interface using Google's Gemini API.
 type Model struct {
 	id     string
@@ -45,20 +24,20 @@ type Model struct {
 	client *genai.Client
 }
 
-// New returns an authenticated model for the given modelID and apiKey.
-func New(apiKey string, id string, opts ...Option) (*Model, error) {
-	options := options{}
+// New returns a model for the given ID and options.
+func New(id string, opts ...providers.ModelOption) (*Model, error) {
+	options := providers.ModelOptions{}
 	for _, opt := range opts {
 		opt(&options)
 	}
 
 	cc := &genai.ClientConfig{
-		APIKey:  apiKey,
+		APIKey:  options.APIKey,
 		Backend: genai.BackendGeminiAPI,
 	}
 
-	if options.baseURL != "" {
-		cc.HTTPOptions = genai.HTTPOptions{BaseURL: options.baseURL}
+	if options.BaseURL != "" {
+		cc.HTTPOptions = genai.HTTPOptions{BaseURL: options.BaseURL}
 	}
 
 	client, err := genai.NewClient(context.Background(), cc)
@@ -66,7 +45,7 @@ func New(apiKey string, id string, opts ...Option) (*Model, error) {
 		return nil, err
 	}
 
-	config := options.config
+	config := options.Config
 	if config.ID == "" {
 		config.ID = id
 	}

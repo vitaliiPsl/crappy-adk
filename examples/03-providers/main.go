@@ -22,6 +22,7 @@ import (
 
 	"github.com/vitaliiPsl/crappy-adk/agent"
 	"github.com/vitaliiPsl/crappy-adk/kit"
+	"github.com/vitaliiPsl/crappy-adk/providers"
 	"github.com/vitaliiPsl/crappy-adk/providers/anthropic"
 	"github.com/vitaliiPsl/crappy-adk/providers/google"
 	"github.com/vitaliiPsl/crappy-adk/providers/openai"
@@ -34,21 +35,21 @@ func main() {
 
 	prompt := "In one sentence, what is a transformer in machine learning?"
 
-	anthropicModel, err := anthropic.New(os.Getenv("ANTHROPIC_API_KEY"), "claude-haiku-4-5")
+	anthropicModel, err := anthropic.New("claude-haiku-4-5", providers.WithAPIKey(os.Getenv("ANTHROPIC_API_KEY")))
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	run(ctx, "anthropic / claude-haiku-4-5", anthropicModel, prompt)
 
-	geminiModel, err := google.New(os.Getenv("GEMINI_API_KEY"), "gemini-3-flash-preview")
+	geminiModel, err := google.New("gemini-3-flash-preview", providers.WithAPIKey(os.Getenv("GEMINI_API_KEY")))
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	run(ctx, "google / gemini-3-flash-preview", geminiModel, prompt)
 
-	openaiModel, err := openai.New(os.Getenv("OPENAI_API_KEY"), "gpt-5.4-nano")
+	openaiModel, err := openai.New("gpt-5.4-nano", providers.WithAPIKey(os.Getenv("OPENAI_API_KEY")))
 	if err != nil {
 		log.Fatal(err)
 	}

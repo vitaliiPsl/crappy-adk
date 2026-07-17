@@ -46,7 +46,9 @@ API documentation: https://pkg.go.dev/github.com/vitaliiPsl/crappy-adk
 ctx := context.Background()
 mem := memory.NewHistory()
 
-model, err := openai.New(os.Getenv("OPENAI_API_KEY"), "gpt-5.4-nano")
+model, err := openai.New("gpt-5.4-nano",
+    providers.WithAPIKey(os.Getenv("OPENAI_API_KEY")),
+)
 if err != nil {
     log.Fatal(err)
 }
@@ -117,29 +119,31 @@ Each model adapter package exposes a `New(...)` constructor that returns a `kit.
 
 All three model adapters support extended thinking via `agent.WithThinking(...)` where the underlying model offers it.
 
-These adapters represent API dialects rather than vendor names. Each adapter can be pointed at a compatible endpoint with `WithBaseURL(...)`.
+These adapters represent API dialects rather than vendor names. Shared construction options live in `providers`.
 
 `providers/openai` targets the OpenAI Responses API and can also point at OpenAI-compatible backends (Ollama, LM Studio, gateways):
 
 ```go
-model, err := openai.New("", "gemma4",
-    openai.WithBaseURL("http://localhost:11434/v1"),
+model, err := openai.New("gemma4",
+    providers.WithBaseURL("http://localhost:11434/v1"),
 )
 ```
 
 `providers/anthropic` targets the Anthropic Messages API:
 
 ```go
-model, err := anthropic.New(apiKey, "claude-compatible",
-    anthropic.WithBaseURL("https://your-anthropic-compatible-gateway.example.com"),
+model, err := anthropic.New("claude-compatible",
+    providers.WithAPIKey(apiKey),
+    providers.WithBaseURL("https://your-anthropic-compatible-gateway.example.com"),
 )
 ```
 
 `providers/google` targets the Gemini GenerateContent API:
 
 ```go
-model, err := google.New(apiKey, "gemini-compatible",
-    google.WithBaseURL("https://your-gemini-compatible-gateway.example.com"),
+model, err := google.New("gemini-compatible",
+    providers.WithAPIKey(apiKey),
+    providers.WithBaseURL("https://your-gemini-compatible-gateway.example.com"),
 )
 ```
 

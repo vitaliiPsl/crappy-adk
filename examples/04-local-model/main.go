@@ -1,8 +1,8 @@
 /*
 Example 04 — Local model
 
-Shows how to point the agent at a local inference server using the OpenAI
-provider's WithBaseURL option. Both Ollama and LM Studio expose an
+Shows how to point the agent at a local inference server using
+providers.WithBaseURL. Both Ollama and LM Studio expose an
 OpenAI-compatible API, so no provider-specific code is needed.
 
 Run with Ollama (default):
@@ -24,6 +24,7 @@ import (
 
 	"github.com/vitaliiPsl/crappy-adk/agent"
 	"github.com/vitaliiPsl/crappy-adk/kit"
+	"github.com/vitaliiPsl/crappy-adk/providers"
 	"github.com/vitaliiPsl/crappy-adk/providers/openai"
 	"github.com/vitaliiPsl/crappy-adk/x/memory"
 	tool "github.com/vitaliiPsl/crappy-adk/x/tool"
@@ -45,7 +46,7 @@ func main() {
 		modelID = defaultModel
 	}
 
-	model, err := openai.New("", modelID, openai.WithBaseURL(baseURL))
+	model, err := openai.New(modelID, providers.WithBaseURL(baseURL))
 	if err != nil {
 		log.Fatalf("failed to create model: %v", err)
 	}
