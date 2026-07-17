@@ -28,12 +28,19 @@ func New(id string, opts ...providers.ModelOption) (*Model, error) {
 		opt(&options)
 	}
 
-	clientOptions := []option.RequestOption{
-		option.WithAPIKey(options.APIKey),
-	}
-
+	var clientOptions []option.RequestOption
 	if options.BaseURL != "" {
 		clientOptions = append(clientOptions, option.WithBaseURL(options.BaseURL))
+	}
+
+	if options.BearerToken != "" {
+		clientOptions = append(clientOptions, option.WithAPIKey(options.BearerToken))
+	} else {
+		clientOptions = append(clientOptions, option.WithAPIKey(options.APIKey))
+	}
+
+	for name, value := range options.Headers {
+		clientOptions = append(clientOptions, option.WithHeader(name, value))
 	}
 
 	client := openai.NewClient(clientOptions...)

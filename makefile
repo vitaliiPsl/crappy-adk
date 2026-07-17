@@ -17,4 +17,4 @@ lint:
 lint-fix:
 	golangci-lint run --fix
 
-ci: vet test lint
+ci: vet lint test

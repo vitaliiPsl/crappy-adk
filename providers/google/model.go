@@ -2,6 +2,7 @@ package google
 
 import (
 	"context"
+	"net/http"
 
 	"google.golang.org/genai"
 
@@ -31,13 +32,21 @@ func New(id string, opts ...providers.ModelOption) (*Model, error) {
 		opt(&options)
 	}
 
+	headers := make(http.Header, len(options.Headers))
+	for name, value := range options.Headers {
+		headers.Set(name, value)
+	}
+
 	cc := &genai.ClientConfig{
 		APIKey:  options.APIKey,
 		Backend: genai.BackendGeminiAPI,
+		HTTPOptions: genai.HTTPOptions{
+			Headers: headers,
+		},
 	}
 
 	if options.BaseURL != "" {
-		cc.HTTPOptions = genai.HTTPOptions{BaseURL: options.BaseURL}
+		cc.HTTPOptions.BaseURL = options.BaseURL
 	}
 
 	client, err := genai.NewClient(context.Background(), cc)
