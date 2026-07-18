@@ -83,6 +83,7 @@ func buildRequestParams(modelID string, req kit.ModelRequest) responses.Response
 	params := responses.ResponseNewParams{
 		Model:        modelID,
 		Instructions: openai.String(req.Instructions),
+		Store:        openai.Bool(false),
 		Tools:        convertRequestTools(req.Tools),
 		Input: responses.ResponseNewParamsInputUnion{
 			OfInputItemList: convertRequestMessages(req.Messages),

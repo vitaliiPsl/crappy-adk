@@ -17,13 +17,35 @@ func newStream(ctx context.Context, model *Model, request kit.ModelRequest) *kit
 			_ = stream.Close()
 		}()
 
-		var result kit.ModelResponse
+		var (
+			result        kit.ModelResponse
+			outputContent []kit.Content
+			contentEvents []kit.Content
+		)
 		for stream.Next() {
 			event := stream.Current().AsAny()
 
 			switch e := event.(type) {
 			case responses.ResponseCompletedEvent:
 				result = convertResponse(&e.Response)
+			case responses.ResponseOutputItemDoneEvent:
+				outputContent = append(outputContent, convertResponseContent(e.Item)...)
+
+				if err := handleStreamEvent(event, emit); err != nil {
+					return result, err
+				}
+			case responses.ResponseTextDoneEvent:
+				contentEvents = append(contentEvents, kit.NewTextContent(e.Text))
+
+				if err := handleStreamEvent(event, emit); err != nil {
+					return result, err
+				}
+			case responses.ResponseReasoningSummaryTextDoneEvent:
+				contentEvents = append(contentEvents, kit.NewThinkingContent(e.ItemID, e.Text, ""))
+
+				if err := handleStreamEvent(event, emit); err != nil {
+					return result, err
+				}
 			default:
 				if err := handleStreamEvent(event, emit); err != nil {
 					return result, err
@@ -35,8 +57,26 @@ func newStream(ctx context.Context, model *Model, request kit.ModelRequest) *kit
 			return result, mapError(err)
 		}
 
-		return result, nil
+		return finalizeStreamResponse(result, outputContent, contentEvents), nil
 	})
+}
+
+func finalizeStreamResponse(result kit.ModelResponse, outputContent, contentEvents []kit.Content) kit.ModelResponse {
+	if len(result.Message.Content) > 0 {
+		return result
+	}
+
+	if len(outputContent) > 0 {
+		result.Message = kit.NewModelMessage(outputContent...)
+	} else if len(contentEvents) > 0 {
+		result.Message = kit.NewModelMessage(contentEvents...)
+	}
+
+	if len(result.Message.ToolCalls()) > 0 {
+		result.FinishReason = kit.FinishReasonToolCall
+	}
+
+	return result
 }
 
 func handleStreamEvent(

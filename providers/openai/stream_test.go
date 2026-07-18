@@ -196,6 +196,75 @@ func TestHandleStreamEvent_PartialTextOnlyEmitsEvents(t *testing.T) {
 	}
 }
 
+func TestFinalizeStreamResponseUsesStreamedContentWhenCompletedResponseIsEmpty(t *testing.T) {
+	result := kit.ModelResponse{
+		Message:      kit.NewModelMessage(),
+		FinishReason: kit.FinishReasonStop,
+		Usage:        kit.Usage{InputTokens: 10, OutputTokens: 2},
+	}
+	outputContent := []kit.Content{kit.NewTextContent("Hello")}
+
+	got := finalizeStreamResponse(result, outputContent, nil)
+
+	if text := got.Message.TextContent().Text; text != "Hello" {
+		t.Fatalf("TextContent = %q, want Hello", text)
+	}
+
+	if got.FinishReason != result.FinishReason || got.Usage != result.Usage {
+		t.Fatalf("metadata = %+v, want %+v", got, result)
+	}
+}
+
+func TestFinalizeStreamResponsePrefersCompletedResponse(t *testing.T) {
+	result := kit.ModelResponse{Message: kit.NewModelMessage(kit.NewTextContent("final"))}
+
+	got := finalizeStreamResponse(
+		result,
+		[]kit.Content{kit.NewTextContent("output item")},
+		[]kit.Content{kit.NewTextContent("content event")},
+	)
+
+	if text := got.Message.TextContent().Text; text != "final" {
+		t.Fatalf("TextContent = %q, want final", text)
+	}
+}
+
+func TestFinalizeStreamResponseFallsBackToContentEvents(t *testing.T) {
+	got := finalizeStreamResponse(
+		kit.ModelResponse{},
+		nil,
+		[]kit.Content{kit.NewTextContent("Hello")},
+	)
+
+	if text := got.Message.TextContent().Text; text != "Hello" {
+		t.Fatalf("TextContent = %q, want Hello", text)
+	}
+}
+
+func TestFinalizeStreamResponseRecognizesRecoveredToolCall(t *testing.T) {
+	call := kit.ToolCall{
+		ID:        "call_1",
+		Name:      "bash",
+		Arguments: map[string]any{"command": "date"},
+	}
+	result := kit.ModelResponse{FinishReason: kit.FinishReasonStop}
+
+	got := finalizeStreamResponse(
+		result,
+		[]kit.Content{kit.NewToolCallContent(call)},
+		nil,
+	)
+
+	if got.FinishReason != kit.FinishReasonToolCall {
+		t.Fatalf("FinishReason = %q, want %q", got.FinishReason, kit.FinishReasonToolCall)
+	}
+
+	toolCalls := got.Message.ToolCalls()
+	if len(toolCalls) != 1 || toolCalls[0].ID != call.ID {
+		t.Fatalf("ToolCalls = %+v, want %+v", toolCalls, call)
+	}
+}
+
 func TestHandleStreamEvent_FunctionCallLifecycle(t *testing.T) {
 	events := &recordModelEvents{}
 
