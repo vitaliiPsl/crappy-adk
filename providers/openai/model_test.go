@@ -386,6 +386,17 @@ func makeAPIError(statusCode int, code, message string) *openaisdk.Error {
 	}
 }
 
+func makeAPIErrorWithBody(t *testing.T, statusCode int, body string) *openaisdk.Error {
+	t.Helper()
+
+	err := makeAPIError(statusCode, "", "")
+	if jsonErr := json.Unmarshal([]byte(body), err); jsonErr != nil {
+		t.Fatalf("makeAPIErrorWithBody: %v", jsonErr)
+	}
+
+	return err
+}
+
 func TestMapError(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -465,5 +476,23 @@ func TestMapError(t *testing.T) {
 				t.Errorf("errors.Is(%v, %v) = false", got, tt.wantErr)
 			}
 		})
+	}
+}
+
+func TestMapErrorUsesResponseDetailWhenMessageIsEmpty(t *testing.T) {
+	err := makeAPIErrorWithBody(t, http.StatusBadRequest, `{"detail":"Store must be set to false"}`)
+
+	got := mapError(err)
+
+	if got.Error() != "invalid request: Store must be set to false" {
+		t.Fatalf("mapError() = %q", got)
+	}
+}
+
+func TestMapErrorFallsBackToHTTPStatus(t *testing.T) {
+	got := mapError(makeAPIError(http.StatusBadRequest, "", ""))
+
+	if got.Error() != "invalid request: Bad Request" {
+		t.Fatalf("mapError() = %q", got)
 	}
 }

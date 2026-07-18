@@ -634,3 +634,13 @@ func TestMapError(t *testing.T) {
 		})
 	}
 }
+
+func TestMapErrorUsesConciseResponseMessage(t *testing.T) {
+	err := makeAPIErrorWithBody(t, http.StatusBadRequest, `{"type":"error","error":{"type":"invalid_request_error","message":"tools.0.name is invalid"}}`)
+
+	got := mapError(err)
+
+	if got.Error() != "invalid request: tools.0.name is invalid" {
+		t.Fatalf("mapError() = %q", got)
+	}
+}
