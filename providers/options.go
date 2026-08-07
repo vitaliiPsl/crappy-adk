@@ -1,18 +1,26 @@
 package providers
 
 import (
+	"context"
 	"maps"
+	"net/http"
 
 	"github.com/vitaliiPsl/crappy-adk/kit"
 )
 
+// CredentialsSource resolves authentication headers for each model request.
+type CredentialsSource interface {
+	Headers(context.Context) (http.Header, error)
+}
+
 // ModelOptions configures model provider construction.
 type ModelOptions struct {
-	Config      kit.ModelConfig
-	BaseURL     string
-	APIKey      string
-	BearerToken string
-	Headers     map[string]string
+	Config            kit.ModelConfig
+	BaseURL           string
+	APIKey            string
+	BearerToken       string
+	Headers           map[string]string
+	CredentialsSource CredentialsSource
 }
 
 // ModelOption customizes model provider construction.
@@ -52,5 +60,14 @@ func WithHeaders(headers map[string]string) ModelOption {
 	return func(options *ModelOptions) {
 		options.Headers = make(map[string]string, len(headers))
 		maps.Copy(options.Headers, headers)
+	}
+}
+
+// WithCredentialsSource configures credentials that are resolved for every
+// model request. Dynamic headers take precedence over static credentials and
+// headers when their names overlap.
+func WithCredentialsSource(source CredentialsSource) ModelOption {
+	return func(options *ModelOptions) {
+		options.CredentialsSource = source
 	}
 }

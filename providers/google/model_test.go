@@ -2,14 +2,33 @@ package google
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"testing"
 
 	"google.golang.org/genai"
 
 	"github.com/vitaliiPsl/crappy-adk/kit"
+	"github.com/vitaliiPsl/crappy-adk/providers"
 )
+
+func TestNewRejectsCredentialsSource(t *testing.T) {
+	_, err := New(
+		"test-model",
+		providers.WithCredentialsSource(unsupportedCredentialsSource{}),
+	)
+	if err == nil || err.Error() != "google provider: credentials source is not supported" {
+		t.Fatalf("New() error = %v, want unsupported credentials source", err)
+	}
+}
+
+type unsupportedCredentialsSource struct{}
+
+func (unsupportedCredentialsSource) Headers(context.Context) (http.Header, error) {
+	return nil, nil
+}
 
 type mockTool struct {
 	name, description string

@@ -2,6 +2,7 @@ package anthropic
 
 import (
 	"context"
+	"net/http"
 
 	anthropicsdk "github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
@@ -41,14 +42,23 @@ func New(id string, opts ...providers.ModelOption) (*Model, error) {
 		clientOptions = append(clientOptions, option.WithBaseURL(options.BaseURL))
 	}
 
-	if options.BearerToken != "" {
-		clientOptions = append(clientOptions, option.WithAuthToken(options.BearerToken))
-	} else {
-		clientOptions = append(clientOptions, option.WithAPIKey(options.APIKey))
+	if options.CredentialsSource == nil {
+		if options.BearerToken != "" {
+			clientOptions = append(clientOptions, option.WithAuthToken(options.BearerToken))
+		} else {
+			clientOptions = append(clientOptions, option.WithAPIKey(options.APIKey))
+		}
 	}
 
 	for name, value := range options.Headers {
 		clientOptions = append(clientOptions, option.WithHeader(name, value))
+	}
+
+	if options.CredentialsSource != nil {
+		clientOptions = append(
+			clientOptions,
+			option.WithMiddleware(credentialsMiddleware(options.CredentialsSource)),
+		)
 	}
 
 	client := anthropicsdk.NewClient(clientOptions...)
@@ -113,4 +123,26 @@ func buildRequestParams(modelID string, req kit.ModelRequest) anthropicsdk.Messa
 	}
 
 	return params
+}
+
+func credentialsMiddleware(source providers.CredentialsSource) option.Middleware {
+	return func(request *http.Request, next option.MiddlewareNext) (*http.Response, error) {
+		headers, err := source.Headers(request.Context())
+		if err != nil {
+			return nil, err
+		}
+
+		request.Header.Del("Authorization")
+		request.Header.Del("X-Api-Key")
+
+		for name, values := range headers {
+			request.Header.Del(name)
+
+			for _, value := range values {
+				request.Header.Add(name, value)
+			}
+		}
+
+		return next(request)
+	}
 }

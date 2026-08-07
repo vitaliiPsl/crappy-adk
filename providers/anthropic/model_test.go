@@ -1,17 +1,84 @@
 package anthropic
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	anthropicsdk "github.com/anthropics/anthropic-sdk-go"
 
 	"github.com/vitaliiPsl/crappy-adk/kit"
+	"github.com/vitaliiPsl/crappy-adk/providers"
 )
+
+func TestModelResolvesCredentialsForEveryRequest(t *testing.T) {
+	var (
+		authorization []string
+		apiKeys       []string
+	)
+
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		authorization = append(authorization, request.Header.Get("Authorization"))
+		apiKeys = append(apiKeys, request.Header.Get("X-Api-Key"))
+		writer.Header().Set("Content-Type", "application/json")
+		_, _ = writer.Write([]byte(`{
+  "id":"message",
+  "type":"message",
+  "role":"assistant",
+  "model":"test-model",
+  "content":[],
+  "stop_reason":"end_turn",
+  "stop_sequence":null,
+  "usage":{"input_tokens":1,"output_tokens":1}
+}`))
+	}))
+	t.Cleanup(server.Close)
+
+	source := &rotatingCredentialsSource{}
+
+	model, err := New(
+		"test-model",
+		providers.WithBaseURL(server.URL),
+		providers.WithAPIKey("static-key"),
+		providers.WithHeaders(map[string]string{"Authorization": "Bearer static-header"}),
+		providers.WithCredentialsSource(source),
+	)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	for range 2 {
+		if _, err := model.Generate(context.Background(), kit.ModelRequest{}); err != nil {
+			t.Fatalf("Generate() error = %v", err)
+		}
+	}
+
+	want := []string{"Bearer token-1", "Bearer token-2"}
+	if fmt.Sprint(authorization) != fmt.Sprint(want) {
+		t.Fatalf("Authorization headers = %v, want %v", authorization, want)
+	}
+
+	if fmt.Sprint(apiKeys) != fmt.Sprint([]string{"", ""}) {
+		t.Fatalf("X-Api-Key headers = %v, want empty", apiKeys)
+	}
+}
+
+type rotatingCredentialsSource struct {
+	requests int
+}
+
+func (s *rotatingCredentialsSource) Headers(context.Context) (http.Header, error) {
+	s.requests++
+
+	return http.Header{
+		"Authorization": {fmt.Sprintf("Bearer token-%d", s.requests)},
+	}, nil
+}
 
 type mockTool struct {
 	name, description string

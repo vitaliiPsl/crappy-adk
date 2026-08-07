@@ -2,6 +2,7 @@ package google
 
 import (
 	"context"
+	"errors"
 	"net/http"
 
 	"google.golang.org/genai"
@@ -30,6 +31,10 @@ func New(id string, opts ...providers.ModelOption) (*Model, error) {
 	options := providers.ModelOptions{}
 	for _, opt := range opts {
 		opt(&options)
+	}
+
+	if options.CredentialsSource != nil {
+		return nil, errors.New("google provider: credentials source is not supported")
 	}
 
 	headers := make(http.Header, len(options.Headers))

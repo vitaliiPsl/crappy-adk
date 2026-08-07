@@ -1,10 +1,12 @@
 package openai
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/openai/openai-go/v3/responses"
@@ -12,7 +14,55 @@ import (
 	openaisdk "github.com/openai/openai-go/v3"
 
 	"github.com/vitaliiPsl/crappy-adk/kit"
+	"github.com/vitaliiPsl/crappy-adk/providers"
 )
+
+func TestModelResolvesCredentialsForEveryRequest(t *testing.T) {
+	var authorization []string
+
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		authorization = append(authorization, request.Header.Get("Authorization"))
+		writer.Header().Set("Content-Type", "application/json")
+		_, _ = writer.Write([]byte(`{"status":"completed","output":[]}`))
+	}))
+	t.Cleanup(server.Close)
+
+	source := &rotatingCredentialsSource{}
+
+	model, err := New(
+		"test-model",
+		providers.WithBaseURL(server.URL),
+		providers.WithBearerToken("static-token"),
+		providers.WithHeaders(map[string]string{"Authorization": "Bearer static-header"}),
+		providers.WithCredentialsSource(source),
+	)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	for range 2 {
+		if _, err := model.Generate(context.Background(), kit.ModelRequest{}); err != nil {
+			t.Fatalf("Generate() error = %v", err)
+		}
+	}
+
+	want := []string{"Bearer token-1", "Bearer token-2"}
+	if fmt.Sprint(authorization) != fmt.Sprint(want) {
+		t.Fatalf("Authorization headers = %v, want %v", authorization, want)
+	}
+}
+
+type rotatingCredentialsSource struct {
+	requests int
+}
+
+func (s *rotatingCredentialsSource) Headers(context.Context) (http.Header, error) {
+	s.requests++
+
+	return http.Header{
+		"Authorization": []string{fmt.Sprintf("Bearer token-%d", s.requests)},
+	}, nil
+}
 
 type mockTool struct {
 	name, description string

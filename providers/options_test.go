@@ -1,6 +1,10 @@
 package providers
 
-import "testing"
+import (
+	"context"
+	"net/http"
+	"testing"
+)
 
 func TestWithBearerToken(t *testing.T) {
 	options := ModelOptions{}
@@ -14,6 +18,22 @@ func TestWithBearerToken(t *testing.T) {
 	if options.BearerToken != "bearer-token" {
 		t.Fatalf("BearerToken = %q, want bearer-token", options.BearerToken)
 	}
+}
+
+func TestWithCredentialsSource(t *testing.T) {
+	source := testCredentialsSource{}
+	options := ModelOptions{}
+	WithCredentialsSource(source)(&options)
+
+	if options.CredentialsSource != source {
+		t.Fatalf("CredentialsSource = %T, want testCredentialsSource", options.CredentialsSource)
+	}
+}
+
+type testCredentialsSource struct{}
+
+func (testCredentialsSource) Headers(context.Context) (http.Header, error) {
+	return nil, nil
 }
 
 func TestWithHeadersClonesHeaders(t *testing.T) {
