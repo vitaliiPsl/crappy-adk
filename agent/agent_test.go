@@ -176,6 +176,50 @@ func TestRun_ExecutesToolCallAndContinues(t *testing.T) {
 	})
 }
 
+func TestRun_RecordsToolCallAndResultsAtomically(t *testing.T) {
+	call := kit.NewToolCall("call-1", "add", map[string]any{"a": 3, "b": 4})
+	tool := kittest.NewTool(t, "add", "add numbers", kittest.ToolResult{Result: "7"})
+	model := kittest.NewModel(t,
+		kittest.ModelResult{Response: kit.ModelResponse{
+			Message:      kit.NewModelMessage(kit.NewToolCallContent(call)),
+			FinishReason: kit.FinishReasonToolCall,
+		}},
+		kittest.ModelResult{Response: kit.ModelResponse{
+			Message:      kit.NewModelMessage(kit.NewTextContent("done")),
+			FinishReason: kit.FinishReasonStop,
+		}},
+	)
+	memory := &recordingMemory{}
+
+	a, err := New(model, memory, xtool.NewSet(), WithTools(tool))
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	if _, err := a.Run(context.Background(), kit.NewUserMessage(kit.NewTextContent("add"))); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	wantBatchSizes := []int{1, 2, 1}
+	if len(memory.records) != len(wantBatchSizes) {
+		t.Fatalf("len(Record calls) = %d, want %d", len(memory.records), len(wantBatchSizes))
+	}
+
+	for index, want := range wantBatchSizes {
+		if got := len(memory.records[index]); got != want {
+			t.Fatalf("len(Record call %d) = %d, want %d", index, got, want)
+		}
+	}
+
+	if got := len(memory.records[1][0].ToolCalls()); got != 1 {
+		t.Fatalf("tool-call batch messages[0] has %d tool calls, want 1", got)
+	}
+
+	if got := len(memory.records[1][1].ToolResults()); got != 1 {
+		t.Fatalf("tool-call batch messages[1] has %d tool results, want 1", got)
+	}
+}
+
 func TestRun_SendsToolErrorBackToModel(t *testing.T) {
 	toolErr := errors.New("tool failed")
 	call := kit.NewToolCall("call-1", "fail", map[string]any{"input": "x"})
@@ -394,7 +438,9 @@ func TestRun_ContextCanceledDuringToolAbortsRun(t *testing.T) {
 
 	input := kit.NewUserMessage(kit.NewTextContent("cancel during tool"))
 
-	a, err := New(model, xmemory.NewHistory(), xtool.NewSet(), WithTools(tool), WithInstructions("use tools"))
+	memory := &recordingMemory{}
+
+	a, err := New(model, memory, xtool.NewSet(), WithTools(tool), WithInstructions("use tools"))
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -417,6 +463,35 @@ func TestRun_ContextCanceledDuringToolAbortsRun(t *testing.T) {
 	if got := len(resp.Messages[0].ToolCalls()); got != 1 {
 		t.Fatalf("len(ToolCalls) = %d, want 1", got)
 	}
+
+	if len(memory.records) != 1 {
+		t.Fatalf("len(Record calls) = %d, want only the input", len(memory.records))
+	}
+
+	if len(memory.records[0]) != 1 || memory.records[0][0].Role != kit.RoleUser {
+		t.Fatalf("Record call = %+v, want only the user input", memory.records[0])
+	}
+}
+
+type recordingMemory struct {
+	messages []kit.Message
+	records  [][]kit.Message
+}
+
+func (m *recordingMemory) Context(context.Context) ([]kit.Message, error) {
+	return m.messages, nil
+}
+
+func (m *recordingMemory) History(context.Context) ([]kit.Message, error) {
+	return m.messages, nil
+}
+
+func (m *recordingMemory) Record(_ context.Context, messages ...kit.Message) error {
+	batch := append([]kit.Message(nil), messages...)
+	m.records = append(m.records, batch)
+	m.messages = append(m.messages, messages...)
+
+	return nil
 }
 
 func TestStream_ReturnsEventsAndResult(t *testing.T) {

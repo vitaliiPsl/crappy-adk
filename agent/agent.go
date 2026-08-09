@@ -84,22 +84,27 @@ func (a *Agent) run(
 			return rc.Response(), err
 		}
 
+		rc.Append(resp.Message)
 		rc.RecordUsage(resp.Usage)
 
-		if err := a.appendMessage(rc, resp.Message); err != nil {
-			return rc.Response(), err
-		}
-
-		if err := rc.Emit(kit.NewAgentMessageEvent(resp.Message)); err != nil {
-			return rc.Response(), err
-		}
-
 		if resp.FinishReason != kit.FinishReasonToolCall {
+			if err := a.memory.Record(rc.Context, resp.Message); err != nil {
+				return rc.Response(), err
+			}
+
+			if err := rc.Emit(kit.NewAgentMessageEvent(resp.Message)); err != nil {
+				return rc.Response(), err
+			}
+
 			if err := a.hooks.onTurnEnd(rc); err != nil {
 				return rc.Response(), err
 			}
 
 			return rc.Response(), nil
+		}
+
+		if err := rc.Emit(kit.NewAgentMessageEvent(resp.Message)); err != nil {
+			return rc.Response(), err
 		}
 
 		results, err := a.executeTools(rc, resp.Message.ToolCalls())
@@ -108,7 +113,9 @@ func (a *Agent) run(
 		}
 
 		toolMessage := kit.NewToolMessage(results...)
-		if err := a.appendMessage(rc, toolMessage); err != nil {
+		rc.Append(toolMessage)
+
+		if err := a.memory.Record(rc.Context, resp.Message, toolMessage); err != nil {
 			return rc.Response(), err
 		}
 
@@ -120,12 +127,6 @@ func (a *Agent) run(
 			return rc.Response(), err
 		}
 	}
-}
-
-func (a *Agent) appendMessage(rc *kit.RunContext, msg kit.Message) error {
-	rc.Append(msg)
-
-	return a.memory.Record(rc.Context, msg)
 }
 
 func (a *Agent) callModel(rc *kit.RunContext) (kit.ModelResponse, error) {
