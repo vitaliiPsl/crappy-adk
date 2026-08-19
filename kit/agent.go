@@ -1,6 +1,9 @@
 package kit
 
-import "context"
+import (
+	"context"
+	"encoding/json"
+)
 
 // Agent runs a ReAct loop against a [Model], executes any requested [Tool] calls,
 // and returns the final response.
@@ -19,12 +22,16 @@ type AgentConfig struct {
 	MaxOutputTokens *int32
 	// Thinking controls the level of extended reasoning. Defaults to [ThinkingDisabled].
 	Thinking *ThinkingLevel
+	// OutputSchema constrains final responses to a JSON schema.
+	OutputSchema *OutputSchema
 }
 
 // AgentResponse is the result of a complete agent run.
 type AgentResponse struct {
 	// Output contains the first text content of the final model message.
 	Output *Text
+	// StructuredOutput contains validated JSON when an output schema is configured.
+	StructuredOutput json.RawMessage
 	// Messages contains the messages generated during the run.
 	Messages []Message
 	// Usage is the accumulated token usage across all turns.

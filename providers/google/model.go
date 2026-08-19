@@ -115,5 +115,10 @@ func buildRequestParams(req kit.ModelRequest) ([]*genai.Content, *genai.Generate
 		}
 	}
 
+	if req.OutputSchema != nil {
+		config.ResponseMIMEType = "application/json"
+		config.ResponseJsonSchema = req.OutputSchema.Schema
+	}
+
 	return convertRequestMessages(req.Messages), config
 }

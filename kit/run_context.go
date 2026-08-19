@@ -1,6 +1,9 @@
 package kit
 
-import "context"
+import (
+	"context"
+	"encoding/json"
+)
 
 // RunContext is the per-run state that the agent threads through its loop.
 // Hooks receive a pointer to it and may inspect it or mutate memory.
@@ -15,6 +18,8 @@ type RunContext struct {
 	Usage Usage
 	// LastUsage is the usage reported by the most recent model response.
 	LastUsage Usage
+	// StructuredOutput is the validated JSON produced by the final model response.
+	StructuredOutput json.RawMessage
 	// Events emits agent stream events. It is a no-op for non-streaming runs.
 	Events Emitter[AgentEvent]
 }
@@ -44,9 +49,10 @@ func (rc *RunContext) RecordUsage(u Usage) {
 // from the latest run message when that message is a model message.
 func (rc *RunContext) Response() AgentResponse {
 	resp := AgentResponse{
-		Messages:  rc.Messages,
-		Usage:     rc.Usage,
-		LastUsage: rc.LastUsage,
+		Messages:         rc.Messages,
+		Usage:            rc.Usage,
+		LastUsage:        rc.LastUsage,
+		StructuredOutput: rc.StructuredOutput,
 	}
 
 	if len(rc.Messages) == 0 {

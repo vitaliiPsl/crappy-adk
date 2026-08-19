@@ -21,6 +21,7 @@ Felt bored while on vacation, so decided to learn more about AI agents and build
 - [Memory](#memory)
 - [Models](#models)
 - [Tools](#tools)
+- [Structured output](#structured-output)
 - [Streaming](#streaming)
 - [Hooks](#hooks)
 - [Summarization](#summarization)
@@ -185,6 +186,50 @@ a, err := agent.New(model, mem, tool.NewSet(getTime),
 
 The `WithTools(...)` option adds more tools after the set is built — this is how extensions register tools of their own.
 
+## Structured output
+
+Use `agent.WithOutputSchema(...)` when the final model response must conform to a JSON schema. `output.For[T]` derives the schema from a Go type, and `output.Decode[T]` decodes the validated result.
+
+```go
+type Assessment struct {
+    Status         string `json:"status" jsonschema:"One of healthy, degraded, or unavailable"`
+    Summary        string `json:"summary" jsonschema:"Concise explanation of the assessment"`
+    NeedsAttention bool   `json:"needs_attention" jsonschema:"Whether a person needs to investigate"`
+}
+
+schema, err := output.For[Assessment](
+    "service_assessment",
+    "The completed service health assessment",
+)
+if err != nil {
+    log.Fatal(err)
+}
+
+a, err := agent.New(model, memory.NewHistory(), tool.NewSet(checkService),
+    agent.WithInstructions("Inspect the service, then return an assessment."),
+    agent.WithOutputSchema(schema),
+)
+
+resp, err := a.Run(ctx, kit.NewUserMessage(
+    kit.NewTextContent("Assess the checkout service."),
+))
+if errors.Is(err, kit.ErrInvalidOutput) {
+    log.Fatal("model returned an invalid assessment")
+}
+if err != nil {
+    log.Fatal(err)
+}
+
+assessment, err := output.Decode[Assessment](resp)
+if err != nil {
+    log.Fatal(err)
+}
+```
+
+The schema constrains only the final response; the agent can still call tools during earlier turns. The JSON text remains in the final model message and conversation memory, while `AgentResponse.StructuredOutput` contains the validated raw JSON.
+
+Validation fails with `kit.ErrInvalidOutput` when the final response is empty, invalid JSON, or does not satisfy the schema. The invalid final message is not recorded in memory. JSON Schema support differs between providers, so prefer simple object schemas with explicit fields. For nullable values, use required pointer fields rather than omitted properties when portability matters.
+
 ## Streaming
 
 `Stream` returns a lazy single-consumption iterator that yields fine-grained events as they arrive. Range over it once with `stream.Iter()`, then call `stream.Result()` for the final response and any terminal error. If you call `stream.Result()` before iteration starts, it drains the stream for you. If you stop iterating early, `stream.Result()` returns the partial result accumulated so far and does not resume.
@@ -341,6 +386,7 @@ Everything is an interface. If something doesn't fit, replace it.
 - **Memory** — `kit.Memory`. Use `memory.NewHistory()` for short-term history and summary-derived context, or implement your own.
 - **Model** — `kit.Model`. Point at any inference backend via a model adapter package or implement your own.
 - **Tool** — `kit.Tool`, or use `tool.New[I, O]` from `x/tool` for auto-schema from a Go struct. Group tools into a `kit.ToolSet` with `tool.NewSet(...)`.
+- **Output schema** — `kit.OutputSchema`, or derive one from a Go type with `output.For[T]`.
 - **Summarizer** — a `Trigger` plus a `Strategy` registered with `summarization.WithSummarization(...)`.
 - **Guard** — runtime policies from `x/guard`, such as turn, tool-call, token-budget, and repeated-tool-call limits.
 - **Hooks** — typed function values registered with `WithOn...` options.
@@ -348,14 +394,15 @@ Everything is an interface. If something doesn't fit, replace it.
 
 ## Examples
 
-| Example                  | What it shows                                       |
-|--------------------------|-----------------------------------------------------|
-| `examples/01-basic`      | `Run()`, no tools                                   |
-| `examples/02-tools`      | `tool.MustNew` with a typed custom tool             |
-| `examples/03-providers`  | Anthropic, Google, and OpenAI side by side          |
-| `examples/04-local-model`| `providers/openai` against a local Ollama server    |
-| `examples/05-multi-turn` | Short-term memory conversation pattern              |
-| `examples/06-streaming`  | `Stream()`, thinking, text deltas, tool events      |
+| Example                         | What it shows                                    |
+|---------------------------------|--------------------------------------------------|
+| `examples/01-basic`             | `Run()`, no tools                                |
+| `examples/02-tools`             | `tool.MustNew` with a typed custom tool          |
+| `examples/03-providers`         | Anthropic, Google, and OpenAI side by side       |
+| `examples/04-local-model`       | `providers/openai` against a local Ollama server |
+| `examples/05-multi-turn`        | Short-term memory conversation pattern           |
+| `examples/06-streaming`         | `Stream()`, thinking, text deltas, tool events   |
+| `examples/07-structured-output` | Typed, validated final responses with tools      |
 
 Run any example from the repo root:
 

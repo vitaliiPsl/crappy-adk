@@ -116,6 +116,20 @@ func buildRequestParams(modelID string, req kit.ModelRequest) responses.Response
 		}
 	}
 
+	if req.OutputSchema != nil {
+		format := responses.ResponseFormatTextConfigParamOfJSONSchema(
+			req.OutputSchema.Name,
+			req.OutputSchema.Schema,
+		)
+
+		format.OfJSONSchema.Strict = openai.Bool(true)
+		if req.OutputSchema.Description != "" {
+			format.OfJSONSchema.Description = openai.String(req.OutputSchema.Description)
+		}
+
+		params.Text.Format = format
+	}
+
 	return params
 }
 

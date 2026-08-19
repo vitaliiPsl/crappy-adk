@@ -110,6 +110,12 @@ func buildRequestParams(modelID string, req kit.ModelRequest) anthropicsdk.Messa
 		params.Temperature = anthropicsdk.Float(float64(*gc.Temperature))
 	}
 
+	if req.OutputSchema != nil {
+		params.OutputConfig.Format = anthropicsdk.JSONOutputFormatParam{
+			Schema: req.OutputSchema.Schema,
+		}
+	}
+
 	// Anthropic requires max_tokens >= 1
 	// Keeping it set to 0 pupulates the prompt cache without generating response
 	if gc.MaxOutputTokens != nil {

@@ -19,6 +19,15 @@ type ModelRequest struct {
 	Tools []Tool `json:"-"`
 	// Config controls how the model generates its response.
 	Config GenerationConfig `json:"config"`
+	// OutputSchema constrains the final response to a JSON schema.
+	OutputSchema *OutputSchema `json:"output_schema,omitempty"`
+}
+
+// OutputSchema describes the required JSON shape of a model response.
+type OutputSchema struct {
+	Name        string         `json:"name"`
+	Description string         `json:"description,omitempty"`
+	Schema      map[string]any `json:"schema"`
 }
 
 // ModelResponse is the output of a model call.

@@ -24,6 +24,21 @@ func TestNewRejectsCredentialsSource(t *testing.T) {
 	}
 }
 
+func TestBuildRequestParamsStructuredOutput(t *testing.T) {
+	schema := map[string]any{"type": "object"}
+	_, config := buildRequestParams(kit.ModelRequest{
+		OutputSchema: &kit.OutputSchema{Name: "assessment", Schema: schema},
+	})
+
+	if config.ResponseMIMEType != "application/json" {
+		t.Fatalf("ResponseMIMEType = %q, want application/json", config.ResponseMIMEType)
+	}
+
+	if fmt.Sprint(config.ResponseJsonSchema) != fmt.Sprint(schema) {
+		t.Fatalf("ResponseJsonSchema = %v, want %v", config.ResponseJsonSchema, schema)
+	}
+}
+
 type unsupportedCredentialsSource struct{}
 
 func (unsupportedCredentialsSource) Headers(context.Context) (http.Header, error) {

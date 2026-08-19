@@ -68,6 +68,17 @@ func TestModelResolvesCredentialsForEveryRequest(t *testing.T) {
 	}
 }
 
+func TestBuildRequestParamsStructuredOutput(t *testing.T) {
+	schema := map[string]any{"type": "object"}
+	params := buildRequestParams("test-model", kit.ModelRequest{
+		OutputSchema: &kit.OutputSchema{Name: "assessment", Schema: schema},
+	})
+
+	if fmt.Sprint(params.OutputConfig.Format.Schema) != fmt.Sprint(schema) {
+		t.Fatalf("output schema = %v, want %v", params.OutputConfig.Format.Schema, schema)
+	}
+}
+
 type rotatingCredentialsSource struct {
 	requests int
 }

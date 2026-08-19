@@ -14,6 +14,7 @@ var _ kit.Agent = (*Agent)(nil)
 // the model produces a final response.
 type Agent struct {
 	config kit.AgentConfig
+	output outputContract
 
 	model  kit.Model
 	memory kit.Memory
@@ -88,6 +89,10 @@ func (a *Agent) run(
 		rc.RecordUsage(resp.Usage)
 
 		if resp.FinishReason != kit.FinishReasonToolCall {
+			if err := a.output.capture(rc, resp.Message); err != nil {
+				return rc.Response(), err
+			}
+
 			if err := a.memory.Record(rc.Context, resp.Message); err != nil {
 				return rc.Response(), err
 			}
@@ -139,6 +144,7 @@ func (a *Agent) callModel(rc *kit.RunContext) (kit.ModelResponse, error) {
 		Instructions: a.config.Instructions,
 		Messages:     messages,
 		Tools:        a.tools.List(),
+		OutputSchema: a.config.OutputSchema,
 		Config: kit.GenerationConfig{
 			Temperature:     a.config.Temperature,
 			MaxOutputTokens: a.config.MaxOutputTokens,

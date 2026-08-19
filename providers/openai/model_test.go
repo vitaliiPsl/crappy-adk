@@ -52,6 +52,30 @@ func TestModelResolvesCredentialsForEveryRequest(t *testing.T) {
 	}
 }
 
+func TestBuildRequestParamsStructuredOutput(t *testing.T) {
+	schema := map[string]any{"type": "object"}
+	params := buildRequestParams("test-model", kit.ModelRequest{
+		OutputSchema: &kit.OutputSchema{
+			Name:        "assessment",
+			Description: "Completed assessment",
+			Schema:      schema,
+		},
+	})
+
+	format := params.Text.Format.OfJSONSchema
+	if format == nil {
+		t.Fatal("structured output format is nil")
+	}
+
+	if format.Name != "assessment" || format.Description.Value != "Completed assessment" {
+		t.Fatalf("format metadata = %+v", format)
+	}
+
+	if !format.Strict.Value {
+		t.Fatal("strict = false, want true")
+	}
+}
+
 type rotatingCredentialsSource struct {
 	requests int
 }

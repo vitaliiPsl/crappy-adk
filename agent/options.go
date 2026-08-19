@@ -66,6 +66,21 @@ func WithThinking(v kit.ThinkingLevel) Option {
 	}
 }
 
+// WithOutputSchema constrains final responses to the supplied JSON schema.
+func WithOutputSchema(schema kit.OutputSchema) Option {
+	return func(a *Agent) error {
+		output, err := newOutputContract(schema)
+		if err != nil {
+			return err
+		}
+
+		a.config.OutputSchema = &schema
+		a.output = output
+
+		return nil
+	}
+}
+
 // WithTools adds one or more tools to the agent's tool set. The first
 // registration of a given name wins; later registrations with the same name
 // are ignored.
