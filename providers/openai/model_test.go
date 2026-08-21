@@ -243,6 +243,75 @@ func TestConvertRequestContentListItem(t *testing.T) {
 	})
 }
 
+func TestConvertRequestDropsBlankText(t *testing.T) {
+	t.Run("blank text item is dropped", func(t *testing.T) {
+		if _, ok := convertRequestContentListItem(kit.NewTextContent(" \n ")); ok {
+			t.Fatal("blank text was converted, want dropped")
+		}
+	})
+
+	t.Run("user message with only blank text is dropped", func(t *testing.T) {
+		items := convertRequestMessage(kit.NewUserMessage(kit.NewTextContent("")))
+
+		if len(items) != 0 {
+			t.Fatalf("len = %d, want 0", len(items))
+		}
+	})
+
+	t.Run("assistant message with only blank text is dropped", func(t *testing.T) {
+		items := convertRequestMessage(kit.NewModelMessage(kit.NewTextContent("   ")))
+
+		if len(items) != 0 {
+			t.Fatalf("len = %d, want 0", len(items))
+		}
+	})
+}
+
+func TestConvertRequestReasoningItem(t *testing.T) {
+	tests := []struct {
+		name                string
+		id, text, signature string
+		want                bool
+	}{
+		{name: "empty is dropped"},
+		{name: "kept for encrypted content", signature: "enc", want: true},
+		{name: "kept for id alone", id: "rs_1", want: true},
+		{name: "kept for summary text", text: "thought", want: true},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			content := kit.NewThinkingContent(test.id, test.text, test.signature)
+
+			item, ok := convertRequestContentItem(content, responses.EasyInputMessageRoleAssistant)
+			if ok != test.want {
+				t.Fatalf("converted = %v, want %v", ok, test.want)
+			}
+
+			if ok && item.OfReasoning == nil {
+				t.Fatalf("item = %v, want a reasoning item", item)
+			}
+		})
+	}
+}
+
+func TestConvertFunctionCallOutputEmpty(t *testing.T) {
+	call := kit.NewToolCall("call_1", "bash", nil)
+
+	for _, output := range []kit.ToolOutput{
+		{},
+		kit.NewToolOutput(kit.NewTextContent("")),
+		kit.NewToolOutput(kit.NewTextContent(" \n ")),
+	} {
+		result := kit.NewToolResult(call, output, nil)
+
+		got := convertFunctionCallOutput(&result)
+		if got.OfString.Value != emptyToolResultText {
+			t.Fatalf("output = %q, want %q", got.OfString.Value, emptyToolResultText)
+		}
+	}
+}
+
 func TestConvertResponseContent(t *testing.T) {
 	t.Run("message single text part", func(t *testing.T) {
 		item := mustParseOutputItem(t, `{

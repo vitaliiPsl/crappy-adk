@@ -30,7 +30,9 @@ func convertRequestTools(tools []kit.Tool) []*genai.Tool {
 func convertRequestMessages(messages []kit.Message) []*genai.Content {
 	contents := make([]*genai.Content, 0, len(messages))
 	for _, msg := range messages {
-		contents = append(contents, convertRequestMessage(msg))
+		if content := convertRequestMessage(msg); content != nil {
+			contents = append(contents, content)
+		}
 	}
 
 	return contents
@@ -38,6 +40,9 @@ func convertRequestMessages(messages []kit.Message) []*genai.Content {
 
 func convertRequestMessage(msg kit.Message) *genai.Content {
 	parts := convertRequestContentItems(msg.Content)
+	if len(parts) == 0 {
+		return nil
+	}
 
 	switch msg.Role {
 	case kit.RoleModel:
@@ -61,7 +66,7 @@ func convertRequestContentItems(content []kit.Content) []*genai.Part {
 func convertRequestContentItem(content kit.Content) (*genai.Part, bool) {
 	switch content.Type {
 	case kit.ContentTypeText:
-		if content.Text == nil {
+		if content.Text == nil || blank(content.Text.Text) {
 			return nil, false
 		}
 
@@ -72,6 +77,12 @@ func convertRequestContentItem(content kit.Content) (*genai.Part, bool) {
 		}
 
 		t := content.Thinking
+
+		// A thought part is replayed for its signature, so it is dropped only when
+		// it carries neither a signature nor any text.
+		if t.Signature == "" && blank(t.Text) {
+			return nil, false
+		}
 
 		return &genai.Part{
 			Thought:          true,
@@ -133,7 +144,7 @@ func convertRequestContentItem(content kit.Content) (*genai.Part, bool) {
 
 		return part, true
 	case kit.ContentTypeSummary:
-		if content.Summary == nil {
+		if content.Summary == nil || blank(content.Summary.Text) {
 			return nil, false
 		}
 
@@ -339,6 +350,10 @@ func convertResponseToolCall(part *genai.Part) (kit.ToolCall, bool) {
 		Arguments: fc.Args,
 		Signature: encodeSignature(part.ThoughtSignature),
 	}, true
+}
+
+func blank(text string) bool {
+	return strings.TrimSpace(text) == ""
 }
 
 func encodeSignature(sig []byte) string {

@@ -58,6 +58,46 @@ func (m *mockTool) Execute(_ *kit.RunContext, _ kit.ToolCall) (kit.ToolOutput, e
 	return kit.ToolOutput{}, nil
 }
 
+func TestBuildRequestParamsSystemInstruction(t *testing.T) {
+	tests := []struct {
+		name         string
+		instructions string
+		want         *genai.Content
+	}{
+		{name: "empty is omitted", instructions: ""},
+		{name: "blank is omitted", instructions: "   \n\t "},
+		{
+			name:         "present is sent verbatim",
+			instructions: "\nYou are helpful.\n",
+			want: &genai.Content{
+				Parts: []*genai.Part{{Text: "\nYou are helpful.\n"}},
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			_, config := buildRequestParams(kit.ModelRequest{
+				Instructions: test.instructions,
+			})
+
+			if test.want == nil {
+				if config.SystemInstruction != nil {
+					t.Fatalf("SystemInstruction = %v, want nil", config.SystemInstruction)
+				}
+
+				return
+			}
+
+			if config.SystemInstruction == nil ||
+				len(config.SystemInstruction.Parts) != 1 ||
+				config.SystemInstruction.Parts[0].Text != test.want.Parts[0].Text {
+				t.Fatalf("SystemInstruction = %v, want %v", config.SystemInstruction, test.want)
+			}
+		})
+	}
+}
+
 func TestConvertRequestTools(t *testing.T) {
 	t.Run("nil returns nil", func(t *testing.T) {
 		if got := convertRequestTools(nil); got != nil {
@@ -378,6 +418,71 @@ func TestConvertRequestMessage(t *testing.T) {
 			t.Errorf("Role = %q, want %q", result.Role, genai.RoleUser)
 		}
 	})
+}
+
+func TestConvertRequestDropsBlankParts(t *testing.T) {
+	t.Run("blank text part is dropped", func(t *testing.T) {
+		parts := convertRequestContentItems([]kit.Content{
+			kit.NewTextContent("  \n "),
+			kit.NewTextContent("kept"),
+		})
+
+		if len(parts) != 1 {
+			t.Fatalf("len = %d, want 1", len(parts))
+		}
+
+		if parts[0].Text != "kept" {
+			t.Errorf("Text = %q, want %q", parts[0].Text, "kept")
+		}
+	})
+
+	t.Run("message without parts is dropped", func(t *testing.T) {
+		if content := convertRequestMessage(kit.NewUserMessage(kit.NewTextContent(""))); content != nil {
+			t.Fatalf("content = %v, want nil", content)
+		}
+	})
+
+	t.Run("dropped messages are excluded from contents", func(t *testing.T) {
+		contents := convertRequestMessages([]kit.Message{
+			kit.NewUserMessage(kit.NewTextContent("")),
+			kit.NewUserMessage(kit.NewTextContent("kept")),
+		})
+
+		if len(contents) != 1 {
+			t.Fatalf("len = %d, want 1", len(contents))
+		}
+
+		if contents[0].Parts[0].Text != "kept" {
+			t.Errorf("Text = %q, want %q", contents[0].Parts[0].Text, "kept")
+		}
+	})
+}
+
+func TestConvertRequestThoughtPart(t *testing.T) {
+	tests := []struct {
+		name            string
+		text, signature string
+		want            bool
+	}{
+		{name: "empty is dropped"},
+		{name: "kept for signature", signature: "c2ln", want: true},
+		{name: "kept for text", text: "thought", want: true},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			content := kit.NewThinkingContent("", test.text, test.signature)
+
+			part, ok := convertRequestContentItem(content)
+			if ok != test.want {
+				t.Fatalf("converted = %v, want %v", ok, test.want)
+			}
+
+			if ok && !part.Thought {
+				t.Fatalf("part = %v, want a thought part", part)
+			}
+		})
+	}
 }
 
 func TestConvertResponseContent(t *testing.T) {

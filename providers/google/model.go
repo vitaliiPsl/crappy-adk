@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strings"
 
 	"google.golang.org/genai"
 
@@ -95,8 +96,13 @@ func (m *Model) Stream(ctx context.Context, request kit.ModelRequest) *kit.Strea
 
 func buildRequestParams(req kit.ModelRequest) ([]*genai.Content, *genai.GenerateContentConfig) {
 	config := &genai.GenerateContentConfig{
-		SystemInstruction: &genai.Content{Parts: []*genai.Part{{Text: req.Instructions}}},
-		Tools:             convertRequestTools(req.Tools),
+		Tools: convertRequestTools(req.Tools),
+	}
+
+	if strings.TrimSpace(req.Instructions) != "" {
+		config.SystemInstruction = &genai.Content{
+			Parts: []*genai.Part{{Text: req.Instructions}},
+		}
 	}
 
 	gc := req.Config

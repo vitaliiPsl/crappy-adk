@@ -12,6 +12,12 @@ import (
 	"github.com/vitaliiPsl/crappy-adk/kit"
 )
 
+const emptyToolResultText = "(no output)"
+
+func blank(text string) bool {
+	return strings.TrimSpace(text) == ""
+}
+
 func convertRequestTools(tools []kit.Tool) []responses.ToolUnionParam {
 	if len(tools) == 0 {
 		return nil
@@ -61,6 +67,10 @@ func convertRequestUserMessage(msg kit.Message) responses.ResponseInputParam {
 		}
 	}
 
+	if len(list) == 0 {
+		return nil
+	}
+
 	return []responses.ResponseInputItemUnionParam{{
 		OfMessage: &responses.EasyInputMessageParam{
 			Role:    responses.EasyInputMessageRoleUser,
@@ -94,7 +104,7 @@ func convertRequestToolMessage(msg kit.Message) responses.ResponseInputParam {
 func convertRequestContentItem(content kit.Content, role responses.EasyInputMessageRole) (responses.ResponseInputItemUnionParam, bool) {
 	switch content.Type {
 	case kit.ContentTypeText:
-		if content.Text == nil {
+		if content.Text == nil || blank(content.Text.Text) {
 			return responses.ResponseInputItemUnionParam{}, false
 		}
 
@@ -110,6 +120,12 @@ func convertRequestContentItem(content kit.Content, role responses.EasyInputMess
 		}
 
 		t := content.Thinking
+
+		// A reasoning item is replayed for its ID and encrypted content, so it is
+		// dropped only when it carries neither, nor any summary text.
+		if t.ID == "" && t.Signature == "" && blank(t.Text) {
+			return responses.ResponseInputItemUnionParam{}, false
+		}
 
 		reasoning := responses.ResponseReasoningItemParam{
 			ID: t.ID,
@@ -167,7 +183,7 @@ func convertRequestContentItem(content kit.Content, role responses.EasyInputMess
 			},
 		}, true
 	case kit.ContentTypeSummary:
-		if content.Summary == nil {
+		if content.Summary == nil || blank(content.Summary.Text) {
 			return responses.ResponseInputItemUnionParam{}, false
 		}
 
@@ -185,13 +201,13 @@ func convertRequestContentItem(content kit.Content, role responses.EasyInputMess
 func convertRequestContentListItem(content kit.Content) (responses.ResponseInputContentUnionParam, bool) {
 	switch content.Type {
 	case kit.ContentTypeText:
-		if content.Text == nil {
+		if content.Text == nil || blank(content.Text.Text) {
 			return responses.ResponseInputContentUnionParam{}, false
 		}
 
 		return responses.ResponseInputContentParamOfInputText(content.Text.Text), true
 	case kit.ContentTypeSummary:
-		if content.Summary == nil {
+		if content.Summary == nil || blank(content.Summary.Text) {
 			return responses.ResponseInputContentUnionParam{}, false
 		}
 
@@ -224,14 +240,14 @@ func convertRequestContentListItem(content kit.Content) (responses.ResponseInput
 		return responses.ResponseInputContentUnionParam{OfInputFile: file}, ok
 	case kit.ContentTypeAudio:
 		text, ok := kit.ContentText(content)
-		if !ok {
+		if !ok || blank(text) {
 			return responses.ResponseInputContentUnionParam{}, false
 		}
 
 		return responses.ResponseInputContentParamOfInputText(text), true
 	default:
 		text, ok := kit.ContentText(content)
-		if !ok {
+		if !ok || blank(text) {
 			return responses.ResponseInputContentUnionParam{}, false
 		}
 
@@ -285,7 +301,12 @@ func convertFunctionCallOutput(result *kit.ToolResult) responses.ResponseInputIt
 		return responses.ResponseInputItemFunctionCallOutputOutputUnionParam{OfResponseFunctionCallOutputItemArray: items}
 	}
 
-	return responses.ResponseInputItemFunctionCallOutputOutputUnionParam{OfString: openai.String(toolResultText(result))}
+	text := toolResultText(result)
+	if blank(text) {
+		text = emptyToolResultText
+	}
+
+	return responses.ResponseInputItemFunctionCallOutputOutputUnionParam{OfString: openai.String(text)}
 }
 
 func convertFunctionCallOutputItems(result *kit.ToolResult) responses.ResponseFunctionCallOutputItemListParam {
@@ -302,7 +323,7 @@ func convertFunctionCallOutputItems(result *kit.ToolResult) responses.ResponseFu
 func convertFunctionCallOutputItem(content kit.Content) (responses.ResponseFunctionCallOutputItemUnionParam, bool) {
 	switch content.Type {
 	case kit.ContentTypeText:
-		if content.Text == nil {
+		if content.Text == nil || blank(content.Text.Text) {
 			return responses.ResponseFunctionCallOutputItemUnionParam{}, false
 		}
 
@@ -335,14 +356,14 @@ func convertFunctionCallOutputItem(content kit.Content) (responses.ResponseFunct
 		return responses.ResponseFunctionCallOutputItemUnionParam{OfInputFile: file}, ok
 	case kit.ContentTypeAudio:
 		text, ok := kit.ContentText(content)
-		if !ok {
+		if !ok || blank(text) {
 			return responses.ResponseFunctionCallOutputItemUnionParam{}, false
 		}
 
 		return responses.ResponseFunctionCallOutputItemParamOfInputText(text), true
 	default:
 		text, ok := kit.ContentText(content)
-		if !ok {
+		if !ok || blank(text) {
 			return responses.ResponseFunctionCallOutputItemUnionParam{}, false
 		}
 

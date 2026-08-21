@@ -3,6 +3,7 @@ package anthropic
 import (
 	"context"
 	"net/http"
+	"strings"
 
 	anthropicsdk "github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
@@ -100,9 +101,12 @@ func (m *Model) Stream(ctx context.Context, request kit.ModelRequest) *kit.Strea
 func buildRequestParams(modelID string, req kit.ModelRequest) anthropicsdk.MessageNewParams {
 	params := anthropicsdk.MessageNewParams{
 		Model:    modelID,
-		System:   []anthropicsdk.TextBlockParam{{Text: req.Instructions}},
 		Messages: convertRequestMessages(req.Messages),
 		Tools:    convertRequestTools(req.Tools),
+	}
+
+	if strings.TrimSpace(req.Instructions) != "" {
+		params.System = []anthropicsdk.TextBlockParam{{Text: req.Instructions}}
 	}
 
 	gc := req.Config

@@ -79,6 +79,34 @@ func TestBuildRequestParamsStructuredOutput(t *testing.T) {
 	}
 }
 
+func TestBuildRequestParamsSystem(t *testing.T) {
+	tests := []struct {
+		name         string
+		instructions string
+		want         []anthropicsdk.TextBlockParam
+	}{
+		{name: "empty is omitted", instructions: ""},
+		{name: "blank is omitted", instructions: "   \n\t "},
+		{
+			name:         "present is sent verbatim",
+			instructions: "\nYou are helpful.\n",
+			want:         []anthropicsdk.TextBlockParam{{Text: "\nYou are helpful.\n"}},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			params := buildRequestParams("test-model", kit.ModelRequest{
+				Instructions: test.instructions,
+			})
+
+			if fmt.Sprint(params.System) != fmt.Sprint(test.want) {
+				t.Fatalf("System = %v, want %v", params.System, test.want)
+			}
+		})
+	}
+}
+
 type rotatingCredentialsSource struct {
 	requests int
 }
@@ -440,6 +468,83 @@ func TestConvertRequestMessage(t *testing.T) {
 
 		if result[0].Role != "user" {
 			t.Errorf("Role = %q, want %q", result[0].Role, "user")
+		}
+	})
+}
+
+func TestConvertRequestDropsBlankText(t *testing.T) {
+	t.Run("blank text block is dropped", func(t *testing.T) {
+		items := convertRequestContentItems([]kit.Content{
+			kit.NewTextContent("   \n\t "),
+			kit.NewTextContent("kept"),
+		})
+
+		if len(items) != 1 {
+			t.Fatalf("len = %d, want 1", len(items))
+		}
+
+		if items[0].OfText == nil || items[0].OfText.Text != "kept" {
+			t.Errorf("block = %v, want text %q", items[0], "kept")
+		}
+	})
+
+	t.Run("message with only blank text is dropped", func(t *testing.T) {
+		result := convertRequestMessage(kit.NewUserMessage(kit.NewTextContent("")))
+
+		if len(result) != 0 {
+			t.Fatalf("len = %d, want 0", len(result))
+		}
+	})
+
+	t.Run("message with unconvertible content is dropped", func(t *testing.T) {
+		result := convertRequestMessage(kit.NewUserMessage(kit.Content{Type: kit.ContentTypeText}))
+
+		if len(result) != 0 {
+			t.Fatalf("len = %d, want 0", len(result))
+		}
+	})
+}
+
+func TestConvertToolResultContentEmptyOutput(t *testing.T) {
+	call := kit.NewToolCall("call_1", "bash", nil)
+
+	tests := []struct {
+		name   string
+		output kit.ToolOutput
+	}{
+		{name: "no content at all", output: kit.ToolOutput{}},
+		{name: "single empty text block", output: kit.NewToolOutput(kit.NewTextContent(""))},
+		{name: "blank text block", output: kit.NewToolOutput(kit.NewTextContent(" \n "))},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			result := kit.NewToolResult(call, test.output, nil)
+
+			block := convertToolResultContent(&result)
+			if block.OfToolResult == nil {
+				t.Fatalf("block = %v, want tool result", block)
+			}
+
+			content := block.OfToolResult.Content
+			if len(content) != 1 {
+				t.Fatalf("len = %d, want 1", len(content))
+			}
+
+			if content[0].OfText == nil || content[0].OfText.Text != emptyToolResultText {
+				t.Fatalf("text = %v, want %q", content[0], emptyToolResultText)
+			}
+		})
+	}
+
+	t.Run("error is preferred over the placeholder", func(t *testing.T) {
+		result := kit.NewToolResult(call, kit.NewToolOutput(kit.NewTextContent("")), errors.New("boom"))
+
+		block := convertToolResultContent(&result)
+
+		content := block.OfToolResult.Content
+		if len(content) != 1 || content[0].OfText == nil || content[0].OfText.Text != "boom" {
+			t.Fatalf("text = %v, want %q", content, "boom")
 		}
 	})
 }

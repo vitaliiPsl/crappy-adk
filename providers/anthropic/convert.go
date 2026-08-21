@@ -10,6 +10,12 @@ import (
 	"github.com/vitaliiPsl/crappy-adk/kit"
 )
 
+const emptyToolResultText = "(no output)"
+
+func blank(text string) bool {
+	return strings.TrimSpace(text) == ""
+}
+
 func convertRequestTools(tools []kit.Tool) []anthropicsdk.ToolUnionParam {
 	if len(tools) == 0 {
 		return nil
@@ -75,6 +81,9 @@ func convertRequestMessages(messages []kit.Message) []anthropicsdk.MessageParam 
 
 func convertRequestMessage(msg kit.Message) []anthropicsdk.MessageParam {
 	items := convertRequestContentItems(msg.Content)
+	if len(items) == 0 {
+		return nil
+	}
 
 	switch msg.Role {
 	case kit.RoleModel:
@@ -98,13 +107,15 @@ func convertRequestContentItems(content []kit.Content) []anthropicsdk.ContentBlo
 func convertRequestContentItem(content kit.Content) (anthropicsdk.ContentBlockParamUnion, bool) {
 	switch content.Type {
 	case kit.ContentTypeText:
-		if content.Text == nil {
+		if content.Text == nil || blank(content.Text.Text) {
 			return anthropicsdk.ContentBlockParamUnion{}, false
 		}
 
 		return anthropicsdk.NewTextBlock(content.Text.Text), true
 	case kit.ContentTypeThinking:
-		if content.Thinking == nil {
+		// Unlike the other providers, Anthropic cannot use a signature without the
+		// thinking text, so a blank block is dropped even when it is signed.
+		if content.Thinking == nil || blank(content.Thinking.Text) {
 			return anthropicsdk.ContentBlockParamUnion{}, false
 		}
 
@@ -134,7 +145,7 @@ func convertRequestContentItem(content kit.Content) (anthropicsdk.ContentBlockPa
 
 		return convertToolResultContent(tr), true
 	case kit.ContentTypeSummary:
-		if content.Summary == nil {
+		if content.Summary == nil || blank(content.Summary.Text) {
 			return anthropicsdk.ContentBlockParamUnion{}, false
 		}
 
@@ -192,7 +203,7 @@ func convertResourceContent(resource *kit.Resource) (anthropicsdk.ContentBlockPa
 
 func fallbackContent(content kit.Content) (anthropicsdk.ContentBlockParamUnion, bool) {
 	text, ok := kit.ContentText(content)
-	if !ok {
+	if !ok || blank(text) {
 		return anthropicsdk.ContentBlockParamUnion{}, false
 	}
 
@@ -202,8 +213,13 @@ func fallbackContent(content kit.Content) (anthropicsdk.ContentBlockParamUnion, 
 func convertToolResultContent(result *kit.ToolResult) anthropicsdk.ContentBlockParamUnion {
 	content := convertToolResultItems(result.Output.Content)
 	if len(content) == 0 {
+		text := toolResultText(result)
+		if blank(text) {
+			text = emptyToolResultText
+		}
+
 		content = []anthropicsdk.ToolResultBlockParamContentUnion{{
-			OfText: &anthropicsdk.TextBlockParam{Text: toolResultText(result)},
+			OfText: &anthropicsdk.TextBlockParam{Text: text},
 		}}
 	}
 
@@ -230,7 +246,7 @@ func convertToolResultItems(content []kit.Content) []anthropicsdk.ToolResultBloc
 func convertToolResultItem(content kit.Content) (anthropicsdk.ToolResultBlockParamContentUnion, bool) {
 	switch content.Type {
 	case kit.ContentTypeText:
-		if content.Text == nil {
+		if content.Text == nil || blank(content.Text.Text) {
 			return anthropicsdk.ToolResultBlockParamContentUnion{}, false
 		}
 
@@ -259,14 +275,14 @@ func convertToolResultItem(content kit.Content) (anthropicsdk.ToolResultBlockPar
 		return anthropicsdk.ToolResultBlockParamContentUnion{OfDocument: document}, ok
 	case kit.ContentTypeAudio:
 		text, ok := kit.ContentText(content)
-		if !ok {
+		if !ok || blank(text) {
 			return anthropicsdk.ToolResultBlockParamContentUnion{}, false
 		}
 
 		return anthropicsdk.ToolResultBlockParamContentUnion{OfText: &anthropicsdk.TextBlockParam{Text: text}}, true
 	default:
 		text, ok := kit.ContentText(content)
-		if !ok {
+		if !ok || blank(text) {
 			return anthropicsdk.ToolResultBlockParamContentUnion{}, false
 		}
 
