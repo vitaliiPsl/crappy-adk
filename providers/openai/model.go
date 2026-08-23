@@ -81,7 +81,7 @@ func (m *Model) Generate(ctx context.Context, request kit.ModelRequest) (kit.Mod
 		return kit.ModelResponse{}, mapError(err)
 	}
 
-	return convertResponse(resp), nil
+	return convertResponse(resp)
 }
 
 // Stream streams a response for the given request.

@@ -870,3 +870,27 @@ func TestRun_WithMemoryLoadsContextAndRecordsMessages(t *testing.T) {
 		}
 	}
 }
+
+func TestRun_RejectsToolCallFinishWithoutCalls(t *testing.T) {
+	model := kittest.NewModel(t, kittest.ModelResult{
+		Response: kit.ModelResponse{
+			Message:      kit.NewModelMessage(kit.NewTextContent("working on it")),
+			FinishReason: kit.FinishReasonToolCall,
+		},
+	})
+
+	agent, err := New(model, xmemory.NewHistory(), xtool.NewSet())
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	_, err = agent.Run(
+		context.Background(),
+		kit.NewUserMessage(kit.NewTextContent("hi")),
+	)
+	if !errors.Is(err, kit.ErrInvalidOutput) {
+		t.Fatalf("Run() error = %v, want %v", err, kit.ErrInvalidOutput)
+	}
+
+	model.AssertCallCount(t, 1)
+}

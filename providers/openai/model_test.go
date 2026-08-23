@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/openai/openai-go/v3/responses"
@@ -319,7 +320,7 @@ func TestConvertResponseContent(t *testing.T) {
 			"content": [{"type": "output_text", "text": "Hello!"}]
 		}`)
 
-		got := convertResponseContent(item)
+		got := mustConvertResponseContent(t, item)
 
 		if len(got) != 1 {
 			t.Fatalf("len = %d, want 1", len(got))
@@ -343,7 +344,7 @@ func TestConvertResponseContent(t *testing.T) {
 			]
 		}`)
 
-		got := convertResponseContent(item)
+		got := mustConvertResponseContent(t, item)
 
 		if len(got) != 2 {
 			t.Fatalf("len = %d, want 2", len(got))
@@ -364,7 +365,7 @@ func TestConvertResponseContent(t *testing.T) {
 			"content": []
 		}`)
 
-		if got := convertResponseContent(item); len(got) != 0 {
+		if got := mustConvertResponseContent(t, item); len(got) != 0 {
 			t.Errorf("expected empty, got %v", got)
 		}
 	})
@@ -376,7 +377,7 @@ func TestConvertResponseContent(t *testing.T) {
 			"encrypted_content": "sig_xyz"
 		}`)
 
-		got := convertResponseContent(item)
+		got := mustConvertResponseContent(t, item)
 
 		if len(got) != 1 {
 			t.Fatalf("len = %d, want 1", len(got))
@@ -407,7 +408,7 @@ func TestConvertResponseContent(t *testing.T) {
 			"arguments": "{\"a\": 1, \"b\": 2}"
 		}`)
 
-		got := convertResponseContent(item)
+		got := mustConvertResponseContent(t, item)
 
 		if len(got) != 1 {
 			t.Fatalf("len = %d, want 1", len(got))
@@ -433,7 +434,7 @@ func TestConvertResponseContent(t *testing.T) {
 
 	t.Run("unknown type returns nil", func(t *testing.T) {
 		item := mustParseOutputItem(t, `{"type": "web_search_call", "id": "ws_1"}`)
-		if got := convertResponseContent(item); len(got) != 0 {
+		if got := mustConvertResponseContent(t, item); len(got) != 0 {
 			t.Errorf("expected nil/empty, got %v", got)
 		}
 	})
@@ -470,21 +471,70 @@ func TestConvertResponseFinishReason(t *testing.T) {
 			json: `{"status": "incomplete", "incomplete_details": {"reason": "something_else"}, "output": []}`,
 			want: kit.FinishReasonUnknown,
 		},
-		{
-			name: "failed status",
-			json: `{"status": "failed", "output": []}`,
-			want: kit.FinishReasonUnknown,
-		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			resp := mustParseResponse(t, tt.json)
-			if got := convertResponseFinishReason(resp); got != tt.want {
+			if got := mustConvertResponse(t, resp).FinishReason; got != tt.want {
 				t.Errorf("got %q, want %q", got, tt.want)
 			}
 		})
 	}
+}
+
+func TestConvertResponseRejectsUnparsableToolCallArguments(t *testing.T) {
+	resp := mustParseResponse(t, `{
+		"status": "completed",
+		"output": [{"type": "function_call", "id": "fc1", "call_id": "c1", "name": "fn", "arguments": "{oops"}]
+	}`)
+
+	_, err := convertResponse(resp)
+	if !errors.Is(err, kit.ErrInvalidOutput) {
+		t.Fatalf("convertResponse() error = %v, want %v", err, kit.ErrInvalidOutput)
+	}
+}
+
+func TestConvertResponseSurfacesFailedStatus(t *testing.T) {
+	resp := mustParseResponse(t, `{
+		"status": "failed",
+		"error": {"code": "rate_limit_exceeded", "message": "slow down"},
+		"output": []
+	}`)
+
+	_, err := convertResponse(resp)
+	if !errors.Is(err, kit.ErrRateLimit) {
+		t.Fatalf("convertResponse() error = %v, want %v", err, kit.ErrRateLimit)
+	}
+
+	if !strings.Contains(err.Error(), "slow down") {
+		t.Fatalf("convertResponse() error = %v, want it to carry the provider message", err)
+	}
+}
+
+func mustConvertResponse(t *testing.T, resp *responses.Response) kit.ModelResponse {
+	t.Helper()
+
+	converted, err := convertResponse(resp)
+	if err != nil {
+		t.Fatalf("convertResponse() error = %v", err)
+	}
+
+	return converted
+}
+
+func mustConvertResponseContent(
+	t *testing.T,
+	item responses.ResponseOutputItemUnion,
+) []kit.Content {
+	t.Helper()
+
+	content, err := convertResponseContent(item)
+	if err != nil {
+		t.Fatalf("convertResponseContent() error = %v", err)
+	}
+
+	return content
 }
 
 func TestConvertResponseUsage(t *testing.T) {

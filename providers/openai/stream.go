@@ -27,9 +27,19 @@ func newStream(ctx context.Context, model *Model, request kit.ModelRequest) *kit
 
 			switch e := event.(type) {
 			case responses.ResponseCompletedEvent:
-				result = convertResponse(&e.Response)
+				completed, err := convertResponse(&e.Response)
+				if err != nil {
+					return result, err
+				}
+
+				result = completed
 			case responses.ResponseOutputItemDoneEvent:
-				outputContent = append(outputContent, convertResponseContent(e.Item)...)
+				converted, err := convertResponseContent(e.Item)
+				if err != nil {
+					return result, err
+				}
+
+				outputContent = append(outputContent, converted...)
 
 				if err := handleStreamEvent(event, emit); err != nil {
 					return result, err
@@ -126,7 +136,12 @@ func emitOutputItemStarted(
 		return nil
 	}
 
-	for _, content := range convertResponseContent(event.Item) {
+	contents, err := convertResponseContent(event.Item)
+	if err != nil {
+		return err
+	}
+
+	for _, content := range contents {
 		if err := emit.Emit(kit.NewModelContentStartedEvent(content)); err != nil {
 			return err
 		}
@@ -143,7 +158,12 @@ func emitOutputItemDone(
 		return nil
 	}
 
-	for _, content := range convertResponseContent(event.Item) {
+	contents, err := convertResponseContent(event.Item)
+	if err != nil {
+		return err
+	}
+
+	for _, content := range contents {
 		if err := emit.Emit(kit.NewModelContentDoneEvent(content)); err != nil {
 			return err
 		}

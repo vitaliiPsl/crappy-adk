@@ -88,6 +88,15 @@ func (a *Agent) run(
 		rc.Append(resp.Message)
 		rc.RecordUsage(resp.Usage)
 
+		toolCalls := resp.Message.ToolCalls()
+
+		if resp.FinishReason == kit.FinishReasonToolCall && len(toolCalls) == 0 {
+			return rc.Response(), fmt.Errorf(
+				"%w: finish reason requested tool calls but none were returned",
+				kit.ErrInvalidOutput,
+			)
+		}
+
 		if resp.FinishReason != kit.FinishReasonToolCall {
 			if err := a.output.capture(rc, resp.Message); err != nil {
 				return rc.Response(), err
@@ -112,7 +121,7 @@ func (a *Agent) run(
 			return rc.Response(), err
 		}
 
-		results, err := a.executeTools(rc, resp.Message.ToolCalls())
+		results, err := a.executeTools(rc, toolCalls)
 		if err != nil {
 			return rc.Response(), err
 		}

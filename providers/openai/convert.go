@@ -3,6 +3,7 @@ package openai
 import (
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"strings"
 
 	"github.com/openai/openai-go/v3"
@@ -469,21 +470,32 @@ func convertRequestReasoningEffort(level kit.ThinkingLevel) shared.ReasoningEffo
 	}
 }
 
-func convertResponse(resp *responses.Response) kit.ModelResponse {
+func convertResponse(resp *responses.Response) (kit.ModelResponse, error) {
+	if err := responseError(resp); err != nil {
+		return kit.ModelResponse{}, err
+	}
+
 	content := make([]kit.Content, 0, len(resp.Output))
 
 	for _, item := range resp.Output {
-		content = append(content, convertResponseContent(item)...)
+		converted, err := convertResponseContent(item)
+		if err != nil {
+			return kit.ModelResponse{}, err
+		}
+
+		content = append(content, converted...)
 	}
+
+	message := kit.NewModelMessage(content...)
 
 	return kit.ModelResponse{
-		Message:      kit.NewModelMessage(content...),
-		FinishReason: convertResponseFinishReason(resp),
+		Message:      message,
+		FinishReason: convertResponseFinishReason(resp, message),
 		Usage:        convertResponseUsage(resp),
-	}
+	}, nil
 }
 
-func convertResponseContent(item responses.ResponseOutputItemUnion) []kit.Content {
+func convertResponseContent(item responses.ResponseOutputItemUnion) ([]kit.Content, error) {
 	switch item := item.AsAny().(type) {
 	case responses.ResponseOutputMessage:
 		var parts []kit.Content
@@ -493,7 +505,7 @@ func convertResponseContent(item responses.ResponseOutputItemUnion) []kit.Conten
 			}
 		}
 
-		return parts
+		return parts, nil
 
 	case responses.ResponseReasoningItem:
 		var reasoningText strings.Builder
@@ -501,22 +513,28 @@ func convertResponseContent(item responses.ResponseOutputItemUnion) []kit.Conten
 			reasoningText.WriteString(summary.Text)
 		}
 
-		return []kit.Content{kit.NewThinkingContent(item.ID, reasoningText.String(), item.EncryptedContent)}
+		return []kit.Content{kit.NewThinkingContent(item.ID, reasoningText.String(), item.EncryptedContent)}, nil
 
 	case responses.ResponseFunctionToolCall:
-		if tc, ok := convertResponseToolCall(item); ok {
-			return []kit.Content{kit.NewToolCallContent(tc)}
+		call, err := convertResponseToolCall(item)
+		if err != nil {
+			return nil, err
 		}
+
+		return []kit.Content{kit.NewToolCallContent(call)}, nil
 	}
 
-	return nil
+	return nil, nil
 }
 
-func convertResponseToolCall(item responses.ResponseFunctionToolCall) (kit.ToolCall, bool) {
+func convertResponseToolCall(item responses.ResponseFunctionToolCall) (kit.ToolCall, error) {
 	var args map[string]any
 	if s := item.Arguments; s != "" {
 		if err := json.Unmarshal([]byte(s), &args); err != nil {
-			return kit.ToolCall{}, false
+			return kit.ToolCall{}, fmt.Errorf(
+				"%w: tool call %q arguments: %v",
+				kit.ErrInvalidOutput, item.Name, err,
+			)
 		}
 	}
 
@@ -524,16 +542,14 @@ func convertResponseToolCall(item responses.ResponseFunctionToolCall) (kit.ToolC
 		ID:        item.CallID,
 		Name:      item.Name,
 		Arguments: args,
-	}, true
+	}, nil
 }
 
-func convertResponseFinishReason(resp *responses.Response) kit.FinishReason {
+func convertResponseFinishReason(resp *responses.Response, message kit.Message) kit.FinishReason {
 	switch resp.Status {
 	case responses.ResponseStatusCompleted:
-		for _, item := range resp.Output {
-			if _, ok := item.AsAny().(responses.ResponseFunctionToolCall); ok {
-				return kit.FinishReasonToolCall
-			}
+		if len(message.ToolCalls()) > 0 {
+			return kit.FinishReasonToolCall
 		}
 
 		return kit.FinishReasonStop
@@ -548,6 +564,26 @@ func convertResponseFinishReason(resp *responses.Response) kit.FinishReason {
 		return kit.FinishReasonUnknown
 	default:
 		return kit.FinishReasonUnknown
+	}
+}
+
+func responseError(resp *responses.Response) error {
+	if resp.Status != responses.ResponseStatusFailed {
+		return nil
+	}
+
+	detail := strings.TrimSpace(resp.Error.Message)
+	if detail == "" {
+		detail = string(resp.Error.Code)
+	}
+
+	switch resp.Error.Code {
+	case responses.ResponseErrorCodeServerError:
+		return fmt.Errorf("%w: %s", kit.ErrServerError, detail)
+	case responses.ResponseErrorCodeRateLimitExceeded:
+		return fmt.Errorf("%w: %s", kit.ErrRateLimit, detail)
+	default:
+		return fmt.Errorf("%w: %s", kit.ErrInvalidRequest, detail)
 	}
 }
 

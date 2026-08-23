@@ -99,7 +99,7 @@ func TestHandleStreamEvent_TextLifecycle(t *testing.T) {
 		switch event.Type {
 		case "response.completed":
 			resp := event.AsResponseCompleted().Response
-			result = convertResponse(&resp)
+			result = mustConvertResponse(t, &resp)
 
 			continue
 		}
@@ -404,7 +404,7 @@ func TestHandleStreamEvent_ReasoningLifecycle(t *testing.T) {
 		event := mustParseStreamEvent(t, data)
 		if event.Type == "response.completed" {
 			resp := event.AsResponseCompleted().Response
-			result = convertResponse(&resp)
+			result = mustConvertResponse(t, &resp)
 
 			continue
 		}
