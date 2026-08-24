@@ -2,8 +2,6 @@ package google
 
 import (
 	"context"
-	"errors"
-	"net/http"
 	"strings"
 
 	"google.golang.org/genai"
@@ -28,31 +26,21 @@ type Model struct {
 }
 
 // New returns a model for the given ID and options.
-func New(id string, opts ...providers.ModelOption) (*Model, error) {
+func New(id string, opts ...providers.ModelOption) (kit.Model, error) {
 	options := providers.ModelOptions{}
 	for _, opt := range opts {
 		opt(&options)
 	}
 
-	if options.CredentialsSource != nil {
-		return nil, errors.New("google provider: credentials source is not supported")
-	}
-
-	headers := make(http.Header, len(options.Headers))
-	for name, value := range options.Headers {
-		headers.Set(name, value)
-	}
-
-	cc := &genai.ClientConfig{
-		APIKey:  options.APIKey,
-		Backend: genai.BackendGeminiAPI,
-		HTTPOptions: genai.HTTPOptions{
-			Headers: headers,
-		},
-	}
+	cc := &genai.ClientConfig{Backend: genai.BackendGeminiAPI}
 
 	if options.BaseURL != "" {
 		cc.HTTPOptions.BaseURL = options.BaseURL
+	}
+
+	if credentials := resolveCredentials(options); credentials != nil {
+		cc.APIKey = unusedAPIKey
+		cc.HTTPClient = credentialsClient(credentials)
 	}
 
 	client, err := genai.NewClient(context.Background(), cc)

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"google.golang.org/genai"
@@ -14,13 +15,34 @@ import (
 	"github.com/vitaliiPsl/crappy-adk/providers"
 )
 
-func TestNewRejectsCredentialsSource(t *testing.T) {
-	_, err := New(
+func TestModelResolvesCredentialsForEveryRequest(t *testing.T) {
+	var apiKeys []string
+
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		apiKeys = append(apiKeys, request.Header.Get("x-goog-api-key"))
+		writer.Header().Set("Content-Type", "application/json")
+		_, _ = writer.Write([]byte(`{"candidates":[]}`))
+	}))
+	t.Cleanup(server.Close)
+
+	model, err := New(
 		"test-model",
-		providers.WithCredentialsSource(unsupportedCredentialsSource{}),
+		providers.WithBaseURL(server.URL),
+		providers.WithCredentials(&rotatingCredentialsSource{}),
 	)
-	if err == nil || err.Error() != "google provider: credentials source is not supported" {
-		t.Fatalf("New() error = %v, want unsupported credentials source", err)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	for range 2 {
+		if _, err := model.Generate(context.Background(), kit.ModelRequest{}); err != nil {
+			t.Fatalf("Generate() error = %v", err)
+		}
+	}
+
+	want := []string{"key-1", "key-2"}
+	if fmt.Sprint(apiKeys) != fmt.Sprint(want) {
+		t.Fatalf("x-goog-api-key headers = %v, want %v", apiKeys, want)
 	}
 }
 
@@ -39,10 +61,16 @@ func TestBuildRequestParamsStructuredOutput(t *testing.T) {
 	}
 }
 
-type unsupportedCredentialsSource struct{}
+type rotatingCredentialsSource struct {
+	requests int
+}
 
-func (unsupportedCredentialsSource) Headers(context.Context) (http.Header, error) {
-	return nil, nil
+func (s *rotatingCredentialsSource) Headers(context.Context) (http.Header, error) {
+	s.requests++
+
+	return http.Header{
+		"X-Goog-Api-Key": {fmt.Sprintf("key-%d", s.requests)},
+	}, nil
 }
 
 type mockTool struct {

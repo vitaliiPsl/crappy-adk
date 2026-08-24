@@ -2,7 +2,6 @@ package openai
 
 import (
 	"context"
-	"net/http"
 
 	"github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/option"
@@ -23,7 +22,7 @@ type Model struct {
 }
 
 // New returns a model for the given ID and options.
-func New(id string, opts ...providers.ModelOption) (*Model, error) {
+func New(id string, opts ...providers.ModelOption) (kit.Model, error) {
 	options := providers.ModelOptions{}
 	for _, opt := range opts {
 		opt(&options)
@@ -34,22 +33,10 @@ func New(id string, opts ...providers.ModelOption) (*Model, error) {
 		clientOptions = append(clientOptions, option.WithBaseURL(options.BaseURL))
 	}
 
-	if options.CredentialsSource == nil {
-		if options.BearerToken != "" {
-			clientOptions = append(clientOptions, option.WithAPIKey(options.BearerToken))
-		} else {
-			clientOptions = append(clientOptions, option.WithAPIKey(options.APIKey))
-		}
-	}
-
-	for name, value := range options.Headers {
-		clientOptions = append(clientOptions, option.WithHeader(name, value))
-	}
-
-	if options.CredentialsSource != nil {
+	if credentials := resolveCredentials(options); credentials != nil {
 		clientOptions = append(
 			clientOptions,
-			option.WithMiddleware(credentialsMiddleware(options.CredentialsSource)),
+			option.WithMiddleware(credentialsMiddleware(credentials)),
 		)
 	}
 
@@ -131,25 +118,4 @@ func buildRequestParams(modelID string, req kit.ModelRequest) responses.Response
 	}
 
 	return params
-}
-
-func credentialsMiddleware(source providers.CredentialsSource) option.Middleware {
-	return func(request *http.Request, next option.MiddlewareNext) (*http.Response, error) {
-		headers, err := source.Headers(request.Context())
-		if err != nil {
-			return nil, err
-		}
-
-		request.Header.Del("Authorization")
-
-		for name, values := range headers {
-			request.Header.Del(name)
-
-			for _, value := range values {
-				request.Header.Add(name, value)
-			}
-		}
-
-		return next(request)
-	}
 }

@@ -33,9 +33,7 @@ func TestModelResolvesCredentialsForEveryRequest(t *testing.T) {
 	model, err := New(
 		"test-model",
 		providers.WithBaseURL(server.URL),
-		providers.WithBearerToken("static-token"),
-		providers.WithHeaders(map[string]string{"Authorization": "Bearer static-header"}),
-		providers.WithCredentialsSource(source),
+		providers.WithCredentials(source),
 	)
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
@@ -50,6 +48,34 @@ func TestModelResolvesCredentialsForEveryRequest(t *testing.T) {
 	want := []string{"Bearer token-1", "Bearer token-2"}
 	if fmt.Sprint(authorization) != fmt.Sprint(want) {
 		t.Fatalf("Authorization headers = %v, want %v", authorization, want)
+	}
+}
+
+func TestModelSendsAPIKeyAsBearerToken(t *testing.T) {
+	var authorization string
+
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		authorization = request.Header.Get("Authorization")
+		writer.Header().Set("Content-Type", "application/json")
+		_, _ = writer.Write([]byte(`{"status":"completed","output":[]}`))
+	}))
+	t.Cleanup(server.Close)
+
+	model, err := New(
+		"test-model",
+		providers.WithBaseURL(server.URL),
+		providers.WithAPIKey("secret"),
+	)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	if _, err := model.Generate(context.Background(), kit.ModelRequest{}); err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+
+	if authorization != "Bearer secret" {
+		t.Fatalf("Authorization = %q, want Bearer secret", authorization)
 	}
 }
 
@@ -85,7 +111,7 @@ func (s *rotatingCredentialsSource) Headers(context.Context) (http.Header, error
 	s.requests++
 
 	return http.Header{
-		"Authorization": []string{fmt.Sprintf("Bearer token-%d", s.requests)},
+		"Authorization": {fmt.Sprintf("Bearer token-%d", s.requests)},
 	}, nil
 }
 

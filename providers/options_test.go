@@ -6,44 +6,43 @@ import (
 	"testing"
 )
 
-func TestWithBearerToken(t *testing.T) {
+func TestWithAPIKey(t *testing.T) {
 	options := ModelOptions{}
 	WithAPIKey("api-key")(&options)
-	WithBearerToken("bearer-token")(&options)
 
 	if options.APIKey != "api-key" {
 		t.Fatalf("APIKey = %q, want api-key", options.APIKey)
 	}
+}
 
-	if options.BearerToken != "bearer-token" {
-		t.Fatalf("BearerToken = %q, want bearer-token", options.BearerToken)
+func TestWithCredentials(t *testing.T) {
+	source := Static(http.Header{"Authorization": {"Bearer token"}})
+
+	options := ModelOptions{}
+	WithCredentials(source)(&options)
+
+	headers, err := options.Credentials.Headers(context.Background())
+	if err != nil {
+		t.Fatalf("Headers() error = %v", err)
+	}
+
+	if got := headers.Get("Authorization"); got != "Bearer token" {
+		t.Fatalf("Authorization = %q, want Bearer token", got)
 	}
 }
 
-func TestWithCredentialsSource(t *testing.T) {
-	source := testCredentialsSource{}
-	options := ModelOptions{}
-	WithCredentialsSource(source)(&options)
+func TestStaticClonesHeaders(t *testing.T) {
+	headers := http.Header{"X-Test": {"original"}}
+	source := Static(headers)
 
-	if options.CredentialsSource != source {
-		t.Fatalf("CredentialsSource = %T, want testCredentialsSource", options.CredentialsSource)
+	headers.Set("X-Test", "changed")
+
+	got, err := source.Headers(context.Background())
+	if err != nil {
+		t.Fatalf("Headers() error = %v", err)
 	}
-}
 
-type testCredentialsSource struct{}
-
-func (testCredentialsSource) Headers(context.Context) (http.Header, error) {
-	return nil, nil
-}
-
-func TestWithHeadersClonesHeaders(t *testing.T) {
-	headers := map[string]string{"X-Test": "original"}
-	options := ModelOptions{}
-	WithHeaders(headers)(&options)
-
-	headers["X-Test"] = "changed"
-
-	if options.Headers["X-Test"] != "original" {
-		t.Fatalf("Headers = %v, want original X-Test", options.Headers)
+	if value := got.Get("X-Test"); value != "original" {
+		t.Fatalf("X-Test = %q, want original", value)
 	}
 }
