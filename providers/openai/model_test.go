@@ -23,8 +23,8 @@ func TestModelResolvesCredentialsForEveryRequest(t *testing.T) {
 
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		authorization = append(authorization, request.Header.Get("Authorization"))
-		writer.Header().Set("Content-Type", "application/json")
-		_, _ = writer.Write([]byte(`{"status":"completed","output":[]}`))
+
+		writeCompletedResponse(writer)
 	}))
 	t.Cleanup(server.Close)
 
@@ -56,8 +56,8 @@ func TestModelSendsAPIKeyAsBearerToken(t *testing.T) {
 
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		authorization = request.Header.Get("Authorization")
-		writer.Header().Set("Content-Type", "application/json")
-		_, _ = writer.Write([]byte(`{"status":"completed","output":[]}`))
+
+		writeCompletedResponse(writer)
 	}))
 	t.Cleanup(server.Close)
 
@@ -77,6 +77,42 @@ func TestModelSendsAPIKeyAsBearerToken(t *testing.T) {
 	if authorization != "Bearer secret" {
 		t.Fatalf("Authorization = %q, want Bearer secret", authorization)
 	}
+}
+
+func TestModelGenerateUsesStreamingRequest(t *testing.T) {
+	var stream bool
+
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		var body struct {
+			Stream bool `json:"stream"`
+		}
+		if err := json.NewDecoder(request.Body).Decode(&body); err != nil {
+			t.Errorf("decode request: %v", err)
+		}
+
+		stream = body.Stream
+
+		writeCompletedResponse(writer)
+	}))
+	t.Cleanup(server.Close)
+
+	model, err := New("test-model", providers.WithBaseURL(server.URL))
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	if _, err := model.Generate(t.Context(), kit.ModelRequest{}); err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+
+	if !stream {
+		t.Fatal("stream = false, want true")
+	}
+}
+
+func writeCompletedResponse(writer http.ResponseWriter) {
+	writer.Header().Set("Content-Type", "text/event-stream")
+	_, _ = writer.Write([]byte("data: {\"type\":\"response.completed\",\"sequence_number\":1,\"response\":{\"status\":\"completed\",\"output\":[]}}\n\n"))
 }
 
 func TestBuildRequestParamsStructuredOutput(t *testing.T) {

@@ -25,17 +25,8 @@ func TestModelResolvesCredentialsForEveryRequest(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		authorization = append(authorization, request.Header.Get("Authorization"))
 		apiKeys = append(apiKeys, request.Header.Get("X-Api-Key"))
-		writer.Header().Set("Content-Type", "application/json")
-		_, _ = writer.Write([]byte(`{
-  "id":"message",
-  "type":"message",
-  "role":"assistant",
-  "model":"test-model",
-  "content":[],
-  "stop_reason":"end_turn",
-  "stop_sequence":null,
-  "usage":{"input_tokens":1,"output_tokens":1}
-}`))
+
+		writeCompletedMessageStream(writer)
 	}))
 	t.Cleanup(server.Close)
 
@@ -75,17 +66,8 @@ func TestModelSendsAPIKeyInKeyHeader(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		authorization = request.Header.Get("Authorization")
 		apiKey = request.Header.Get("X-Api-Key")
-		writer.Header().Set("Content-Type", "application/json")
-		_, _ = writer.Write([]byte(`{
-  "id":"message",
-  "type":"message",
-  "role":"assistant",
-  "model":"test-model",
-  "content":[],
-  "stop_reason":"end_turn",
-  "stop_sequence":null,
-  "usage":{"input_tokens":1,"output_tokens":1}
-}`))
+
+		writeCompletedMessageStream(writer)
 	}))
 	t.Cleanup(server.Close)
 
@@ -109,6 +91,46 @@ func TestModelSendsAPIKeyInKeyHeader(t *testing.T) {
 	if authorization != "" {
 		t.Fatalf("Authorization = %q, want empty", authorization)
 	}
+}
+
+func TestModelGenerateUsesStreamingRequest(t *testing.T) {
+	var stream bool
+
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		var body struct {
+			Stream bool `json:"stream"`
+		}
+		if err := json.NewDecoder(request.Body).Decode(&body); err != nil {
+			t.Errorf("decode request: %v", err)
+		}
+
+		stream = body.Stream
+
+		writeCompletedMessageStream(writer)
+	}))
+	t.Cleanup(server.Close)
+
+	model, err := New("test-model", providers.WithBaseURL(server.URL))
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	if _, err := model.Generate(t.Context(), kit.ModelRequest{}); err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+
+	if !stream {
+		t.Fatal("stream = false, want true")
+	}
+}
+
+func writeCompletedMessageStream(writer http.ResponseWriter) {
+	writer.Header().Set("Content-Type", "text/event-stream")
+	_, _ = writer.Write([]byte(
+		"data: {\"type\":\"message_start\",\"message\":{\"id\":\"message\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"test-model\",\"content\":[],\"stop_reason\":null,\"stop_sequence\":null,\"usage\":{\"input_tokens\":1,\"output_tokens\":0}}}\n\n" +
+			"data: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\",\"stop_sequence\":null},\"usage\":{\"output_tokens\":1}}\n\n" +
+			"data: {\"type\":\"message_stop\"}\n\n",
+	))
 }
 
 func TestBuildRequestParamsStructuredOutput(t *testing.T) {

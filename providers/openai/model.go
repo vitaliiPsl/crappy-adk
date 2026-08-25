@@ -61,14 +61,7 @@ func (m *Model) Config() kit.ModelConfig {
 
 // Generate generates a response for the given request.
 func (m *Model) Generate(ctx context.Context, request kit.ModelRequest) (kit.ModelResponse, error) {
-	req := buildRequestParams(m.id, request)
-
-	resp, err := m.client.Responses.New(ctx, req)
-	if err != nil {
-		return kit.ModelResponse{}, mapError(err)
-	}
-
-	return convertResponse(resp)
+	return m.Stream(ctx, request).Result()
 }
 
 // Stream streams a response for the given request.

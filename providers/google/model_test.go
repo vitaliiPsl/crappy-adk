@@ -20,8 +20,8 @@ func TestModelResolvesCredentialsForEveryRequest(t *testing.T) {
 
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		apiKeys = append(apiKeys, request.Header.Get("x-goog-api-key"))
-		writer.Header().Set("Content-Type", "application/json")
-		_, _ = writer.Write([]byte(`{"candidates":[]}`))
+
+		writeCompletedContentStream(writer)
 	}))
 	t.Cleanup(server.Close)
 
@@ -44,6 +44,40 @@ func TestModelResolvesCredentialsForEveryRequest(t *testing.T) {
 	if fmt.Sprint(apiKeys) != fmt.Sprint(want) {
 		t.Fatalf("x-goog-api-key headers = %v, want %v", apiKeys, want)
 	}
+}
+
+func TestModelGenerateUsesStreamingEndpoint(t *testing.T) {
+	var path, alt string
+
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		path = request.URL.Path
+		alt = request.URL.Query().Get("alt")
+
+		writeCompletedContentStream(writer)
+	}))
+	t.Cleanup(server.Close)
+
+	model, err := New(
+		"test-model",
+		providers.WithBaseURL(server.URL),
+		providers.WithAPIKey("secret"),
+	)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	if _, err := model.Generate(t.Context(), kit.ModelRequest{}); err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+
+	if path != "/v1beta/models/test-model:streamGenerateContent" || alt != "sse" {
+		t.Fatalf("request URL = %q?alt=%s, want streaming endpoint", path, alt)
+	}
+}
+
+func writeCompletedContentStream(writer http.ResponseWriter) {
+	writer.Header().Set("Content-Type", "text/event-stream")
+	_, _ = writer.Write([]byte("data: {\"candidates\":[]}\n\n"))
 }
 
 func TestBuildRequestParamsStructuredOutput(t *testing.T) {

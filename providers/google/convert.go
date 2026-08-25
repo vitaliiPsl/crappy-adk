@@ -269,27 +269,6 @@ func convertFunctionResponsePart(content kit.Content) (*genai.FunctionResponsePa
 	return nil, false
 }
 
-func convertResponse(resp *genai.GenerateContentResponse) kit.ModelResponse {
-	if len(resp.Candidates) == 0 {
-		return kit.ModelResponse{}
-	}
-
-	candidate := resp.Candidates[0]
-	content := make([]kit.Content, 0)
-
-	if candidate.Content != nil {
-		for _, part := range candidate.Content.Parts {
-			content = append(content, convertResponseContent(part)...)
-		}
-	}
-
-	return kit.ModelResponse{
-		Message:      kit.NewModelMessage(content...),
-		FinishReason: convertResponseFinishReason(candidate),
-		Usage:        convertResponseUsage(resp),
-	}
-}
-
 func convertResponseContent(part *genai.Part) []kit.Content {
 	if part.Thought {
 		return []kit.Content{kit.NewThinkingContent("", part.Text, encodeSignature(part.ThoughtSignature))}
