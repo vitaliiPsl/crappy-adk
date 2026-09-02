@@ -87,6 +87,7 @@ func (a *Agent) run(
 
 		rc.Append(resp.Message)
 		rc.RecordUsage(resp.Usage)
+		rc.FinishReason = resp.FinishReason
 
 		toolCalls := resp.Message.ToolCalls()
 

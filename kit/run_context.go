@@ -18,6 +18,8 @@ type RunContext struct {
 	Usage Usage
 	// LastUsage is the usage reported by the most recent model response.
 	LastUsage Usage
+	// FinishReason is the reason reported by the most recent model response.
+	FinishReason FinishReason
 	// StructuredOutput is the validated JSON produced by the final model response.
 	StructuredOutput json.RawMessage
 	// Events emits agent stream events. It is a no-op for non-streaming runs.
@@ -52,6 +54,7 @@ func (rc *RunContext) Response() AgentResponse {
 		Messages:         rc.Messages,
 		Usage:            rc.Usage,
 		LastUsage:        rc.LastUsage,
+		FinishReason:     rc.FinishReason,
 		StructuredOutput: rc.StructuredOutput,
 	}
 

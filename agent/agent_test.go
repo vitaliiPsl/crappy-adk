@@ -45,6 +45,10 @@ func TestRun_ReturnsFinalResponse(t *testing.T) {
 		t.Fatalf("Usage = %+v, want input 3 output 2", response.Usage)
 	}
 
+	if response.FinishReason != kit.FinishReasonStop {
+		t.Fatalf("FinishReason = %q, want %q", response.FinishReason, kit.FinishReasonStop)
+	}
+
 	if len(response.Messages) != 1 {
 		t.Fatalf("len(Messages) = %d, want 1", len(response.Messages))
 	}
@@ -151,6 +155,10 @@ func TestRun_ExecutesToolCallAndContinues(t *testing.T) {
 
 	if response.Usage.InputTokens != 12 || response.Usage.OutputTokens != 5 {
 		t.Fatalf("Usage = %+v, want input 12 output 5", response.Usage)
+	}
+
+	if response.FinishReason != kit.FinishReasonStop {
+		t.Fatalf("FinishReason = %q, want final %q", response.FinishReason, kit.FinishReasonStop)
 	}
 
 	if len(response.Messages) != 3 {

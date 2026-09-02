@@ -38,4 +38,6 @@ type AgentResponse struct {
 	Usage Usage
 	// LastUsage is the usage from the most recent model call.
 	LastUsage Usage
+	// FinishReason indicates why the final model call stopped generating.
+	FinishReason FinishReason
 }
