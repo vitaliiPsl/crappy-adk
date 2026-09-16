@@ -184,12 +184,17 @@ func TestRun_ExecutesToolCallAndContinues(t *testing.T) {
 	})
 }
 
-func TestRun_RecordsToolCallAndResultsAtomically(t *testing.T) {
-	call := kit.NewToolCall("call-1", "add", map[string]any{"a": 3, "b": 4})
-	tool := kittest.NewTool(t, "add", "add numbers", kittest.ToolResult{Result: "7"})
+func TestRun_RecordsToolResultsIndividually(t *testing.T) {
+	firstCall := kit.NewToolCall("call-1", "first", nil)
+	secondCall := kit.NewToolCall("call-2", "second", nil)
+	firstTool := kittest.NewTool(t, "first", "first tool", kittest.ToolResult{Result: "one"})
+	secondTool := kittest.NewTool(t, "second", "second tool", kittest.ToolResult{Result: "two"})
 	model := kittest.NewModel(t,
 		kittest.ModelResult{Response: kit.ModelResponse{
-			Message:      kit.NewModelMessage(kit.NewToolCallContent(call)),
+			Message: kit.NewModelMessage(
+				kit.NewToolCallContent(firstCall),
+				kit.NewToolCallContent(secondCall),
+			),
 			FinishReason: kit.FinishReasonToolCall,
 		}},
 		kittest.ModelResult{Response: kit.ModelResponse{
@@ -199,7 +204,7 @@ func TestRun_RecordsToolCallAndResultsAtomically(t *testing.T) {
 	)
 	memory := &recordingMemory{}
 
-	a, err := New(model, memory, xtool.NewSet(), WithTools(tool))
+	a, err := New(model, memory, xtool.NewSet(), WithTools(firstTool, secondTool))
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -208,7 +213,7 @@ func TestRun_RecordsToolCallAndResultsAtomically(t *testing.T) {
 		t.Fatalf("Run: %v", err)
 	}
 
-	wantBatchSizes := []int{1, 2, 1}
+	wantBatchSizes := []int{1, 1, 1, 1, 1}
 	if len(memory.records) != len(wantBatchSizes) {
 		t.Fatalf("len(Record calls) = %d, want %d", len(memory.records), len(wantBatchSizes))
 	}
@@ -219,12 +224,28 @@ func TestRun_RecordsToolCallAndResultsAtomically(t *testing.T) {
 		}
 	}
 
-	if got := len(memory.records[1][0].ToolCalls()); got != 1 {
-		t.Fatalf("tool-call batch messages[0] has %d tool calls, want 1", got)
+	if got := len(memory.records[1][0].ToolCalls()); got != 2 {
+		t.Fatalf("tool-call record has %d tool calls, want 2", got)
 	}
 
-	if got := len(memory.records[1][1].ToolResults()); got != 1 {
-		t.Fatalf("tool-call batch messages[1] has %d tool results, want 1", got)
+	if got := len(memory.records[2][0].ToolResults()); got != 1 {
+		t.Fatalf("first tool-result record has %d tool results, want 1", got)
+	}
+
+	if got := len(memory.records[3][0].ToolResults()); got != 1 {
+		t.Fatalf("second tool-result record has %d tool results, want 1", got)
+	}
+
+	requestMessages := model.CallAt(1).Messages
+
+	firstResults := requestMessages[len(requestMessages)-2].ToolResults()
+	if len(firstResults) != 1 || firstResults[0].Call.ID != firstCall.ID {
+		t.Fatalf("first model-request results = %+v, want first tool result", firstResults)
+	}
+
+	secondResults := requestMessages[len(requestMessages)-1].ToolResults()
+	if len(secondResults) != 1 || secondResults[0].Call.ID != secondCall.ID {
+		t.Fatalf("second model-request results = %+v, want second tool result", secondResults)
 	}
 }
 
@@ -472,12 +493,66 @@ func TestRun_ContextCanceledDuringToolAbortsRun(t *testing.T) {
 		t.Fatalf("len(ToolCalls) = %d, want 1", got)
 	}
 
-	if len(memory.records) != 1 {
-		t.Fatalf("len(Record calls) = %d, want only the input", len(memory.records))
+	if len(memory.records) != 2 {
+		t.Fatalf("len(Record calls) = %d, want input and tool call", len(memory.records))
 	}
 
 	if len(memory.records[0]) != 1 || memory.records[0][0].Role != kit.RoleUser {
-		t.Fatalf("Record call = %+v, want only the user input", memory.records[0])
+		t.Fatalf("first Record call = %+v, want user input", memory.records[0])
+	}
+
+	if got := len(memory.records[1][0].ToolCalls()); got != 1 {
+		t.Fatalf("second Record call has %d tool calls, want 1", got)
+	}
+}
+
+func TestRun_RecordsCompletedToolBeforeNextToolIsCanceled(t *testing.T) {
+	firstCall := kit.NewToolCall("call-1", "ok", nil)
+	secondCall := kit.NewToolCall("call-2", "cancel", nil)
+	toolCallMessage := kit.NewModelMessage(
+		kit.NewToolCallContent(firstCall),
+		kit.NewToolCallContent(secondCall),
+	)
+
+	model := kittest.NewModel(t, kittest.ModelResult{
+		Response: kit.ModelResponse{
+			Message:      toolCallMessage,
+			FinishReason: kit.FinishReasonToolCall,
+		},
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	firstTool := kittest.NewTool(t, "ok", "ok tool", kittest.ToolResult{Result: "done"})
+	secondTool := &cancelTool{cancel: cancel}
+	memory := &recordingMemory{}
+
+	a, err := New(model, memory, xtool.NewSet(), WithTools(firstTool, secondTool))
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	response, err := a.Run(ctx, kit.NewUserMessage(kit.NewTextContent("run tools")))
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("Run error = %v, want context canceled", err)
+	}
+
+	firstTool.AssertCallCount(t, 1)
+
+	if !secondTool.called {
+		t.Fatal("second tool was not called")
+	}
+
+	if len(memory.records) != 3 {
+		t.Fatalf("len(Record calls) = %d, want input, tool call, and first result", len(memory.records))
+	}
+
+	results := memory.records[2][0].ToolResults()
+	if len(results) != 1 || results[0].Call.ID != firstCall.ID {
+		t.Fatalf("persisted results = %+v, want only first tool result", results)
+	}
+
+	if len(response.Messages) != 2 {
+		t.Fatalf("len(Messages) = %d, want tool call and first result", len(response.Messages))
 	}
 }
 

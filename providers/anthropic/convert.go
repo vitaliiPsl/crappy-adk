@@ -72,8 +72,30 @@ func convertToolInputSchema(schema map[string]any) anthropicsdk.ToolInputSchemaP
 
 func convertRequestMessages(messages []kit.Message) []anthropicsdk.MessageParam {
 	reqMessages := make([]anthropicsdk.MessageParam, 0, len(messages))
+	toolGroup := -1
+
 	for _, msg := range messages {
-		reqMessages = append(reqMessages, convertRequestMessage(msg)...)
+		if msg.Role != kit.RoleTool {
+			toolGroup = -1
+		}
+
+		converted := convertRequestMessage(msg)
+		if len(converted) == 0 {
+			continue
+		}
+
+		if msg.Role == kit.RoleTool && toolGroup >= 0 {
+			for _, message := range converted {
+				reqMessages[toolGroup].Content = append(reqMessages[toolGroup].Content, message.Content...)
+			}
+
+			continue
+		}
+
+		reqMessages = append(reqMessages, converted...)
+		if msg.Role == kit.RoleTool {
+			toolGroup = len(reqMessages) - 1
+		}
 	}
 
 	return reqMessages

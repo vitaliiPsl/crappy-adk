@@ -482,6 +482,37 @@ func TestConvertRequestMessage(t *testing.T) {
 	})
 }
 
+func TestConvertRequestMessages_GroupsAdjacentToolResults(t *testing.T) {
+	firstCall := kit.NewToolCall("call_1", "first", nil)
+	secondCall := kit.NewToolCall("call_2", "second", nil)
+	thirdCall := kit.NewToolCall("call_3", "third", nil)
+
+	messages := []kit.Message{
+		kit.NewToolMessage(kit.NewToolResultContent(kit.NewToolResult(firstCall, kit.ToolOutput{}, nil))),
+		kit.NewToolMessage(kit.NewToolResultContent(kit.NewToolResult(secondCall, kit.ToolOutput{}, nil))),
+		kit.NewModelMessage(kit.NewTextContent("next")),
+		kit.NewToolMessage(kit.NewToolResultContent(kit.NewToolResult(thirdCall, kit.ToolOutput{}, nil))),
+	}
+
+	converted := convertRequestMessages(messages)
+	if len(converted) != 3 {
+		t.Fatalf("len(contents) = %d, want 3", len(converted))
+	}
+
+	if len(converted[0].Parts) != 2 {
+		t.Fatalf("len(first content parts) = %d, want 2", len(converted[0].Parts))
+	}
+
+	if converted[0].Parts[0].FunctionResponse.ID != firstCall.ID ||
+		converted[0].Parts[1].FunctionResponse.ID != secondCall.ID {
+		t.Fatalf("first content parts = %+v, want first and second tool results", converted[0].Parts)
+	}
+
+	if len(converted[2].Parts) != 1 || converted[2].Parts[0].FunctionResponse.ID != thirdCall.ID {
+		t.Fatalf("last content parts = %+v, want only third tool result", converted[2].Parts)
+	}
+}
+
 func TestConvertRequestDropsBlankParts(t *testing.T) {
 	t.Run("blank text part is dropped", func(t *testing.T) {
 		parts := convertRequestContentItems([]kit.Content{

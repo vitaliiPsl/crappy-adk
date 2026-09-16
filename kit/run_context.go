@@ -40,6 +40,36 @@ func (rc *RunContext) Append(msg Message) {
 	rc.Messages = append(rc.Messages, msg)
 }
 
+func (rc *RunContext) Record(message Message) error {
+	rc.Append(message)
+
+	return rc.Memory.Record(rc.Context, message)
+}
+
+func (rc *RunContext) RecordModelResponse(response ModelResponse) error {
+	rc.RecordUsage(response.Usage)
+	rc.FinishReason = response.FinishReason
+
+	if err := rc.Record(response.Message); err != nil {
+		return err
+	}
+
+	return rc.Emit(NewAgentMessageEvent(response.Message))
+}
+
+func (rc *RunContext) RecordToolResult(result ToolResult) error {
+	message := NewToolMessage(NewToolResultContent(result))
+	if err := rc.Record(message); err != nil {
+		return err
+	}
+
+	if err := rc.Emit(NewAgentToolResultEvent(result)); err != nil {
+		return err
+	}
+
+	return rc.Emit(NewAgentMessageEvent(message))
+}
+
 // RecordUsage stores u as the most recent model call's usage and adds it to the
 // cumulative total.
 func (rc *RunContext) RecordUsage(u Usage) {

@@ -67,7 +67,7 @@ func (a *Agent) run(
 		Events:  events,
 	}
 
-	if err := a.memory.Record(ctx, input); err != nil {
+	if err := rc.Memory.Record(ctx, input); err != nil {
 		return rc.Response(), err
 	}
 
@@ -85,9 +85,9 @@ func (a *Agent) run(
 			return rc.Response(), err
 		}
 
-		rc.Append(resp.Message)
-		rc.RecordUsage(resp.Usage)
-		rc.FinishReason = resp.FinishReason
+		if err := rc.RecordModelResponse(resp); err != nil {
+			return rc.Response(), err
+		}
 
 		toolCalls := resp.Message.ToolCalls()
 
@@ -103,14 +103,6 @@ func (a *Agent) run(
 				return rc.Response(), err
 			}
 
-			if err := a.memory.Record(rc.Context, resp.Message); err != nil {
-				return rc.Response(), err
-			}
-
-			if err := rc.Emit(kit.NewAgentMessageEvent(resp.Message)); err != nil {
-				return rc.Response(), err
-			}
-
 			if err := a.hooks.onTurnEnd(rc); err != nil {
 				return rc.Response(), err
 			}
@@ -118,23 +110,7 @@ func (a *Agent) run(
 			return rc.Response(), nil
 		}
 
-		if err := rc.Emit(kit.NewAgentMessageEvent(resp.Message)); err != nil {
-			return rc.Response(), err
-		}
-
-		results, err := a.executeTools(rc, toolCalls)
-		if err != nil {
-			return rc.Response(), err
-		}
-
-		toolMessage := kit.NewToolMessage(results...)
-		rc.Append(toolMessage)
-
-		if err := a.memory.Record(rc.Context, resp.Message, toolMessage); err != nil {
-			return rc.Response(), err
-		}
-
-		if err := rc.Emit(kit.NewAgentMessageEvent(toolMessage)); err != nil {
+		if err := a.executeTools(rc, toolCalls); err != nil {
 			return rc.Response(), err
 		}
 
@@ -196,22 +172,19 @@ func (a *Agent) streamModel(rc *kit.RunContext, req kit.ModelRequest) (kit.Model
 	return stream.Result()
 }
 
-func (a *Agent) executeTools(rc *kit.RunContext, toolCalls []kit.ToolCall) ([]kit.Content, error) {
-	results := make([]kit.Content, 0, len(toolCalls))
+func (a *Agent) executeTools(rc *kit.RunContext, toolCalls []kit.ToolCall) error {
 	for _, call := range toolCalls {
 		result, err := a.executeTool(rc, call)
 		if err != nil {
-			return nil, err
+			return err
 		}
 
-		if err := rc.Emit(kit.NewAgentToolResultEvent(result)); err != nil {
-			return nil, err
+		if err := rc.RecordToolResult(result); err != nil {
+			return err
 		}
-
-		results = append(results, kit.NewToolResultContent(result))
 	}
 
-	return results, nil
+	return nil
 }
 
 func (a *Agent) executeTool(rc *kit.RunContext, call kit.ToolCall) (result kit.ToolResult, err error) {

@@ -29,9 +29,27 @@ func convertRequestTools(tools []kit.Tool) []*genai.Tool {
 
 func convertRequestMessages(messages []kit.Message) []*genai.Content {
 	contents := make([]*genai.Content, 0, len(messages))
+	toolGroup := -1
+
 	for _, msg := range messages {
-		if content := convertRequestMessage(msg); content != nil {
-			contents = append(contents, content)
+		if msg.Role != kit.RoleTool {
+			toolGroup = -1
+		}
+
+		content := convertRequestMessage(msg)
+		if content == nil {
+			continue
+		}
+
+		if msg.Role == kit.RoleTool && toolGroup >= 0 {
+			contents[toolGroup].Parts = append(contents[toolGroup].Parts, content.Parts...)
+
+			continue
+		}
+
+		contents = append(contents, content)
+		if msg.Role == kit.RoleTool {
+			toolGroup = len(contents) - 1
 		}
 	}
 
