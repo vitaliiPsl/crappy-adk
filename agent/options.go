@@ -110,6 +110,15 @@ func WithOnModelResponse(fn kit.OnModelResponse) Option {
 	}
 }
 
+// WithOnModelError registers a hook that is called when a model call fails.
+func WithOnModelError(fn kit.OnModelError) Option {
+	return func(a *Agent) error {
+		a.hooks.modelError = append(a.hooks.modelError, fn)
+
+		return nil
+	}
+}
+
 // WithOnToolCall registers a hook that is called before each tool execution.
 func WithOnToolCall(fn kit.OnToolCall) Option {
 	return func(a *Agent) error {

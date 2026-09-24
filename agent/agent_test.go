@@ -86,6 +86,108 @@ func TestRun_ReturnsModelError(t *testing.T) {
 	model.AssertCallCount(t, 1)
 }
 
+func TestRun_ModelErrorHookRetriesWithReturnedRequest(t *testing.T) {
+	model := kittest.NewModel(t,
+		kittest.ModelResult{Error: kit.ErrContextLength},
+		kittest.ModelResult{Response: kit.ModelResponse{
+			Message:      kit.NewModelMessage(kit.NewTextContent("done")),
+			FinishReason: kit.FinishReasonStop,
+		}},
+	)
+	compacted := []kit.Message{kit.NewUserMessage(kit.NewTextContent("compacted"))}
+
+	var hookErr error
+
+	a, err := New(model, xmemory.NewHistory(), xtool.NewSet(), WithOnModelError(
+		func(_ *kit.RunContext, req kit.ModelRequest, err error) (kit.ModelRequest, error) {
+			hookErr = err
+			req.Messages = compacted
+
+			return req, nil
+		},
+	))
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	if _, err := a.Run(context.Background(), kit.NewUserMessage(kit.NewTextContent("hello"))); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	if !errors.Is(hookErr, kit.ErrContextLength) {
+		t.Fatalf("hook error = %v, want ErrContextLength", hookErr)
+	}
+
+	model.AssertCallCount(t, 2)
+
+	if got := model.CallAt(1).Messages[0].TextContent().Text; got != "compacted" {
+		t.Fatalf("retried request message = %q, want compacted", got)
+	}
+}
+
+func TestRun_ModelErrorHookRetriesOnce(t *testing.T) {
+	retryErr := errors.New("retry failed")
+	model := kittest.NewModel(t,
+		kittest.ModelResult{Error: kit.ErrContextLength},
+		kittest.ModelResult{Error: retryErr},
+	)
+	calls := 0
+
+	a, err := New(model, xmemory.NewHistory(), xtool.NewSet(), WithOnModelError(
+		func(_ *kit.RunContext, req kit.ModelRequest, _ error) (kit.ModelRequest, error) {
+			calls++
+
+			return req, nil
+		},
+	))
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	_, err = a.Run(context.Background(), kit.NewUserMessage(kit.NewTextContent("hello")))
+	if !errors.Is(err, retryErr) {
+		t.Fatalf("Run error = %v, want %v", err, retryErr)
+	}
+
+	if calls != 1 {
+		t.Fatalf("hook calls = %d, want 1", calls)
+	}
+
+	model.AssertCallCount(t, 2)
+}
+
+func TestRun_ModelErrorHooksPassErrorsAlong(t *testing.T) {
+	wrapped := errors.New("wrapped")
+	model := kittest.NewModel(t, kittest.ModelResult{Error: kit.ErrContextLength})
+
+	var received error
+
+	a, err := New(model, xmemory.NewHistory(), xtool.NewSet(),
+		WithOnModelError(func(_ *kit.RunContext, _ kit.ModelRequest, err error) (kit.ModelRequest, error) {
+			return kit.ModelRequest{}, errors.Join(wrapped, err)
+		}),
+		WithOnModelError(func(_ *kit.RunContext, _ kit.ModelRequest, err error) (kit.ModelRequest, error) {
+			received = err
+
+			return kit.ModelRequest{}, err
+		}),
+	)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	_, err = a.Run(context.Background(), kit.NewUserMessage(kit.NewTextContent("hello")))
+	if !errors.Is(err, wrapped) || !errors.Is(err, kit.ErrContextLength) {
+		t.Fatalf("Run error = %v, want wrapped ErrContextLength", err)
+	}
+
+	if !errors.Is(received, wrapped) {
+		t.Fatalf("second hook received %v, want error from first hook", received)
+	}
+
+	model.AssertCallCount(t, 1)
+}
+
 func TestRun_ReturnsCanceledContextBeforeModelCall(t *testing.T) {
 	model := kittest.NewModel(t)
 

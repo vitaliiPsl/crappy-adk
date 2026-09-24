@@ -9,6 +9,7 @@ type hooks struct {
 	turnEnd       []kit.OnTurnEnd
 	modelRequest  []kit.OnModelRequest
 	modelResponse []kit.OnModelResponse
+	modelError    []kit.OnModelError
 	toolCall      []kit.OnToolCall
 	toolResult    []kit.OnToolResult
 }
@@ -57,6 +58,19 @@ func (h *hooks) onModelResponse(rc *kit.RunContext, resp kit.ModelResponse) (kit
 	}
 
 	return resp, nil
+}
+
+func (h *hooks) onModelError(rc *kit.RunContext, req kit.ModelRequest, err error) (kit.ModelRequest, error) {
+	for _, fn := range h.modelError {
+		next, hookErr := fn(rc, req, err)
+		if hookErr == nil {
+			return next, nil
+		}
+
+		err = hookErr
+	}
+
+	return kit.ModelRequest{}, err
 }
 
 func (h *hooks) onToolCall(rc *kit.RunContext, call kit.ToolCall) (kit.ToolCall, error) {

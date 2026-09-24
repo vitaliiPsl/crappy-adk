@@ -19,6 +19,13 @@ type OnModelRequest func(rc *RunContext, req ModelRequest) (ModelRequest, error)
 // Returning an error stops the agent.
 type OnModelResponse func(rc *RunContext, resp ModelResponse) (ModelResponse, error)
 
+// OnModelError is called when a model call fails.
+// Returning a [ModelRequest] retries the call once with it; the retry does not
+// run [OnModelRequest] hooks, streams its output again if the failed call had
+// already streamed some, and its failure is final.
+// Returning an error passes it to the next hook; the last error stops the agent.
+type OnModelError func(rc *RunContext, req ModelRequest, err error) (ModelRequest, error)
+
 // OnToolCall is called before a tool is executed.
 // Returned [ToolCall] replaces the original for the tool execution.
 // Returned error is sent to the model as a tool result.

@@ -304,6 +304,11 @@ func(rc *kit.RunContext, req kit.ModelRequest) (kit.ModelRequest, error)
 func(rc *kit.RunContext, resp kit.ModelResponse) (kit.ModelResponse, error)
 ```
 
+**`WithOnModelError`** — when a model call fails. Return a request to retry the call once with it, or an error to pass it on; the last error stops the agent.
+```go
+func(rc *kit.RunContext, req kit.ModelRequest, err error) (kit.ModelRequest, error)
+```
+
 **`WithOnToolCall`** — before each tool execution. Return an error to block the call; the error becomes the tool result and is sent back to the model.
 ```go
 func(rc *kit.RunContext, call kit.ToolCall) (kit.ToolCall, error)

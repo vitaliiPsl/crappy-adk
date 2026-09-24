@@ -145,6 +145,15 @@ func (a *Agent) callModel(rc *kit.RunContext) (kit.ModelResponse, error) {
 
 	resp, err := a.streamModel(rc, req)
 	if err != nil {
+		req, err = a.hooks.onModelError(rc, req, err)
+		if err != nil {
+			return kit.ModelResponse{}, err
+		}
+
+		resp, err = a.streamModel(rc, req)
+	}
+
+	if err != nil {
 		return kit.ModelResponse{}, err
 	}
 
