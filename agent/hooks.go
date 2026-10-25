@@ -5,13 +5,14 @@ import (
 )
 
 type hooks struct {
-	turnStart     []kit.OnTurnStart
-	turnEnd       []kit.OnTurnEnd
-	modelRequest  []kit.OnModelRequest
-	modelResponse []kit.OnModelResponse
-	modelError    []kit.OnModelError
-	toolCall      []kit.OnToolCall
-	toolResult    []kit.OnToolResult
+	turnStart         []kit.OnTurnStart
+	turnEnd           []kit.OnTurnEnd
+	modelRequest      []kit.OnModelRequest
+	modelRequestReady []kit.OnModelRequestReady
+	modelResponse     []kit.OnModelResponse
+	modelError        []kit.OnModelError
+	toolCall          []kit.OnToolCall
+	toolResult        []kit.OnToolResult
 }
 
 func (h *hooks) onTurnStart(rc *kit.RunContext) error {
@@ -60,17 +61,17 @@ func (h *hooks) onModelResponse(rc *kit.RunContext, resp kit.ModelResponse) (kit
 	return resp, nil
 }
 
-func (h *hooks) onModelError(rc *kit.RunContext, req kit.ModelRequest, err error) (kit.ModelRequest, error) {
+func (h *hooks) onModelError(rc *kit.RunContext, req kit.ModelRequest, err error) error {
 	for _, fn := range h.modelError {
-		next, hookErr := fn(rc, req, err)
+		hookErr := fn(rc, req, err)
 		if hookErr == nil {
-			return next, nil
+			return nil
 		}
 
 		err = hookErr
 	}
 
-	return kit.ModelRequest{}, err
+	return err
 }
 
 func (h *hooks) onToolCall(rc *kit.RunContext, call kit.ToolCall) (kit.ToolCall, error) {

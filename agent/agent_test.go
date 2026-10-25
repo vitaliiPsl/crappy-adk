@@ -86,7 +86,7 @@ func TestRun_ReturnsModelError(t *testing.T) {
 	model.AssertCallCount(t, 1)
 }
 
-func TestRun_ModelErrorHookRetriesWithReturnedRequest(t *testing.T) {
+func TestRun_ModelErrorHookRebuildsRequest(t *testing.T) {
 	model := kittest.NewModel(t,
 		kittest.ModelResult{Error: kit.ErrContextLength},
 		kittest.ModelResult{Response: kit.ModelResponse{
@@ -94,16 +94,15 @@ func TestRun_ModelErrorHookRetriesWithReturnedRequest(t *testing.T) {
 			FinishReason: kit.FinishReasonStop,
 		}},
 	)
-	compacted := []kit.Message{kit.NewUserMessage(kit.NewTextContent("compacted"))}
+	compacted := kit.NewUserMessage(kit.NewSummaryContent("compacted"))
 
 	var hookErr error
 
 	a, err := New(model, xmemory.NewHistory(), xtool.NewSet(), WithOnModelError(
-		func(_ *kit.RunContext, req kit.ModelRequest, err error) (kit.ModelRequest, error) {
+		func(rc *kit.RunContext, _ kit.ModelRequest, err error) error {
 			hookErr = err
-			req.Messages = compacted
 
-			return req, nil
+			return rc.Memory.Record(rc.Context, compacted)
 		},
 	))
 	if err != nil {
@@ -120,7 +119,7 @@ func TestRun_ModelErrorHookRetriesWithReturnedRequest(t *testing.T) {
 
 	model.AssertCallCount(t, 2)
 
-	if got := model.CallAt(1).Messages[0].TextContent().Text; got != "compacted" {
+	if got := kit.ContentsText(model.CallAt(1).Messages[0].Content); got != "compacted" {
 		t.Fatalf("retried request message = %q, want compacted", got)
 	}
 }
@@ -134,10 +133,10 @@ func TestRun_ModelErrorHookRetriesOnce(t *testing.T) {
 	calls := 0
 
 	a, err := New(model, xmemory.NewHistory(), xtool.NewSet(), WithOnModelError(
-		func(_ *kit.RunContext, req kit.ModelRequest, _ error) (kit.ModelRequest, error) {
+		func(_ *kit.RunContext, _ kit.ModelRequest, _ error) error {
 			calls++
 
-			return req, nil
+			return nil
 		},
 	))
 	if err != nil {
@@ -163,13 +162,13 @@ func TestRun_ModelErrorHooksPassErrorsAlong(t *testing.T) {
 	var received error
 
 	a, err := New(model, xmemory.NewHistory(), xtool.NewSet(),
-		WithOnModelError(func(_ *kit.RunContext, _ kit.ModelRequest, err error) (kit.ModelRequest, error) {
-			return kit.ModelRequest{}, errors.Join(wrapped, err)
+		WithOnModelError(func(_ *kit.RunContext, _ kit.ModelRequest, err error) error {
+			return errors.Join(wrapped, err)
 		}),
-		WithOnModelError(func(_ *kit.RunContext, _ kit.ModelRequest, err error) (kit.ModelRequest, error) {
+		WithOnModelError(func(_ *kit.RunContext, _ kit.ModelRequest, err error) error {
 			received = err
 
-			return kit.ModelRequest{}, err
+			return err
 		}),
 	)
 	if err != nil {
@@ -186,6 +185,129 @@ func TestRun_ModelErrorHooksPassErrorsAlong(t *testing.T) {
 	}
 
 	model.AssertCallCount(t, 1)
+}
+
+func TestRun_RequestReadyRebuildsBeforeNextHook(t *testing.T) {
+	model := doneModel(t)
+	builds, readyCalls := 0, 0
+	prefix := kit.NewUserMessage(kit.NewTextContent("transient"))
+	compacted := kit.NewUserMessage(kit.NewSummaryContent("compacted"))
+
+	a, err := New(model, xmemory.NewHistory(), xtool.NewSet(),
+		WithInstructions("static"),
+		WithOnModelRequestReady(func(rc *kit.RunContext, req kit.ModelRequest) (bool, error) {
+			readyCalls++
+			if req.Instructions != "static dynamic" || len(req.Messages) != 2 {
+				t.Fatalf("ready hook received an unconstructed request: %+v", req)
+			}
+			return true, rc.Memory.Record(rc.Context, compacted)
+		}),
+		WithOnModelRequest(func(_ *kit.RunContext, req kit.ModelRequest) (kit.ModelRequest, error) {
+			builds++
+			req.Instructions += " dynamic"
+			req.Messages = append([]kit.Message{prefix}, req.Messages...)
+			return req, nil
+		}),
+		WithOnModelRequestReady(func(_ *kit.RunContext, req kit.ModelRequest) (bool, error) {
+			readyCalls++
+			if len(req.Messages) != 2 || kit.ContentsText(req.Messages[1].Content) != "compacted" {
+				t.Fatalf("next ready hook received stale context: %+v", req.Messages)
+			}
+			return false, nil
+		}),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.Run(context.Background(), kit.NewUserMessage(kit.NewTextContent("original"))); err != nil {
+		t.Fatal(err)
+	}
+	if builds != 2 || readyCalls != 2 {
+		t.Fatalf("construction calls = %d, ready calls = %d, want 2/2", builds, readyCalls)
+	}
+	request := model.CallAt(0)
+	if request.Instructions != "static dynamic" || len(request.Messages) != 2 {
+		t.Fatalf("rebuilding duplicated contributions: %+v", request)
+	}
+}
+
+func TestRun_RetryRebuildsContributionsWithoutRepeatingReadyHooks(t *testing.T) {
+	model := kittest.NewModel(t,
+		kittest.ModelResult{Error: kit.ErrContextLength},
+		kittest.ModelResult{Response: kit.ModelResponse{
+			Message: kit.NewModelMessage(kit.NewTextContent("done")), FinishReason: kit.FinishReasonStop,
+		}},
+	)
+	builds, readyCalls := 0, 0
+	prefix := kit.NewUserMessage(kit.NewTextContent("transient"))
+	a, err := New(model, xmemory.NewHistory(), xtool.NewSet(),
+		WithInstructions("static"),
+		WithOnModelRequest(func(_ *kit.RunContext, req kit.ModelRequest) (kit.ModelRequest, error) {
+			builds++
+			req.Instructions += " dynamic"
+			req.Messages = append([]kit.Message{prefix}, req.Messages...)
+			return req, nil
+		}),
+		WithOnModelRequestReady(func(*kit.RunContext, kit.ModelRequest) (bool, error) {
+			readyCalls++
+			return false, nil
+		}),
+		WithOnModelError(func(rc *kit.RunContext, _ kit.ModelRequest, err error) error {
+			if !errors.Is(err, kit.ErrContextLength) {
+				return err
+			}
+			return rc.Memory.Record(rc.Context, kit.NewUserMessage(kit.NewSummaryContent("compacted")))
+		}),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.Run(context.Background(), kit.NewUserMessage(kit.NewTextContent("original"))); err != nil {
+		t.Fatal(err)
+	}
+	if builds != 2 || readyCalls != 1 {
+		t.Fatalf("construction calls = %d, ready calls = %d, want 2/1", builds, readyCalls)
+	}
+	request := model.CallAt(1)
+	if request.Instructions != "static dynamic" || len(request.Messages) != 2 || kit.ContentsText(request.Messages[1].Content) != "compacted" {
+		t.Fatalf("retried request = %+v", request)
+	}
+}
+
+func TestRun_RequestRebuildFailureStopsModelCall(t *testing.T) {
+	for _, retry := range []bool{false, true} {
+		name := "ready"
+		var results []kittest.ModelResult
+		if retry {
+			name = "retry"
+			results = []kittest.ModelResult{{Error: kit.ErrContextLength}}
+		}
+		t.Run(name, func(t *testing.T) {
+			failure := errors.New("cannot rebuild request")
+			model := kittest.NewModel(t, results...)
+			builds := 0
+			a, err := New(model, xmemory.NewHistory(), xtool.NewSet(),
+				WithOnModelRequest(func(_ *kit.RunContext, req kit.ModelRequest) (kit.ModelRequest, error) {
+					builds++
+					if builds > 1 {
+						return kit.ModelRequest{}, failure
+					}
+					return req, nil
+				}),
+				WithOnModelRequestReady(func(*kit.RunContext, kit.ModelRequest) (bool, error) {
+					return !retry, nil
+				}),
+				WithOnModelError(func(*kit.RunContext, kit.ModelRequest, error) error { return nil }),
+			)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := a.Run(context.Background(), kit.NewUserMessage(kit.NewTextContent("original"))); !errors.Is(err, failure) {
+				t.Fatalf("Run() error = %v, want construction error", err)
+			}
+			model.AssertCallCount(t, len(results))
+		})
+	}
 }
 
 func TestRun_ReturnsCanceledContextBeforeModelCall(t *testing.T) {

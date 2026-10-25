@@ -282,7 +282,7 @@ fmt.Printf("final text: %s\n", resp.Output.Text)
 
 ## Hooks
 
-Six hooks cover every stage of the ReAct loop. Each hook receives a pointer to `*kit.RunContext` and may inspect or mutate it. Returning a modified value replaces the original; returning an error aborts the run. Tool hooks are the exception: an error becomes a tool result and the loop continues so the model can react to the failure.
+Hooks cover the stages of the ReAct loop. Each hook receives a pointer to `*kit.RunContext` and may inspect or mutate it. Returning a modified value replaces the original; returning an error aborts the run. Tool hooks turn errors into tool results so the model can react to the failure. Model error hooks can recover through one bounded retry.
 
 **`WithOnTurnStart`** — start of each turn, before the model is called. Summarization strategies plug in here.
 ```go
@@ -294,9 +294,14 @@ func(rc *kit.RunContext) error
 func(rc *kit.RunContext) error
 ```
 
-**`WithOnModelRequest`** — before each model call. Returned request replaces the original.
+**`WithOnModelRequest`** — constructs a request from current memory and configuration. Returned request replaces the original. Hooks must be safe to repeat: context changes and error recovery rebuild requests through these hooks.
 ```go
 func(rc *kit.RunContext, req kit.ModelRequest) (kit.ModelRequest, error)
+```
+
+**`WithOnModelRequestReady`** — after request construction. Return `true` after updating context or construction inputs to rebuild the request before the next ready hook. Ready hooks run once in order; rebuilding repeats only construction hooks.
+```go
+func(rc *kit.RunContext, req kit.ModelRequest) (rebuild bool, err error)
 ```
 
 **`WithOnModelResponse`** — after each model call. Returned response replaces the original.
@@ -304,9 +309,9 @@ func(rc *kit.RunContext, req kit.ModelRequest) (kit.ModelRequest, error)
 func(rc *kit.RunContext, resp kit.ModelResponse) (kit.ModelResponse, error)
 ```
 
-**`WithOnModelError`** — when a model call fails. Return a request to retry the call once with it, or an error to pass it on; the last error stops the agent.
+**`WithOnModelError`** — when a model call fails. Update context or construction inputs and return `nil` to rebuild and retry once. Ready hooks do not run again. Returning an error passes it to the next error hook; the last error stops the agent.
 ```go
-func(rc *kit.RunContext, req kit.ModelRequest, err error) (kit.ModelRequest, error)
+func(rc *kit.RunContext, req kit.ModelRequest, err error) error
 ```
 
 **`WithOnToolCall`** — before each tool execution. Return an error to block the call; the error becomes the tool result and is sent back to the model.

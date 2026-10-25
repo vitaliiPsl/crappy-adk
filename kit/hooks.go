@@ -9,22 +9,23 @@ type OnTurnStart func(rc *RunContext) error
 // Returning an error stops the agent.
 type OnTurnEnd func(rc *RunContext) error
 
-// OnModelRequest is called before each model request.
-// Returned [ModelRequest] replaces the original for the model call.
-// Returning an error cancels the request.
+// OnModelRequest transforms a fresh request; errors stop the run.
+// Must be safe to repeat after context changes or model errors.
 type OnModelRequest func(rc *RunContext, req ModelRequest) (ModelRequest, error)
+
+// OnModelRequestReady runs once per turn, after construction.
+// Returning true rebuilds the request before the next ready hook.
+type OnModelRequestReady func(rc *RunContext, req ModelRequest) (rebuild bool, err error)
 
 // OnModelResponse is called after each model response.
 // Returned [ModelResponse] replaces the original for the agent loop.
 // Returning an error stops the agent.
 type OnModelResponse func(rc *RunContext, resp ModelResponse) (ModelResponse, error)
 
-// OnModelError is called when a model call fails.
-// Returning a [ModelRequest] retries the call once with it; the retry does not
-// run [OnModelRequest] hooks, streams its output again if the failed call had
-// already streamed some, and its failure is final.
-// Returning an error passes it to the next hook; the last error stops the agent.
-type OnModelError func(rc *RunContext, req ModelRequest, err error) (ModelRequest, error)
+// OnModelError returns nil to rebuild and retry once, skipping ready hooks.
+// Errors pass to the next error hook; the last error stops the run.
+// Retrying may replay output already streamed by the failed call.
+type OnModelError func(rc *RunContext, req ModelRequest, err error) error
 
 // OnToolCall is called before a tool is executed.
 // Returned [ToolCall] replaces the original for the tool execution.

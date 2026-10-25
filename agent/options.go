@@ -92,10 +92,19 @@ func WithTools(tools ...kit.Tool) Option {
 	}
 }
 
-// WithOnModelRequest registers a hook that is called before each model request.
+// WithOnModelRequest registers a repeatable request construction hook.
 func WithOnModelRequest(fn kit.OnModelRequest) Option {
 	return func(a *Agent) error {
 		a.hooks.modelRequest = append(a.hooks.modelRequest, fn)
+
+		return nil
+	}
+}
+
+// WithOnModelRequestReady registers a hook after request construction.
+func WithOnModelRequestReady(fn kit.OnModelRequestReady) Option {
+	return func(a *Agent) error {
+		a.hooks.modelRequestReady = append(a.hooks.modelRequestReady, fn)
 
 		return nil
 	}

@@ -121,9 +121,59 @@ func (a *Agent) run(
 }
 
 func (a *Agent) callModel(rc *kit.RunContext) (kit.ModelResponse, error) {
-	messages, err := a.memory.Context(rc.Context)
+	req, err := a.prepareModelRequest(rc)
 	if err != nil {
 		return kit.ModelResponse{}, err
+	}
+
+	resp, err := a.streamModel(rc, req)
+	if err != nil {
+		if err := a.hooks.onModelError(rc, req, err); err != nil {
+			return kit.ModelResponse{}, err
+		}
+
+		req, err = a.buildModelRequest(rc)
+		if err != nil {
+			return kit.ModelResponse{}, err
+		}
+
+		resp, err = a.streamModel(rc, req)
+	}
+
+	if err != nil {
+		return kit.ModelResponse{}, err
+	}
+
+	return a.hooks.onModelResponse(rc, resp)
+}
+
+func (a *Agent) prepareModelRequest(rc *kit.RunContext) (kit.ModelRequest, error) {
+	req, err := a.buildModelRequest(rc)
+	if err != nil {
+		return kit.ModelRequest{}, err
+	}
+
+	for _, hook := range a.hooks.modelRequestReady {
+		rebuild, err := hook(rc, req)
+		if err != nil {
+			return kit.ModelRequest{}, err
+		}
+
+		if rebuild {
+			req, err = a.buildModelRequest(rc)
+			if err != nil {
+				return kit.ModelRequest{}, err
+			}
+		}
+	}
+
+	return req, nil
+}
+
+func (a *Agent) buildModelRequest(rc *kit.RunContext) (kit.ModelRequest, error) {
+	messages, err := a.memory.Context(rc.Context)
+	if err != nil {
+		return kit.ModelRequest{}, err
 	}
 
 	req := kit.ModelRequest{
@@ -138,31 +188,7 @@ func (a *Agent) callModel(rc *kit.RunContext) (kit.ModelResponse, error) {
 		},
 	}
 
-	req, err = a.hooks.onModelRequest(rc, req)
-	if err != nil {
-		return kit.ModelResponse{}, err
-	}
-
-	resp, err := a.streamModel(rc, req)
-	if err != nil {
-		req, err = a.hooks.onModelError(rc, req, err)
-		if err != nil {
-			return kit.ModelResponse{}, err
-		}
-
-		resp, err = a.streamModel(rc, req)
-	}
-
-	if err != nil {
-		return kit.ModelResponse{}, err
-	}
-
-	resp, err = a.hooks.onModelResponse(rc, resp)
-	if err != nil {
-		return kit.ModelResponse{}, err
-	}
-
-	return resp, nil
+	return a.hooks.onModelRequest(rc, req)
 }
 
 func (a *Agent) streamModel(rc *kit.RunContext, req kit.ModelRequest) (kit.ModelResponse, error) {
