@@ -8,8 +8,7 @@ import (
 	"github.com/vitaliiPsl/crappy-adk/agent"
 	"github.com/vitaliiPsl/crappy-adk/kit"
 	"github.com/vitaliiPsl/crappy-adk/kittest"
-	"github.com/vitaliiPsl/crappy-adk/x/memory"
-	xtool "github.com/vitaliiPsl/crappy-adk/x/tool"
+	"github.com/vitaliiPsl/crappy-adk/x/history"
 )
 
 func TestWithRepeatedToolCallLimit_DetectsRepeatedCallIgnoringCallID(t *testing.T) {
@@ -36,7 +35,7 @@ func TestWithRepeatedToolCallLimit_DetectsRepeatedCallIgnoringCallID(t *testing.
 		},
 	)
 
-	a, err := agent.New(model, memory.NewHistory(), xtool.NewSet(), agent.WithTools(tool), WithRepeatedToolCallLimit(1, 2))
+	a, err := agent.New(model, history.New(), agent.WithTools(tool), WithRepeatedToolCallLimit(1, 2))
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -65,7 +64,7 @@ func TestWithRepeatedToolCallLimit_CountsDuplicatesInCurrentResponse(t *testing.
 		},
 	})
 
-	a, err := agent.New(model, memory.NewHistory(), xtool.NewSet(), agent.WithTools(tool), WithRepeatedToolCallLimit(1, 1))
+	a, err := agent.New(model, history.New(), agent.WithTools(tool), WithRepeatedToolCallLimit(1, 1))
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -118,7 +117,7 @@ func TestWithRepeatedToolCallLimit_OnlyCountsWithinWindow(t *testing.T) {
 		},
 	)
 
-	a, err := agent.New(model, memory.NewHistory(), xtool.NewSet(), agent.WithTools(tool), WithRepeatedToolCallLimit(1, 2))
+	a, err := agent.New(model, history.New(), agent.WithTools(tool), WithRepeatedToolCallLimit(1, 2))
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}

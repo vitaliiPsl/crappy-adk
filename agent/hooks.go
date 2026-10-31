@@ -1,13 +1,10 @@
 package agent
 
-import (
-	"github.com/vitaliiPsl/crappy-adk/kit"
-)
+import "github.com/vitaliiPsl/crappy-adk/kit"
 
 type hooks struct {
 	turnStart         []kit.OnTurnStart
 	turnEnd           []kit.OnTurnEnd
-	modelRequest      []kit.OnModelRequest
 	modelRequestReady []kit.OnModelRequestReady
 	modelResponse     []kit.OnModelResponse
 	modelError        []kit.OnModelError
@@ -33,19 +30,6 @@ func (h *hooks) onTurnEnd(rc *kit.RunContext) error {
 	}
 
 	return nil
-}
-
-func (h *hooks) onModelRequest(rc *kit.RunContext, req kit.ModelRequest) (kit.ModelRequest, error) {
-	for _, fn := range h.modelRequest {
-		var err error
-
-		req, err = fn(rc, req)
-		if err != nil {
-			return kit.ModelRequest{}, err
-		}
-	}
-
-	return req, nil
 }
 
 func (h *hooks) onModelResponse(rc *kit.RunContext, resp kit.ModelResponse) (kit.ModelResponse, error) {

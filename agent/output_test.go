@@ -8,16 +8,15 @@ import (
 
 	"github.com/vitaliiPsl/crappy-adk/kit"
 	"github.com/vitaliiPsl/crappy-adk/kittest"
-	xmemory "github.com/vitaliiPsl/crappy-adk/x/memory"
+	"github.com/vitaliiPsl/crappy-adk/x/history"
 	"github.com/vitaliiPsl/crappy-adk/x/output"
-	xtool "github.com/vitaliiPsl/crappy-adk/x/tool"
 )
 
 type assessment struct {
 	Summary string `json:"summary"`
 }
 
-func TestRunReturnsStructuredOutput(t *testing.T) {
+func TestRun_ReturnsStructuredOutput(t *testing.T) {
 	schema := output.MustFor[assessment]("assessment", "Completed assessment")
 	model := kittest.NewModel(t, kittest.ModelResult{
 		Response: kit.ModelResponse{
@@ -26,7 +25,7 @@ func TestRunReturnsStructuredOutput(t *testing.T) {
 		},
 	})
 
-	a, err := New(model, xmemory.NewHistory(), xtool.NewSet(), WithOutputSchema(schema))
+	a, err := New(model, history.New(), WithOutputSchema(schema))
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -50,7 +49,7 @@ func TestRunReturnsStructuredOutput(t *testing.T) {
 	}
 }
 
-func TestRunValidatesOnlyFinalOutput(t *testing.T) {
+func TestRun_ValidatesOnlyFinalOutput(t *testing.T) {
 	schema := output.MustFor[assessment]("assessment", "")
 	call := kit.NewToolCall("call-1", "inspect", map[string]any{})
 	tool := kittest.NewTool(t, "inspect", "inspect", kittest.ToolResult{Result: "healthy"})
@@ -65,7 +64,7 @@ func TestRunValidatesOnlyFinalOutput(t *testing.T) {
 		}},
 	)
 
-	a, err := New(model, xmemory.NewHistory(), xtool.NewSet(tool), WithOutputSchema(schema))
+	a, err := New(model, history.New(), WithTools(tool), WithOutputSchema(schema))
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -79,7 +78,7 @@ func TestRunValidatesOnlyFinalOutput(t *testing.T) {
 	}
 }
 
-func TestRunRejectsInvalidStructuredOutput(t *testing.T) {
+func TestRun_RejectsInvalidStructuredOutput(t *testing.T) {
 	schema := output.MustFor[assessment]("assessment", "")
 	model := kittest.NewModel(t, kittest.ModelResult{
 		Response: kit.ModelResponse{
@@ -88,7 +87,7 @@ func TestRunRejectsInvalidStructuredOutput(t *testing.T) {
 		},
 	})
 
-	a, err := New(model, xmemory.NewHistory(), xtool.NewSet(), WithOutputSchema(schema))
+	a, err := New(model, history.New(), WithOutputSchema(schema))
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}

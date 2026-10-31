@@ -25,8 +25,7 @@ import (
 	"github.com/vitaliiPsl/crappy-adk/kit"
 	"github.com/vitaliiPsl/crappy-adk/providers"
 	"github.com/vitaliiPsl/crappy-adk/providers/openai"
-	"github.com/vitaliiPsl/crappy-adk/x/memory"
-	tool "github.com/vitaliiPsl/crappy-adk/x/tool"
+	"github.com/vitaliiPsl/crappy-adk/x/history"
 )
 
 func main() {
@@ -42,8 +41,7 @@ func main() {
 
 	a, err := agent.New(
 		model,
-		memory.NewHistory(),
-		tool.NewSet(),
+		history.New(),
 		agent.WithInstructions("You are a concise assistant. Keep every reply to two sentences or fewer."),
 	)
 	if err != nil {

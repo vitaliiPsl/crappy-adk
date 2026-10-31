@@ -7,99 +7,40 @@ import (
 
 	"github.com/vitaliiPsl/crappy-adk/kit"
 	"github.com/vitaliiPsl/crappy-adk/kittest"
-	xmemory "github.com/vitaliiPsl/crappy-adk/x/memory"
-	xtool "github.com/vitaliiPsl/crappy-adk/x/tool"
+	"github.com/vitaliiPsl/crappy-adk/x/history"
 )
 
-func TestWithInstructionsAppendsSources(t *testing.T) {
+func TestInstructionOptions_RenderInstructionsBeforeSourcedSections(t *testing.T) {
 	model := doneModel(t)
+	sources := []string{" first ", "", "second"}
 
-	a, err := New(
-		model,
-		xmemory.NewHistory(),
-		xtool.NewSet(),
-		WithInstructions("first", "second"),
-		WithInstructions("third"),
+	a, err := New(model, history.New(),
+		WithInstructionsSource(" workspace ", sources...),
+		WithInstructions(" persona "),
+		WithInstructionsSource("style", "third"),
 	)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
 
-	_, err = a.Run(context.Background(), kit.NewUserMessage(kit.NewTextContent("hello")))
-	if err != nil {
+	sources[0] = "changed after registration"
+
+	if _, err := a.Run(context.Background(), kit.NewUserMessage(kit.NewTextContent("hello"))); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
 
-	got := model.CallAt(0).Instructions
-
-	want := "first\n\nsecond\n\nthird"
-	if got != want {
+	want := "persona\n\n# workspace\n\nfirst\n\n# workspace\n\nsecond\n\n# style\n\nthird"
+	if got := model.CallAt(0).Instructions; got != want {
 		t.Fatalf("Instructions = %q, want %q", got, want)
 	}
 }
 
-func TestWithDynamicInstructionsAppendsResolvedInstructions(t *testing.T) {
+func TestGenerationOptions_ConfigureModelRequest(t *testing.T) {
 	model := doneModel(t)
 
 	a, err := New(
 		model,
-		xmemory.NewHistory(),
-		xtool.NewSet(),
-		WithInstructions("static"),
-		WithDynamicInstructions(
-			func(*kit.RunContext) (string, error) { return " dynamic one ", nil },
-			func(*kit.RunContext) (string, error) { return "", nil },
-			func(*kit.RunContext) (string, error) { return "dynamic two", nil },
-		),
-	)
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
-
-	_, err = a.Run(context.Background(), kit.NewUserMessage(kit.NewTextContent("hello")))
-	if err != nil {
-		t.Fatalf("Run: %v", err)
-	}
-
-	got := model.CallAt(0).Instructions
-
-	want := "static\n\ndynamic one\n\ndynamic two"
-	if got != want {
-		t.Fatalf("Instructions = %q, want %q", got, want)
-	}
-}
-
-func TestWithDynamicInstructionsReturnsResolverError(t *testing.T) {
-	wantErr := errors.New("boom")
-	model := kittest.NewModel(t)
-
-	a, err := New(
-		model,
-		xmemory.NewHistory(),
-		xtool.NewSet(),
-		WithDynamicInstructions(func(*kit.RunContext) (string, error) {
-			return "", wantErr
-		}),
-	)
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
-
-	_, err = a.Run(context.Background(), kit.NewUserMessage(kit.NewTextContent("hello")))
-	if !errors.Is(err, wantErr) {
-		t.Fatalf("Run error = %v, want %v", err, wantErr)
-	}
-
-	model.AssertCallCount(t, 0)
-}
-
-func TestGenerationOptionsConfigureModelRequest(t *testing.T) {
-	model := doneModel(t)
-
-	a, err := New(
-		model,
-		xmemory.NewHistory(),
-		xtool.NewSet(),
+		history.New(),
 		WithTemperature(0.25),
 		WithMaxOutputTokens(2048),
 		WithThinking(kit.ThinkingLevelHigh),
@@ -127,22 +68,7 @@ func TestGenerationOptionsConfigureModelRequest(t *testing.T) {
 	}
 }
 
-func TestWithToolsAddsTools(t *testing.T) {
-	first := kittest.NewTool(t, "first", "first tool")
-	second := kittest.NewTool(t, "second", "second tool")
-
-	a, err := New(doneModel(t), xmemory.NewHistory(), xtool.NewSet(), WithTools(first, second))
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
-
-	got := a.tools.List()
-	if len(got) != 2 || got[0] != first || got[1] != second {
-		t.Fatalf("tools = %#v, want first and second", got)
-	}
-}
-
-func TestHookOptionsRunInOrder(t *testing.T) {
+func TestHookOptions_RunInOrder(t *testing.T) {
 	call := kit.NewToolCall("call-1", "lookup", map[string]any{"query": "original"})
 	model := kittest.NewModel(t, kittest.ModelResult{
 		Response: kit.ModelResponse{
@@ -165,17 +91,12 @@ func TestHookOptionsRunInOrder(t *testing.T) {
 
 	a, err := New(
 		model,
-		xmemory.NewHistory(),
-		xtool.NewSet(tool),
+		history.New(),
+		WithTools(tool),
 		WithOnTurnStart(func(*kit.RunContext) error {
 			turnStartCount++
 
 			return nil
-		}),
-		WithOnModelRequest(func(_ *kit.RunContext, req kit.ModelRequest) (kit.ModelRequest, error) {
-			req.Instructions = "hooked request"
-
-			return req, nil
 		}),
 		WithOnModelResponse(func(_ *kit.RunContext, resp kit.ModelResponse) (kit.ModelResponse, error) {
 			if resp.FinishReason != kit.FinishReasonToolCall {
@@ -213,10 +134,6 @@ func TestHookOptionsRunInOrder(t *testing.T) {
 		t.Fatalf("turn hooks = start %d end %d, want 2/2", turnStartCount, turnEndCount)
 	}
 
-	if got := model.CallAt(0).Instructions; got != "hooked request" {
-		t.Fatalf("first request instructions = %q, want hooked request", got)
-	}
-
 	tool.AssertCalledWith(t, 0, map[string]any{"query": "hooked call"})
 
 	secondRequest := model.CallAt(1)
@@ -232,15 +149,14 @@ func TestHookOptionsRunInOrder(t *testing.T) {
 	}
 }
 
-func TestWithExtensionsAppliesNestedOptions(t *testing.T) {
+func TestWithExtensions_AppliesNestedOptions(t *testing.T) {
 	model := doneModel(t)
 
 	a, err := New(
 		model,
-		xmemory.NewHistory(),
-		xtool.NewSet(),
+		history.New(),
 		WithExtensions(
-			WithInstructions("nested"),
+			WithMaxOutputTokens(64),
 			WithTemperature(0.5),
 		),
 	)
@@ -254,8 +170,8 @@ func TestWithExtensionsAppliesNestedOptions(t *testing.T) {
 	}
 
 	req := model.CallAt(0)
-	if req.Instructions != "nested" {
-		t.Fatalf("Instructions = %q, want nested", req.Instructions)
+	if req.Config.MaxOutputTokens == nil || *req.Config.MaxOutputTokens != 64 {
+		t.Fatalf("MaxOutputTokens = %v, want 64", req.Config.MaxOutputTokens)
 	}
 
 	if req.Config.Temperature == nil || *req.Config.Temperature != 0.5 {
@@ -263,13 +179,12 @@ func TestWithExtensionsAppliesNestedOptions(t *testing.T) {
 	}
 }
 
-func TestWithExtensionsReturnsNestedError(t *testing.T) {
+func TestWithExtensions_ReturnsNestedError(t *testing.T) {
 	wantErr := errors.New("bad option")
 
 	_, err := New(
 		doneModel(t),
-		xmemory.NewHistory(),
-		xtool.NewSet(),
+		history.New(),
 		WithExtensions(func(*Agent) error {
 			return wantErr
 		}),

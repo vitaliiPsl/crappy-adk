@@ -24,7 +24,7 @@ import (
 	"github.com/vitaliiPsl/crappy-adk/kit"
 	"github.com/vitaliiPsl/crappy-adk/providers"
 	"github.com/vitaliiPsl/crappy-adk/providers/openai"
-	"github.com/vitaliiPsl/crappy-adk/x/memory"
+	"github.com/vitaliiPsl/crappy-adk/x/history"
 	"github.com/vitaliiPsl/crappy-adk/x/output"
 	"github.com/vitaliiPsl/crappy-adk/x/tool"
 )
@@ -73,11 +73,11 @@ func main() {
 
 	a, err := agent.New(
 		model,
-		memory.NewHistory(),
-		tool.NewSet(checkService),
+		history.New(),
 		agent.WithInstructions(
 			"Use check_service before assessing health. Base every conclusion on the returned metrics.",
 		),
+		agent.WithTools(checkService),
 		agent.WithOutputSchema(schema),
 	)
 	if err != nil {

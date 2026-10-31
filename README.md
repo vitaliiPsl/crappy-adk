@@ -8,7 +8,7 @@
   [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 </div>
 
-A small toolkit for building AI agents in Go. ReAct loop, memory, models, tools, and extension options.
+A small toolkit for building AI agents in Go. ReAct loop, history, models, tools, and extension options.
 
 ## Motivation
 
@@ -18,13 +18,13 @@ Felt bored while on vacation, so decided to learn more about AI agents and build
 
 - [Install](#install)
 - [Quick start](#quick-start)
-- [Memory](#memory)
+- [Agent](#agent)
+- [History](#history)
 - [Models](#models)
 - [Tools](#tools)
 - [Structured output](#structured-output)
 - [Streaming](#streaming)
 - [Hooks](#hooks)
-- [Summarization](#summarization)
 - [Guards](#guards)
 - [Testing](#testing)
 - [Extending](#extending)
@@ -45,7 +45,6 @@ API documentation: https://pkg.go.dev/github.com/vitaliiPsl/crappy-adk
 
 ```go
 ctx := context.Background()
-mem := memory.NewHistory()
 
 model, err := openai.New("gpt-5.4-nano",
     providers.WithAPIKey(os.Getenv("OPENAI_API_KEY")),
@@ -69,8 +68,9 @@ if err != nil {
     log.Fatal(err)
 }
 
-a, err := agent.New(model, mem, tool.NewSet(weather),
+a, err := agent.New(model, history.New(),
     agent.WithInstructions("You are a helpful assistant. Use tools when useful."),
+    agent.WithTools(weather),
 )
 if err != nil {
     log.Fatal(err)
@@ -88,14 +88,36 @@ fmt.Printf("messages produced: %d\n", len(resp.Messages))
 fmt.Printf("tokens used: in=%d out=%d\n", resp.Usage.InputTokens, resp.Usage.OutputTokens)
 ```
 
-## Memory
+## Agent
 
-The agent stores conversation state in `kit.Memory`. Memory records full history and provides the context sent to the model. 
+An agent is a model plus its instructions, tools, and options. `agent.New` takes the model, the [history](#history) the agent works on, and options:
 
 ```go
-mem := memory.NewHistory()
+a, err := agent.New(model, history.New(),
+    agent.WithInstructions("You are a helpful assistant."),
+    agent.WithInstructionsSource("Style", "Answer in two sentences or fewer."),
+)
+```
 
-a, err := agent.New(model, mem, tool.NewSet(),
+`WithInstructions` sets the agent's behavior and role, which always renders first. `WithInstructionsSource` appends sections in registration order, each rendered as `# source` followed by its text.
+
+`a.Context(ctx)` returns the `kit.AgentContext` the next request would be built from: instructions, history messages, and tools. `AgentContext.InstructionsText()` renders the text sent to the model.
+
+## History
+
+The conversation an agent works on is a `kit.History`. Before each model request the agent reads the history's messages, and it appends the input, every model message, and every tool result to it.
+
+```go
+type History interface {
+    Messages(ctx context.Context) ([]Message, error)
+    Append(ctx context.Context, messages ...Message) error
+}
+```
+
+`x/history` provides an in-memory history that remembers messages across runs:
+
+```go
+a, err := agent.New(model, history.New(),
     agent.WithInstructions("You are a helpful assistant."),
 )
 
@@ -107,6 +129,8 @@ resp, err = a.Run(ctx, kit.NewUserMessage(
     kit.NewTextContent("What is my name?"),
 ))
 ```
+
+Implement `kit.History` yourself for anything else, for example a history backed by durable storage or one that compacts old messages. `Messages` must be safe to repeat: the agent reads it again whenever a hook asks to rebuild a request.
 
 ## Models
 
@@ -176,15 +200,14 @@ Use `tool.MustNew(...)` for the panic-on-error variant in test code or top-level
 
 Anything implementing `kit.Tool` works — `Generic` is the convenience wrapper, not a requirement.
 
-An agent's tools are passed to `agent.New` as a `kit.ToolSet`, built with `tool.NewSet(...)`.
+Pass tools to the agent with `agent.WithTools(...)`. Tool names must be unique; `agent.New` returns an error for duplicates.
 
 ```go
-a, err := agent.New(model, mem, tool.NewSet(getTime),
+a, err := agent.New(model, history.New(),
     agent.WithInstructions("You are a helpful assistant. Use tools when useful."),
+    agent.WithTools(getTime),
 )
 ```
-
-The `WithTools(...)` option adds more tools after the set is built — this is how extensions register tools of their own.
 
 ## Structured output
 
@@ -205,8 +228,9 @@ if err != nil {
     log.Fatal(err)
 }
 
-a, err := agent.New(model, memory.NewHistory(), tool.NewSet(checkService),
+a, err := agent.New(model, history.New(),
     agent.WithInstructions("Inspect the service, then return an assessment."),
+    agent.WithTools(checkService),
     agent.WithOutputSchema(schema),
 )
 
@@ -226,9 +250,9 @@ if err != nil {
 }
 ```
 
-The schema constrains only the final response; the agent can still call tools during earlier turns. The JSON text remains in the final model message and conversation memory, while `AgentResponse.StructuredOutput` contains the validated raw JSON.
+The schema constrains only the final response; the agent can still call tools during earlier turns. The JSON text remains in the final model message and the history, while `AgentResponse.StructuredOutput` contains the validated raw JSON.
 
-Validation fails with `kit.ErrInvalidOutput` when the final response is empty, invalid JSON, or does not satisfy the schema. The invalid final message is not recorded in memory. JSON Schema support differs between providers, so prefer simple object schemas with explicit fields. For nullable values, use required pointer fields rather than omitted properties when portability matters.
+Validation fails with `kit.ErrInvalidOutput` when the final response is empty, invalid JSON, or does not satisfy the schema. The invalid final message is not appended to the history. JSON Schema support differs between providers, so prefer simple object schemas with explicit fields. For nullable values, use required pointer fields rather than omitted properties when portability matters.
 
 ## Streaming
 
@@ -282,9 +306,9 @@ fmt.Printf("final text: %s\n", resp.Output.Text)
 
 ## Hooks
 
-Hooks cover the stages of the ReAct loop. Each hook receives a pointer to `*kit.RunContext` and may inspect or mutate it. Returning a modified value replaces the original; returning an error aborts the run. Tool hooks turn errors into tool results so the model can react to the failure. Model error hooks can recover through one bounded retry.
+Hooks cover the stages of the ReAct loop. They receive `*kit.RunContext` and may inspect or mutate run state. Returning a modified value replaces the original; returning an error aborts the run. Tool hooks turn errors into tool results so the model can react to the failure. Model error hooks can recover through one bounded retry.
 
-**`WithOnTurnStart`** — start of each turn, before the model is called. Summarization strategies plug in here.
+**`WithOnTurnStart`** — start of each turn, before the model is called.
 ```go
 func(rc *kit.RunContext) error
 ```
@@ -294,12 +318,7 @@ func(rc *kit.RunContext) error
 func(rc *kit.RunContext) error
 ```
 
-**`WithOnModelRequest`** — constructs a request from current memory and configuration. Returned request replaces the original. Hooks must be safe to repeat: context changes and error recovery rebuild requests through these hooks.
-```go
-func(rc *kit.RunContext, req kit.ModelRequest) (kit.ModelRequest, error)
-```
-
-**`WithOnModelRequestReady`** — after request construction. Return `true` after updating context or construction inputs to rebuild the request before the next ready hook. Ready hooks run once in order; rebuilding repeats only construction hooks.
+**`WithOnModelRequestReady`** — after request construction. Return `true` after changing the history to read it again and rebuild the request before the next ready hook. Ready hooks run once in order; rebuilding repeats only the history read.
 ```go
 func(rc *kit.RunContext, req kit.ModelRequest) (rebuild bool, err error)
 ```
@@ -309,7 +328,7 @@ func(rc *kit.RunContext, req kit.ModelRequest) (rebuild bool, err error)
 func(rc *kit.RunContext, resp kit.ModelResponse) (kit.ModelResponse, error)
 ```
 
-**`WithOnModelError`** — when a model call fails. Update context or construction inputs and return `nil` to rebuild and retry once. Ready hooks do not run again. Returning an error passes it to the next error hook; the last error stops the agent.
+**`WithOnModelError`** — when a model call fails. Change the history and return `nil` to rebuild and retry once. Ready hooks do not run again. Returning an error passes it to the next error hook; the last error stops the agent.
 ```go
 func(rc *kit.RunContext, req kit.ModelRequest, err error) error
 ```
@@ -324,32 +343,14 @@ func(rc *kit.RunContext, call kit.ToolCall) (kit.ToolCall, error)
 func(rc *kit.RunContext, result kit.ToolResult) (kit.ToolResult, error)
 ```
 
-`RunContext` carries memory, run messages, cumulative and last-call usage, and the stream emitter. Hooks can inspect memory, record messages, and influence what the model sees on the next turn.
-
-## Summarization
-
-`x/summarization` plugs into `OnTurnStart` to summarize long conversations. A `Trigger` decides when to summarize; a `Strategy` records the summary.
-
-```go
-a, err := agent.New(model, memory.NewHistory(), tool.NewSet(),
-    agent.WithInstructions("You are a helpful assistant."),
-    summarization.WithSummarization(
-        summarization.WhenUsageTokensExceed(80_000),
-        summarization.Summarize(summarizerModel, "Summarize the conversation so far."),
-    ),
-)
-```
-
-`Summarize` summarizes the current memory context by calling a separate model, then records a `kit.ContentTypeSummary` message in memory. Full history is preserved, and future context starts from the latest summary. The summarizer can be the same model as the agent, or a cheaper one.
-
-`Trigger` and `Strategy` are plain function types — implement your own to use a different policy.
+`RunContext` carries run messages, cumulative and last-call usage, and the stream emitter.
 
 ## Guards
 
 `x/guard` provides hook-based runtime policies for stopping runaway or unexpectedly expensive runs. Guards are regular `agent.Option` values, so compose them with the rest of your agent setup.
 
 ```go
-a, err := agent.New(model, memory.NewHistory(), tool.NewSet(),
+a, err := agent.New(model, history.New(),
     agent.WithInstructions("You are a helpful assistant."),
     guard.WithMaxTurns(12),
     guard.WithMaxToolCalls(40),
@@ -383,7 +384,7 @@ m := kittest.NewModel(t,
     },
 )
 
-a, _ := agent.New(m, memory.NewHistory(), tool.NewSet())
+a, _ := agent.New(m, history.New())
 resp, err := a.Run(ctx, kit.NewUserMessage(kit.NewTextContent("hi")))
 ```
 
@@ -393,11 +394,10 @@ The test double records every request it receives, fails the test if the agent m
 
 Everything is an interface. If something doesn't fit, replace it.
 
-- **Memory** — `kit.Memory`. Use `memory.NewHistory()` for short-term history and summary-derived context, or implement your own.
+- **History** — `kit.History`. Use `history.New()` from `x/history` for an in-memory history, or implement your own.
 - **Model** — `kit.Model`. Point at any inference backend via a model adapter package or implement your own.
-- **Tool** — `kit.Tool`, or use `tool.New[I, O]` from `x/tool` for auto-schema from a Go struct. Group tools into a `kit.ToolSet` with `tool.NewSet(...)`.
+- **Tool** — `kit.Tool`, or use `tool.New[I, O]` from `x/tool` for auto-schema from a Go struct.
 - **Output schema** — `kit.OutputSchema`, or derive one from a Go type with `output.For[T]`.
-- **Summarizer** — a `Trigger` plus a `Strategy` registered with `summarization.WithSummarization(...)`.
 - **Guard** — runtime policies from `x/guard`, such as turn, tool-call, token-budget, and repeated-tool-call limits.
 - **Hooks** — typed function values registered with `WithOn...` options.
 - **Extension** — `agent.WithExtensions(opts...)` bundles a set of options into a reusable capability.
@@ -410,7 +410,7 @@ Everything is an interface. If something doesn't fit, replace it.
 | `examples/02-tools`             | `tool.MustNew` with a typed custom tool          |
 | `examples/03-providers`         | Anthropic, Google, and OpenAI side by side       |
 | `examples/04-local-model`       | `providers/openai` against a local Ollama server |
-| `examples/05-multi-turn`        | Short-term memory conversation pattern           |
+| `examples/05-multi-turn`        | Multi-turn conversation with in-memory history   |
 | `examples/06-streaming`         | `Stream()`, thinking, text deltas, tool events   |
 | `examples/07-structured-output` | Typed, validated final responses with tools      |
 

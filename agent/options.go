@@ -1,42 +1,37 @@
 package agent
 
-import (
-	"strings"
-
-	"github.com/vitaliiPsl/crappy-adk/kit"
-)
+import "github.com/vitaliiPsl/crappy-adk/kit"
 
 // Option is a functional option for configuring an [Agent].
 type Option func(*Agent) error
 
-// WithInstructions sets or appends to the agent's system prompt.
-func WithInstructions(sources ...string) Option {
+// WithInstructions sets the instructions describing the agent's behavior and role.
+func WithInstructions(text string) Option {
 	return func(a *Agent) error {
-		for _, source := range sources {
-			a.config.Instructions = appendInstructions(a.config.Instructions, source)
-		}
+		a.config.Instructions = text
 
 		return nil
 	}
 }
 
-// DynamicInstructions resolves instructions before each model request.
-type DynamicInstructions func(*kit.RunContext) (string, error)
+// WithInstructionsSource appends guidance rendered under a source heading.
+func WithInstructionsSource(source string, text ...string) Option {
+	instructions := kit.NewInstructions(source, text...)
 
-// WithDynamicInstructions appends resolved instructions before each model request.
-func WithDynamicInstructions(resolvers ...DynamicInstructions) Option {
-	return WithOnModelRequest(func(rc *kit.RunContext, req kit.ModelRequest) (kit.ModelRequest, error) {
-		for _, resolve := range resolvers {
-			instructions, err := resolve(rc)
-			if err != nil {
-				return kit.ModelRequest{}, err
-			}
+	return func(a *Agent) error {
+		a.instructions = append(a.instructions, instructions...)
 
-			req.Instructions = appendInstructions(req.Instructions, instructions)
-		}
+		return nil
+	}
+}
 
-		return req, nil
-	})
+// WithTools adds tools. Tool names must be unique.
+func WithTools(tools ...kit.Tool) Option {
+	return func(a *Agent) error {
+		a.tools = append(a.tools, tools...)
+
+		return nil
+	}
 }
 
 // WithTemperature sets the sampling temperature.
@@ -76,26 +71,6 @@ func WithOutputSchema(schema kit.OutputSchema) Option {
 
 		a.config.OutputSchema = &schema
 		a.output = output
-
-		return nil
-	}
-}
-
-// WithTools adds one or more tools to the agent's tool set. The first
-// registration of a given name wins; later registrations with the same name
-// are ignored.
-func WithTools(tools ...kit.Tool) Option {
-	return func(a *Agent) error {
-		a.tools.Add(tools...)
-
-		return nil
-	}
-}
-
-// WithOnModelRequest registers a repeatable request construction hook.
-func WithOnModelRequest(fn kit.OnModelRequest) Option {
-	return func(a *Agent) error {
-		a.hooks.modelRequest = append(a.hooks.modelRequest, fn)
 
 		return nil
 	}
@@ -175,17 +150,4 @@ func WithExtensions(extensions ...Option) Option {
 
 		return nil
 	}
-}
-
-func appendInstructions(existing, addition string) string {
-	addition = strings.TrimSpace(addition)
-	if addition == "" {
-		return existing
-	}
-
-	if strings.TrimSpace(existing) == "" {
-		return addition
-	}
-
-	return existing + "\n\n" + addition
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 
 	"github.com/vitaliiPsl/crappy-adk/kit"
 )
@@ -16,19 +17,22 @@ type Agent struct {
 	config kit.AgentConfig
 	output outputContract
 
-	model  kit.Model
-	memory kit.Memory
-	tools  kit.ToolSet
+	model   kit.Model
+	history kit.History
+
+	instructions []kit.Instruction
+	tools        []kit.Tool
+	toolsByName  map[string]kit.Tool
 
 	hooks hooks
 }
 
-// New creates a new Agent with the given model, memory, tools, and options.
-func New(model kit.Model, memory kit.Memory, tools kit.ToolSet, options ...Option) (*Agent, error) {
+// New creates an Agent that appends every message it produces to history.
+// It returns an error if two tools share a name.
+func New(model kit.Model, history kit.History, options ...Option) (*Agent, error) {
 	agent := &Agent{
-		memory: memory,
-		model:  model,
-		tools:  tools,
+		model:   model,
+		history: history,
 	}
 
 	for _, opt := range options {
@@ -37,7 +41,31 @@ func New(model kit.Model, memory kit.Memory, tools kit.ToolSet, options ...Optio
 		}
 	}
 
+	agent.toolsByName = make(map[string]kit.Tool, len(agent.tools))
+	for _, tool := range agent.tools {
+		name := tool.Definition().Name
+		if _, exists := agent.toolsByName[name]; exists {
+			return nil, fmt.Errorf("duplicate tool %q", name)
+		}
+
+		agent.toolsByName[name] = tool
+	}
+
 	return agent, nil
+}
+
+// Context returns what the next model request would be built from.
+func (a *Agent) Context(ctx context.Context) (kit.AgentContext, error) {
+	messages, err := a.history.Messages(ctx)
+	if err != nil {
+		return kit.AgentContext{}, err
+	}
+
+	return kit.AgentContext{
+		Instructions: append(kit.NewInstructions("", a.config.Instructions), a.instructions...),
+		Messages:     messages,
+		Tools:        slices.Clone(a.tools),
+	}, nil
 }
 
 // Run executes the agentic loop and returns agent reponse when run finishes.
@@ -63,11 +91,10 @@ func (a *Agent) run(
 
 	rc := &kit.RunContext{
 		Context: ctx,
-		Memory:  a.memory,
 		Events:  events,
 	}
 
-	if err := rc.Memory.Record(ctx, input); err != nil {
+	if err := a.history.Append(ctx, input); err != nil {
 		return rc.Response(), err
 	}
 
@@ -85,7 +112,10 @@ func (a *Agent) run(
 			return rc.Response(), err
 		}
 
-		if err := rc.RecordModelResponse(resp); err != nil {
+		rc.RecordUsage(resp.Usage)
+		rc.FinishReason = resp.FinishReason
+
+		if err := a.record(rc, resp.Message, kit.NewAgentMessageEvent(resp.Message)); err != nil {
 			return rc.Response(), err
 		}
 
@@ -132,7 +162,7 @@ func (a *Agent) callModel(rc *kit.RunContext) (kit.ModelResponse, error) {
 			return kit.ModelResponse{}, err
 		}
 
-		req, err = a.buildModelRequest(rc)
+		req, err = a.buildModelRequest(rc.Context)
 		if err != nil {
 			return kit.ModelResponse{}, err
 		}
@@ -148,7 +178,7 @@ func (a *Agent) callModel(rc *kit.RunContext) (kit.ModelResponse, error) {
 }
 
 func (a *Agent) prepareModelRequest(rc *kit.RunContext) (kit.ModelRequest, error) {
-	req, err := a.buildModelRequest(rc)
+	req, err := a.buildModelRequest(rc.Context)
 	if err != nil {
 		return kit.ModelRequest{}, err
 	}
@@ -160,7 +190,7 @@ func (a *Agent) prepareModelRequest(rc *kit.RunContext) (kit.ModelRequest, error
 		}
 
 		if rebuild {
-			req, err = a.buildModelRequest(rc)
+			req, err = a.buildModelRequest(rc.Context)
 			if err != nil {
 				return kit.ModelRequest{}, err
 			}
@@ -170,25 +200,23 @@ func (a *Agent) prepareModelRequest(rc *kit.RunContext) (kit.ModelRequest, error
 	return req, nil
 }
 
-func (a *Agent) buildModelRequest(rc *kit.RunContext) (kit.ModelRequest, error) {
-	messages, err := a.memory.Context(rc.Context)
+func (a *Agent) buildModelRequest(ctx context.Context) (kit.ModelRequest, error) {
+	agentContext, err := a.Context(ctx)
 	if err != nil {
 		return kit.ModelRequest{}, err
 	}
 
-	req := kit.ModelRequest{
-		Instructions: a.config.Instructions,
-		Messages:     messages,
-		Tools:        a.tools.List(),
+	return kit.ModelRequest{
+		Instructions: agentContext.InstructionsText(),
+		Messages:     agentContext.Messages,
+		Tools:        agentContext.Tools,
 		OutputSchema: a.config.OutputSchema,
 		Config: kit.GenerationConfig{
 			Temperature:     a.config.Temperature,
 			MaxOutputTokens: a.config.MaxOutputTokens,
 			Thinking:        a.config.Thinking,
 		},
-	}
-
-	return a.hooks.onModelRequest(rc, req)
+	}, nil
 }
 
 func (a *Agent) streamModel(rc *kit.RunContext, req kit.ModelRequest) (kit.ModelResponse, error) {
@@ -214,7 +242,8 @@ func (a *Agent) executeTools(rc *kit.RunContext, toolCalls []kit.ToolCall) error
 			return err
 		}
 
-		if err := rc.RecordToolResult(result); err != nil {
+		message := kit.NewToolMessage(kit.NewToolResultContent(result))
+		if err := a.record(rc, message, kit.NewAgentToolResultEvent(result), kit.NewAgentMessageEvent(message)); err != nil {
 			return err
 		}
 	}
@@ -230,7 +259,7 @@ func (a *Agent) executeTool(rc *kit.RunContext, call kit.ToolCall) (result kit.T
 		}
 	}()
 
-	tool, ok := a.tools.Get(call.Name)
+	tool, ok := a.toolsByName[call.Name]
 	if !ok {
 		result = kit.NewToolResult(call, kit.ToolOutput{}, fmt.Errorf("tool %q not found", call.Name))
 
@@ -263,4 +292,20 @@ func (a *Agent) executeTool(rc *kit.RunContext, call kit.ToolCall) (result kit.T
 	result = hookedResult
 
 	return
+}
+
+func (a *Agent) record(rc *kit.RunContext, message kit.Message, events ...kit.AgentEvent) error {
+	rc.Append(message)
+
+	if err := a.history.Append(rc.Context, message); err != nil {
+		return err
+	}
+
+	for _, event := range events {
+		if err := rc.Emit(event); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }

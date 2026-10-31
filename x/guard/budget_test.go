@@ -8,8 +8,7 @@ import (
 	"github.com/vitaliiPsl/crappy-adk/agent"
 	"github.com/vitaliiPsl/crappy-adk/kit"
 	"github.com/vitaliiPsl/crappy-adk/kittest"
-	"github.com/vitaliiPsl/crappy-adk/x/memory"
-	xtool "github.com/vitaliiPsl/crappy-adk/x/tool"
+	"github.com/vitaliiPsl/crappy-adk/x/history"
 )
 
 func TestWithBudget_AllowsUsageAtLimit(t *testing.T) {
@@ -21,7 +20,7 @@ func TestWithBudget_AllowsUsageAtLimit(t *testing.T) {
 		},
 	})
 
-	a, err := agent.New(model, memory.NewHistory(), xtool.NewSet(),
+	a, err := agent.New(model, history.New(),
 		WithInputTokenBudget(7),
 		WithOutputTokenBudget(3),
 		WithTotalTokenBudget(10),
@@ -67,7 +66,7 @@ func TestWithBudget_RejectsResponseThatExceedsCumulativeBudget(t *testing.T) {
 		},
 	)
 
-	a, err := agent.New(model, memory.NewHistory(), xtool.NewSet(), agent.WithTools(tool), WithTotalTokenBudget(13))
+	a, err := agent.New(model, history.New(), agent.WithTools(tool), WithTotalTokenBudget(13))
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -102,7 +101,7 @@ func TestWithInputTokenBudget_RejectsInputBudget(t *testing.T) {
 		},
 	})
 
-	a, err := agent.New(model, memory.NewHistory(), xtool.NewSet(), WithInputTokenBudget(3))
+	a, err := agent.New(model, history.New(), WithInputTokenBudget(3))
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -126,7 +125,7 @@ func TestWithOutputTokenBudget_RejectsOutputBudget(t *testing.T) {
 		},
 	})
 
-	a, err := agent.New(model, memory.NewHistory(), xtool.NewSet(), WithOutputTokenBudget(3))
+	a, err := agent.New(model, history.New(), WithOutputTokenBudget(3))
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}

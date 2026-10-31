@@ -8,8 +8,7 @@ import (
 	"github.com/vitaliiPsl/crappy-adk/agent"
 	"github.com/vitaliiPsl/crappy-adk/kit"
 	"github.com/vitaliiPsl/crappy-adk/kittest"
-	"github.com/vitaliiPsl/crappy-adk/x/memory"
-	xtool "github.com/vitaliiPsl/crappy-adk/x/tool"
+	"github.com/vitaliiPsl/crappy-adk/x/history"
 )
 
 func TestWithMaxTurns_StopsBeforeNextModelCall(t *testing.T) {
@@ -32,7 +31,7 @@ func TestWithMaxTurns_StopsBeforeNextModelCall(t *testing.T) {
 		},
 	)
 
-	a, err := agent.New(model, memory.NewHistory(), xtool.NewSet(), agent.WithTools(tool), WithMaxTurns(1))
+	a, err := agent.New(model, history.New(), agent.WithTools(tool), WithMaxTurns(1))
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -64,7 +63,7 @@ func TestWithMaxToolCalls_StopsBeforeToolExecution(t *testing.T) {
 		},
 	})
 
-	a, err := agent.New(model, memory.NewHistory(), xtool.NewSet(), agent.WithTools(tool), WithMaxToolCalls(1))
+	a, err := agent.New(model, history.New(), agent.WithTools(tool), WithMaxToolCalls(1))
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}

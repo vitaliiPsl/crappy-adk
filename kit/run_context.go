@@ -6,11 +6,9 @@ import (
 )
 
 // RunContext is the per-run state that the agent threads through its loop.
-// Hooks receive a pointer to it and may inspect it or mutate memory.
+// Hooks receive a pointer to it and may inspect it.
 type RunContext struct {
 	context.Context
-	// Memory is the memory configured for this run.
-	Memory Memory
 	// Messages holds every message produced during this run, in order.
 	// It is returned to the caller in [AgentResponse.Messages].
 	Messages []Message
@@ -38,36 +36,6 @@ func NewRunContext(ctx context.Context) *RunContext {
 // Append records a message in the append-only log returned to the caller.
 func (rc *RunContext) Append(msg Message) {
 	rc.Messages = append(rc.Messages, msg)
-}
-
-func (rc *RunContext) Record(message Message) error {
-	rc.Append(message)
-
-	return rc.Memory.Record(rc.Context, message)
-}
-
-func (rc *RunContext) RecordModelResponse(response ModelResponse) error {
-	rc.RecordUsage(response.Usage)
-	rc.FinishReason = response.FinishReason
-
-	if err := rc.Record(response.Message); err != nil {
-		return err
-	}
-
-	return rc.Emit(NewAgentMessageEvent(response.Message))
-}
-
-func (rc *RunContext) RecordToolResult(result ToolResult) error {
-	message := NewToolMessage(NewToolResultContent(result))
-	if err := rc.Record(message); err != nil {
-		return err
-	}
-
-	if err := rc.Emit(NewAgentToolResultEvent(result)); err != nil {
-		return err
-	}
-
-	return rc.Emit(NewAgentMessageEvent(message))
 }
 
 // RecordUsage stores u as the most recent model call's usage and adds it to the

@@ -23,8 +23,7 @@ import (
 	"github.com/vitaliiPsl/crappy-adk/kit"
 	"github.com/vitaliiPsl/crappy-adk/providers"
 	"github.com/vitaliiPsl/crappy-adk/providers/openai"
-	"github.com/vitaliiPsl/crappy-adk/x/memory"
-	tool "github.com/vitaliiPsl/crappy-adk/x/tool"
+	"github.com/vitaliiPsl/crappy-adk/x/history"
 )
 
 func main() {
@@ -40,8 +39,7 @@ func main() {
 
 	a, err := agent.New(
 		model,
-		memory.NewHistory(),
-		tool.NewSet(),
+		history.New(),
 		agent.WithInstructions(
 			"You are a philosopher who has seen too much and suffers fools reluctantly. "+
 				"Answer every question correctly, but make it clear the question has wounded you personally.",

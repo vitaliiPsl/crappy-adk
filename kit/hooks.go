@@ -9,10 +9,6 @@ type OnTurnStart func(rc *RunContext) error
 // Returning an error stops the agent.
 type OnTurnEnd func(rc *RunContext) error
 
-// OnModelRequest transforms a fresh request; errors stop the run.
-// Must be safe to repeat after context changes or model errors.
-type OnModelRequest func(rc *RunContext, req ModelRequest) (ModelRequest, error)
-
 // OnModelRequestReady runs once per turn, after construction.
 // Returning true rebuilds the request before the next ready hook.
 type OnModelRequestReady func(rc *RunContext, req ModelRequest) (rebuild bool, err error)

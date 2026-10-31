@@ -3,14 +3,127 @@ package agent
 import (
 	"context"
 	"errors"
+	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/vitaliiPsl/crappy-adk/kit"
 	"github.com/vitaliiPsl/crappy-adk/kittest"
-	xmemory "github.com/vitaliiPsl/crappy-adk/x/memory"
-	xtool "github.com/vitaliiPsl/crappy-adk/x/tool"
+	"github.com/vitaliiPsl/crappy-adk/x/history"
 )
+
+func TestNew_RejectsDuplicateToolNames(t *testing.T) {
+	first := kittest.NewTool(t, "lookup", "first")
+	second := kittest.NewTool(t, "lookup", "second")
+
+	if _, err := New(nil, history.New(), WithTools(first), WithTools(second)); err == nil || !strings.Contains(err.Error(), `"lookup"`) {
+		t.Fatalf("New error = %v, want duplicate tool error", err)
+	}
+}
+
+func TestContext_ReturnsDefinitionAndHistoryWithoutCallingModel(t *testing.T) {
+	ctx := context.Background()
+	model := kittest.NewModel(t)
+	tool := kittest.NewTool(t, "lookup", "Lookup information")
+	message := kit.NewUserMessage(kit.NewTextContent("hello"))
+
+	a, err := New(model, newTestHistory(message), WithInstructions("be brief"), WithTools(tool))
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	agentContext, err := a.Context(ctx)
+	if err != nil {
+		t.Fatalf("Context: %v", err)
+	}
+
+	if agentContext.InstructionsText() != "be brief" ||
+		!reflect.DeepEqual(agentContext.Tools, []kit.Tool{tool}) ||
+		!reflect.DeepEqual(agentContext.Messages, []kit.Message{message}) {
+		t.Fatalf("Context() = %+v", agentContext)
+	}
+
+	agentContext.Instructions[0].Text = "changed"
+	agentContext.Tools[0] = nil
+
+	reread, err := a.Context(ctx)
+	if err != nil {
+		t.Fatalf("Context: %v", err)
+	}
+
+	if reread.Instructions[0].Text != "be brief" || reread.Tools[0] == nil {
+		t.Fatalf("Context exposed the agent definition: %+v", reread)
+	}
+
+	model.AssertNeverCalled(t)
+}
+
+func TestRun_BuildsRequestFromDefinitionAndHistory(t *testing.T) {
+	prior := kit.NewUserMessage(kit.NewTextContent("prior work"))
+	input := kit.NewUserMessage(kit.NewTextContent("continue"))
+	summary := kit.NewUserMessage(kit.NewSummaryContent("summary"))
+	model := doneModel(t)
+	tool := kittest.NewTool(t, "lookup", "Lookup information")
+	reads := 0
+
+	h := newTestHistory(prior)
+	h.read = func(messages []kit.Message) ([]kit.Message, error) {
+		reads++
+
+		return append([]kit.Message{summary}, messages...), nil
+	}
+
+	a, err := New(model, h,
+		WithInstructions("stable guidance"),
+		WithInstructionsSource("task", "dynamic guidance"),
+		WithTools(tool),
+	)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	response, err := a.Run(context.Background(), input)
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	request := model.CallAt(0)
+	if request.Instructions != "stable guidance\n\n# task\n\ndynamic guidance" ||
+		!reflect.DeepEqual(request.Tools, []kit.Tool{tool}) ||
+		!reflect.DeepEqual(request.Messages, []kit.Message{summary, prior, input}) {
+		t.Fatalf("request = %+v", request)
+	}
+
+	if reads != 1 {
+		t.Fatalf("reads = %d, want 1", reads)
+	}
+
+	if want := append([]kit.Message{prior, input}, response.Messages...); !reflect.DeepEqual(h.messages, want) {
+		t.Fatalf("history messages = %+v, want prior, input and response without the summary", h.messages)
+	}
+}
+
+func TestRun_HistoryReadFailureStopsRun(t *testing.T) {
+	failure := errors.New("cannot read history")
+	model := kittest.NewModel(t)
+
+	h := newTestHistory()
+	h.read = func([]kit.Message) ([]kit.Message, error) {
+		return nil, failure
+	}
+
+	a, err := New(model, h)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	if _, err := a.Run(context.Background(), kit.NewUserMessage(kit.NewTextContent("hello"))); !errors.Is(err, failure) {
+		t.Fatalf("Run error = %v, want read failure", err)
+	}
+
+	model.AssertNeverCalled(t)
+}
 
 func TestRun_ReturnsFinalResponse(t *testing.T) {
 	tool := kittest.NewTool(t, "unused", "unused tool")
@@ -27,7 +140,7 @@ func TestRun_ReturnsFinalResponse(t *testing.T) {
 		kit.NewUserMessage(kit.NewTextContent("hello")),
 	}
 
-	a, err := New(model, xmemory.NewHistory(), xtool.NewSet(), WithTools(tool), WithInstructions("be brief"))
+	a, err := New(model, history.New(), WithInstructions("be brief"), WithTools(tool))
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -66,6 +179,55 @@ func TestRun_ReturnsFinalResponse(t *testing.T) {
 	tool.AssertNeverCalled(t)
 }
 
+func TestRun_RejectsToolCallFinishWithoutCalls(t *testing.T) {
+	model := kittest.NewModel(t, kittest.ModelResult{
+		Response: kit.ModelResponse{
+			Message:      kit.NewModelMessage(kit.NewTextContent("working on it")),
+			FinishReason: kit.FinishReasonToolCall,
+		},
+	})
+
+	a, err := New(model, history.New())
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	_, err = a.Run(
+		context.Background(),
+		kit.NewUserMessage(kit.NewTextContent("hi")),
+	)
+	if !errors.Is(err, kit.ErrInvalidOutput) {
+		t.Fatalf("Run error = %v, want %v", err, kit.ErrInvalidOutput)
+	}
+
+	model.AssertCallCount(t, 1)
+}
+
+func TestRun_ReturnsCanceledContextBeforeModelCall(t *testing.T) {
+	model := kittest.NewModel(t)
+
+	input := kit.NewUserMessage(kit.NewTextContent("hello"))
+
+	a, err := New(model, history.New(), WithInstructions("be brief"))
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	resp, err := a.Run(ctx, input)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("Run error = %v, want context canceled", err)
+	}
+
+	if len(resp.Messages) != 0 {
+		t.Fatalf("len(Messages) = %d, want 0", len(resp.Messages))
+	}
+
+	model.AssertNeverCalled(t)
+}
+
 func TestRun_ReturnsModelError(t *testing.T) {
 	wantErr := errors.New("model failed")
 
@@ -73,7 +235,7 @@ func TestRun_ReturnsModelError(t *testing.T) {
 
 	input := kit.NewUserMessage(kit.NewTextContent("hello"))
 
-	a, err := New(model, xmemory.NewHistory(), xtool.NewSet(), WithInstructions("be brief"))
+	a, err := New(model, history.New(), WithInstructions("be brief"))
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -98,11 +260,15 @@ func TestRun_ModelErrorHookRebuildsRequest(t *testing.T) {
 
 	var hookErr error
 
-	a, err := New(model, xmemory.NewHistory(), xtool.NewSet(), WithOnModelError(
-		func(rc *kit.RunContext, _ kit.ModelRequest, err error) error {
+	h := newTestHistory()
+
+	a, err := New(model, h, WithOnModelError(
+		func(_ *kit.RunContext, _ kit.ModelRequest, err error) error {
 			hookErr = err
 
-			return rc.Memory.Record(rc.Context, compacted)
+			h.replace(compacted)
+
+			return nil
 		},
 	))
 	if err != nil {
@@ -132,7 +298,7 @@ func TestRun_ModelErrorHookRetriesOnce(t *testing.T) {
 	)
 	calls := 0
 
-	a, err := New(model, xmemory.NewHistory(), xtool.NewSet(), WithOnModelError(
+	a, err := New(model, history.New(), WithOnModelError(
 		func(_ *kit.RunContext, _ kit.ModelRequest, _ error) error {
 			calls++
 
@@ -161,7 +327,7 @@ func TestRun_ModelErrorHooksPassErrorsAlong(t *testing.T) {
 
 	var received error
 
-	a, err := New(model, xmemory.NewHistory(), xtool.NewSet(),
+	a, err := New(model, history.New(),
 		WithOnModelError(func(_ *kit.RunContext, _ kit.ModelRequest, err error) error {
 			return errors.Join(wrapped, err)
 		}),
@@ -193,45 +359,55 @@ func TestRun_RequestReadyRebuildsBeforeNextHook(t *testing.T) {
 	prefix := kit.NewUserMessage(kit.NewTextContent("transient"))
 	compacted := kit.NewUserMessage(kit.NewSummaryContent("compacted"))
 
-	a, err := New(model, xmemory.NewHistory(), xtool.NewSet(),
+	h := newTestHistory()
+	h.read = func(messages []kit.Message) ([]kit.Message, error) {
+		builds++
+
+		return append([]kit.Message{prefix}, messages...), nil
+	}
+
+	a, err := New(model, h,
 		WithInstructions("static"),
-		WithOnModelRequestReady(func(rc *kit.RunContext, req kit.ModelRequest) (bool, error) {
+		WithOnModelRequestReady(func(_ *kit.RunContext, req kit.ModelRequest) (bool, error) {
 			readyCalls++
-			if req.Instructions != "static dynamic" || len(req.Messages) != 2 {
+
+			if req.Instructions != "static" || len(req.Messages) != 2 {
 				t.Fatalf("ready hook received an unconstructed request: %+v", req)
 			}
-			return true, rc.Memory.Record(rc.Context, compacted)
-		}),
-		WithOnModelRequest(func(_ *kit.RunContext, req kit.ModelRequest) (kit.ModelRequest, error) {
-			builds++
-			req.Instructions += " dynamic"
-			req.Messages = append([]kit.Message{prefix}, req.Messages...)
-			return req, nil
+
+			h.replace(compacted)
+
+			return true, nil
 		}),
 		WithOnModelRequestReady(func(_ *kit.RunContext, req kit.ModelRequest) (bool, error) {
 			readyCalls++
+
 			if len(req.Messages) != 2 || kit.ContentsText(req.Messages[1].Content) != "compacted" {
 				t.Fatalf("next ready hook received stale context: %+v", req.Messages)
 			}
+
 			return false, nil
 		}),
 	)
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("New: %v", err)
 	}
+
 	if _, err := a.Run(context.Background(), kit.NewUserMessage(kit.NewTextContent("original"))); err != nil {
-		t.Fatal(err)
+		t.Fatalf("Run: %v", err)
 	}
+
 	if builds != 2 || readyCalls != 2 {
 		t.Fatalf("construction calls = %d, ready calls = %d, want 2/2", builds, readyCalls)
 	}
+
 	request := model.CallAt(0)
-	if request.Instructions != "static dynamic" || len(request.Messages) != 2 {
-		t.Fatalf("rebuilding duplicated contributions: %+v", request)
+	if request.Instructions != "static" || len(request.Messages) != 2 {
+		t.Fatalf("rebuilding duplicated request parts: %+v", request)
 	}
 }
 
-func TestRun_RetryRebuildsContributionsWithoutRepeatingReadyHooks(t *testing.T) {
+func TestRun_RetryRebuildsRequestWithoutRepeatingReadyHooks(t *testing.T) {
 	model := kittest.NewModel(t,
 		kittest.ModelResult{Error: kit.ErrContextLength},
 		kittest.ModelResult{Response: kit.ModelResponse{
@@ -240,36 +416,45 @@ func TestRun_RetryRebuildsContributionsWithoutRepeatingReadyHooks(t *testing.T) 
 	)
 	builds, readyCalls := 0, 0
 	prefix := kit.NewUserMessage(kit.NewTextContent("transient"))
-	a, err := New(model, xmemory.NewHistory(), xtool.NewSet(),
+
+	h := newTestHistory()
+	h.read = func(messages []kit.Message) ([]kit.Message, error) {
+		builds++
+
+		return append([]kit.Message{prefix}, messages...), nil
+	}
+
+	a, err := New(model, h,
 		WithInstructions("static"),
-		WithOnModelRequest(func(_ *kit.RunContext, req kit.ModelRequest) (kit.ModelRequest, error) {
-			builds++
-			req.Instructions += " dynamic"
-			req.Messages = append([]kit.Message{prefix}, req.Messages...)
-			return req, nil
-		}),
 		WithOnModelRequestReady(func(*kit.RunContext, kit.ModelRequest) (bool, error) {
 			readyCalls++
+
 			return false, nil
 		}),
-		WithOnModelError(func(rc *kit.RunContext, _ kit.ModelRequest, err error) error {
+		WithOnModelError(func(_ *kit.RunContext, _ kit.ModelRequest, err error) error {
 			if !errors.Is(err, kit.ErrContextLength) {
 				return err
 			}
-			return rc.Memory.Record(rc.Context, kit.NewUserMessage(kit.NewSummaryContent("compacted")))
+
+			h.replace(kit.NewUserMessage(kit.NewSummaryContent("compacted")))
+
+			return nil
 		}),
 	)
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("New: %v", err)
 	}
+
 	if _, err := a.Run(context.Background(), kit.NewUserMessage(kit.NewTextContent("original"))); err != nil {
-		t.Fatal(err)
+		t.Fatalf("Run: %v", err)
 	}
+
 	if builds != 2 || readyCalls != 1 {
 		t.Fatalf("construction calls = %d, ready calls = %d, want 2/1", builds, readyCalls)
 	}
+
 	request := model.CallAt(1)
-	if request.Instructions != "static dynamic" || len(request.Messages) != 2 || kit.ContentsText(request.Messages[1].Content) != "compacted" {
+	if request.Instructions != "static" || len(request.Messages) != 2 || kit.ContentsText(request.Messages[1].Content) != "compacted" {
 		t.Fatalf("retried request = %+v", request)
 	}
 }
@@ -277,62 +462,45 @@ func TestRun_RetryRebuildsContributionsWithoutRepeatingReadyHooks(t *testing.T) 
 func TestRun_RequestRebuildFailureStopsModelCall(t *testing.T) {
 	for _, retry := range []bool{false, true} {
 		name := "ready"
+
 		var results []kittest.ModelResult
 		if retry {
 			name = "retry"
 			results = []kittest.ModelResult{{Error: kit.ErrContextLength}}
 		}
+
 		t.Run(name, func(t *testing.T) {
 			failure := errors.New("cannot rebuild request")
 			model := kittest.NewModel(t, results...)
 			builds := 0
-			a, err := New(model, xmemory.NewHistory(), xtool.NewSet(),
-				WithOnModelRequest(func(_ *kit.RunContext, req kit.ModelRequest) (kit.ModelRequest, error) {
-					builds++
-					if builds > 1 {
-						return kit.ModelRequest{}, failure
-					}
-					return req, nil
-				}),
+
+			h := newTestHistory()
+			h.read = func(messages []kit.Message) ([]kit.Message, error) {
+				builds++
+				if builds > 1 {
+					return nil, failure
+				}
+
+				return messages, nil
+			}
+
+			a, err := New(model, h,
 				WithOnModelRequestReady(func(*kit.RunContext, kit.ModelRequest) (bool, error) {
 					return !retry, nil
 				}),
 				WithOnModelError(func(*kit.RunContext, kit.ModelRequest, error) error { return nil }),
 			)
 			if err != nil {
-				t.Fatal(err)
+				t.Fatalf("New: %v", err)
 			}
+
 			if _, err := a.Run(context.Background(), kit.NewUserMessage(kit.NewTextContent("original"))); !errors.Is(err, failure) {
-				t.Fatalf("Run() error = %v, want construction error", err)
+				t.Fatalf("Run error = %v, want construction error", err)
 			}
+
 			model.AssertCallCount(t, len(results))
 		})
 	}
-}
-
-func TestRun_ReturnsCanceledContextBeforeModelCall(t *testing.T) {
-	model := kittest.NewModel(t)
-
-	input := kit.NewUserMessage(kit.NewTextContent("hello"))
-
-	a, err := New(model, xmemory.NewHistory(), xtool.NewSet(), WithInstructions("be brief"))
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
-
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-
-	resp, err := a.Run(ctx, input)
-	if !errors.Is(err, context.Canceled) {
-		t.Fatalf("Run error = %v, want context canceled", err)
-	}
-
-	if len(resp.Messages) != 0 {
-		t.Fatalf("len(Messages) = %d, want 0", len(resp.Messages))
-	}
-
-	model.AssertNeverCalled(t)
 }
 
 func TestRun_ExecutesToolCallAndContinues(t *testing.T) {
@@ -363,7 +531,7 @@ func TestRun_ExecutesToolCallAndContinues(t *testing.T) {
 		kit.NewUserMessage(kit.NewTextContent("add 3 and 4")),
 	}
 
-	a, err := New(model, xmemory.NewHistory(), xtool.NewSet(), WithTools(tool), WithInstructions("use tools"))
+	a, err := New(model, history.New(), WithInstructions("use tools"), WithTools(tool))
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -426,9 +594,9 @@ func TestRun_RecordsToolResultsIndividually(t *testing.T) {
 			FinishReason: kit.FinishReasonStop,
 		}},
 	)
-	memory := &recordingMemory{}
+	h := newTestHistory()
 
-	a, err := New(model, memory, xtool.NewSet(), WithTools(firstTool, secondTool))
+	a, err := New(model, h, WithTools(firstTool, secondTool))
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -438,25 +606,25 @@ func TestRun_RecordsToolResultsIndividually(t *testing.T) {
 	}
 
 	wantBatchSizes := []int{1, 1, 1, 1, 1}
-	if len(memory.records) != len(wantBatchSizes) {
-		t.Fatalf("len(Record calls) = %d, want %d", len(memory.records), len(wantBatchSizes))
+	if len(h.appends) != len(wantBatchSizes) {
+		t.Fatalf("len(Append calls) = %d, want %d", len(h.appends), len(wantBatchSizes))
 	}
 
 	for index, want := range wantBatchSizes {
-		if got := len(memory.records[index]); got != want {
-			t.Fatalf("len(Record call %d) = %d, want %d", index, got, want)
+		if got := len(h.appends[index]); got != want {
+			t.Fatalf("len(Append call %d) = %d, want %d", index, got, want)
 		}
 	}
 
-	if got := len(memory.records[1][0].ToolCalls()); got != 2 {
+	if got := len(h.appends[1][0].ToolCalls()); got != 2 {
 		t.Fatalf("tool-call record has %d tool calls, want 2", got)
 	}
 
-	if got := len(memory.records[2][0].ToolResults()); got != 1 {
+	if got := len(h.appends[2][0].ToolResults()); got != 1 {
 		t.Fatalf("first tool-result record has %d tool results, want 1", got)
 	}
 
-	if got := len(memory.records[3][0].ToolResults()); got != 1 {
+	if got := len(h.appends[3][0].ToolResults()); got != 1 {
 		t.Fatalf("second tool-result record has %d tool results, want 1", got)
 	}
 
@@ -497,7 +665,7 @@ func TestRun_SendsToolErrorBackToModel(t *testing.T) {
 
 	input := kit.NewUserMessage(kit.NewTextContent("try failing tool"))
 
-	a, err := New(model, xmemory.NewHistory(), xtool.NewSet(), WithTools(tool), WithInstructions("use tools"))
+	a, err := New(model, history.New(), WithInstructions("use tools"), WithTools(tool))
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -543,7 +711,7 @@ func TestRun_SendsMissingToolErrorBackToModel(t *testing.T) {
 
 	input := kit.NewUserMessage(kit.NewTextContent("try missing tool"))
 
-	a, err := New(model, xmemory.NewHistory(), xtool.NewSet(), WithInstructions("use tools"))
+	a, err := New(model, history.New(), WithInstructions("use tools"))
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -565,114 +733,60 @@ func TestRun_SendsMissingToolErrorBackToModel(t *testing.T) {
 	}
 }
 
-type panicTool struct {
-	name string
-}
+func TestRun_ToolHookErrorIsSentBackToModel(t *testing.T) {
+	call := kit.NewToolCall("call-1", "search", map[string]any{"q": "go"})
 
-func (p panicTool) Definition() kit.ToolDefinition {
-	return kit.ToolDefinition{Name: p.name}
-}
+	tool := kittest.NewTool(t, "search", "search tool")
 
-func (p panicTool) Execute(*kit.RunContext, kit.ToolCall) (kit.ToolOutput, error) {
-	panic("bad things")
-}
+	model := kittest.NewModel(t,
+		kittest.ModelResult{
+			Response: kit.ModelResponse{
+				Message:      kit.NewModelMessage(kit.NewToolCallContent(call)),
+				FinishReason: kit.FinishReasonToolCall,
+			},
+		},
+		kittest.ModelResult{
+			Response: kit.ModelResponse{
+				Message:      kit.NewModelMessage(kit.NewTextContent("recovered")),
+				FinishReason: kit.FinishReasonStop,
+			},
+		},
+	)
 
-type cancelTool struct {
-	cancel context.CancelFunc
-	called bool
-}
+	input := kit.NewUserMessage(kit.NewTextContent("search go"))
 
-func (c *cancelTool) Definition() kit.ToolDefinition {
-	return kit.ToolDefinition{Name: "cancel"}
-}
-
-func (c *cancelTool) Execute(rc *kit.RunContext, _ kit.ToolCall) (kit.ToolOutput, error) {
-	c.called = true
-	c.cancel()
-
-	return kit.ToolOutput{}, rc.Err()
-}
-
-func TestExecuteTool_Success(t *testing.T) {
-	tool := kittest.NewTool(t, "ok", "ok tool", kittest.ToolResult{Result: "done"})
-
-	a, err := New(nil, xmemory.NewHistory(), xtool.NewSet(), WithTools(tool))
+	a, err := New(model, history.New(), WithTools(tool),
+		WithOnToolCall(func(_ *kit.RunContext, _ kit.ToolCall) (kit.ToolCall, error) {
+			return kit.ToolCall{}, errors.New("policy denied")
+		}),
+	)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
 
-	call := kit.NewToolCall("call-1", "ok", map[string]any{"value": "x"})
-
-	result, err := a.executeTool(&kit.RunContext{Context: context.Background()}, call)
+	resp, err := a.Run(context.Background(), input)
 	if err != nil {
-		t.Fatalf("executeTool: %v", err)
+		t.Fatalf("Run: %v", err)
 	}
 
-	if got := kit.ContentsText(result.Output.Content); got != "done" {
-		t.Fatalf("Content = %q, want %q", got, "done")
+	if resp.Output.Text != "recovered" {
+		t.Fatalf("Output = %q, want recovered", resp.Output.Text)
 	}
 
-	if result.Error != "" {
-		t.Fatalf("Error = %q, want empty", result.Error)
+	results := model.CallAt(1).Messages[len(model.CallAt(1).Messages)-1].ToolResults()
+	if len(results) != 1 {
+		t.Fatalf("len(ToolResults) = %d, want 1", len(results))
 	}
 
-	tool.AssertCalledWith(t, 0, map[string]any{"value": "x"})
-}
-
-func TestExecuteTool_Error(t *testing.T) {
-	tool := kittest.NewTool(t, "fail", "fail tool", kittest.ToolResult{Error: errors.New("boom")})
-
-	a, err := New(nil, xmemory.NewHistory(), xtool.NewSet(), WithTools(tool))
-	if err != nil {
-		t.Fatalf("New: %v", err)
+	if results[0].Call.ID != "call-1" {
+		t.Fatalf("ToolResult.Call.ID = %q, want call-1", results[0].Call.ID)
 	}
 
-	result, err := a.executeTool(&kit.RunContext{Context: context.Background()}, kit.NewToolCall("call-1", "fail", nil))
-	if err != nil {
-		t.Fatalf("executeTool: %v", err)
+	if results[0].Error != "policy denied" {
+		t.Fatalf("ToolResult.Error = %q, want policy denied", results[0].Error)
 	}
 
-	if result.Error != "boom" {
-		t.Fatalf("Error = %q, want %q", result.Error, "boom")
-	}
-}
-
-func TestExecuteTool_NotFound(t *testing.T) {
-	a, err := New(nil, xmemory.NewHistory(), xtool.NewSet())
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
-
-	result, err := a.executeTool(&kit.RunContext{Context: context.Background()}, kit.NewToolCall("call-1", "missing", nil))
-	if err != nil {
-		t.Fatalf("executeTool: %v", err)
-	}
-
-	if result.Error != `tool "missing" not found` {
-		t.Fatalf("Error = %q, want tool not found error", result.Error)
-	}
-}
-
-func TestExecuteTool_RecoversPanic(t *testing.T) {
-	tool := panicTool{name: "panic"}
-
-	a, err := New(nil, xmemory.NewHistory(), xtool.NewSet(), WithTools(tool))
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
-
-	result, err := a.executeTool(&kit.RunContext{Context: context.Background()}, kit.NewToolCall("call-1", "panic", nil))
-	if err != nil {
-		t.Fatalf("executeTool: %v", err)
-	}
-
-	if got := kit.ContentsText(result.Output.Content); got != "" {
-		t.Fatalf("Content = %q, want empty", got)
-	}
-
-	if !strings.Contains(result.Error, `tool "panic" panicked: bad things`) {
-		t.Fatalf("Error = %q, want panic recovery error", result.Error)
-	}
+	tool.AssertNeverCalled(t)
 }
 
 func TestRun_ContextCanceledDuringToolAbortsRun(t *testing.T) {
@@ -691,9 +805,9 @@ func TestRun_ContextCanceledDuringToolAbortsRun(t *testing.T) {
 
 	input := kit.NewUserMessage(kit.NewTextContent("cancel during tool"))
 
-	memory := &recordingMemory{}
+	h := newTestHistory()
 
-	a, err := New(model, memory, xtool.NewSet(), WithTools(tool), WithInstructions("use tools"))
+	a, err := New(model, h, WithTools(tool))
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -717,16 +831,16 @@ func TestRun_ContextCanceledDuringToolAbortsRun(t *testing.T) {
 		t.Fatalf("len(ToolCalls) = %d, want 1", got)
 	}
 
-	if len(memory.records) != 2 {
-		t.Fatalf("len(Record calls) = %d, want input and tool call", len(memory.records))
+	if len(h.appends) != 2 {
+		t.Fatalf("len(Append calls) = %d, want input and tool call", len(h.appends))
 	}
 
-	if len(memory.records[0]) != 1 || memory.records[0][0].Role != kit.RoleUser {
-		t.Fatalf("first Record call = %+v, want user input", memory.records[0])
+	if len(h.appends[0]) != 1 || h.appends[0][0].Role != kit.RoleUser {
+		t.Fatalf("first Append call = %+v, want user input", h.appends[0])
 	}
 
-	if got := len(memory.records[1][0].ToolCalls()); got != 1 {
-		t.Fatalf("second Record call has %d tool calls, want 1", got)
+	if got := len(h.appends[1][0].ToolCalls()); got != 1 {
+		t.Fatalf("second Append call has %d tool calls, want 1", got)
 	}
 }
 
@@ -748,9 +862,9 @@ func TestRun_RecordsCompletedToolBeforeNextToolIsCanceled(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	firstTool := kittest.NewTool(t, "ok", "ok tool", kittest.ToolResult{Result: "done"})
 	secondTool := &cancelTool{cancel: cancel}
-	memory := &recordingMemory{}
+	h := newTestHistory()
 
-	a, err := New(model, memory, xtool.NewSet(), WithTools(firstTool, secondTool))
+	a, err := New(model, h, WithTools(firstTool, secondTool))
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -766,11 +880,11 @@ func TestRun_RecordsCompletedToolBeforeNextToolIsCanceled(t *testing.T) {
 		t.Fatal("second tool was not called")
 	}
 
-	if len(memory.records) != 3 {
-		t.Fatalf("len(Record calls) = %d, want input, tool call, and first result", len(memory.records))
+	if len(h.appends) != 3 {
+		t.Fatalf("len(Append calls) = %d, want input, tool call, and first result", len(h.appends))
 	}
 
-	results := memory.records[2][0].ToolResults()
+	results := h.appends[2][0].ToolResults()
 	if len(results) != 1 || results[0].Call.ID != firstCall.ID {
 		t.Fatalf("persisted results = %+v, want only first tool result", results)
 	}
@@ -778,27 +892,6 @@ func TestRun_RecordsCompletedToolBeforeNextToolIsCanceled(t *testing.T) {
 	if len(response.Messages) != 2 {
 		t.Fatalf("len(Messages) = %d, want tool call and first result", len(response.Messages))
 	}
-}
-
-type recordingMemory struct {
-	messages []kit.Message
-	records  [][]kit.Message
-}
-
-func (m *recordingMemory) Context(context.Context) ([]kit.Message, error) {
-	return m.messages, nil
-}
-
-func (m *recordingMemory) History(context.Context) ([]kit.Message, error) {
-	return m.messages, nil
-}
-
-func (m *recordingMemory) Record(_ context.Context, messages ...kit.Message) error {
-	batch := append([]kit.Message(nil), messages...)
-	m.records = append(m.records, batch)
-	m.messages = append(m.messages, messages...)
-
-	return nil
 }
 
 func TestStream_ReturnsEventsAndResult(t *testing.T) {
@@ -816,7 +909,7 @@ func TestStream_ReturnsEventsAndResult(t *testing.T) {
 
 	input := kit.NewUserMessage(kit.NewTextContent("hello"))
 
-	a, err := New(model, xmemory.NewHistory(), xtool.NewSet(), WithInstructions("be brief"))
+	a, err := New(model, history.New(), WithInstructions("be brief"))
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -890,7 +983,7 @@ func TestStream_EmitsToolResultAndContinues(t *testing.T) {
 
 	input := kit.NewUserMessage(kit.NewTextContent("add 3 and 4"))
 
-	a, err := New(model, xmemory.NewHistory(), xtool.NewSet(), WithTools(tool), WithInstructions("use tools"))
+	a, err := New(model, history.New(), WithInstructions("use tools"), WithTools(tool))
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -941,7 +1034,7 @@ func TestStream_ResultAfterEarlyStopReturnsPartialResponse(t *testing.T) {
 
 	input := kit.NewUserMessage(kit.NewTextContent("hello"))
 
-	a, err := New(model, xmemory.NewHistory(), xtool.NewSet(), WithInstructions("be brief"))
+	a, err := New(model, history.New(), WithInstructions("be brief"))
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -962,13 +1055,34 @@ func TestStream_ResultAfterEarlyStopReturnsPartialResponse(t *testing.T) {
 	}
 }
 
+func TestExecuteTool_RecoversPanic(t *testing.T) {
+	tool := panicTool{name: "panic"}
+
+	a, err := New(nil, history.New(), WithTools(tool))
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	result, err := a.executeTool(&kit.RunContext{Context: context.Background()}, kit.NewToolCall("call-1", "panic", nil))
+	if err != nil {
+		t.Fatalf("executeTool: %v", err)
+	}
+
+	if got := kit.ContentsText(result.Output.Content); got != "" {
+		t.Fatalf("Content = %q, want empty", got)
+	}
+
+	if !strings.Contains(result.Error, `tool "panic" panicked: bad things`) {
+		t.Fatalf("Error = %q, want panic recovery error", result.Error)
+	}
+}
+
 func TestExecuteTool_OnToolCallHookErrorBecomesResult(t *testing.T) {
 	tool := kittest.NewTool(t, "ok", "ok tool")
 
 	hookErr := errors.New("policy denied")
 
-	a, err := New(nil, xmemory.NewHistory(), xtool.NewSet(),
-		WithTools(tool),
+	a, err := New(nil, history.New(), WithTools(tool),
 		WithOnToolCall(func(_ *kit.RunContext, _ kit.ToolCall) (kit.ToolCall, error) {
 			return kit.ToolCall{}, hookErr
 		}),
@@ -1004,8 +1118,7 @@ func TestExecuteTool_OnToolResultHookErrorBecomesResult(t *testing.T) {
 
 	hookErr := errors.New("redaction failed")
 
-	a, err := New(nil, xmemory.NewHistory(), xtool.NewSet(),
-		WithTools(tool),
+	a, err := New(nil, history.New(), WithTools(tool),
 		WithOnToolResult(func(_ *kit.RunContext, _ kit.ToolResult) (kit.ToolResult, error) {
 			return kit.ToolResult{}, hookErr
 		}),
@@ -1036,168 +1149,65 @@ func TestExecuteTool_OnToolResultHookErrorBecomesResult(t *testing.T) {
 	tool.AssertCallCount(t, 1)
 }
 
-func TestWithTools_DuplicateNameKeepsFirst(t *testing.T) {
-	first := kittest.NewTool(t, "search", "v1", kittest.ToolResult{Result: "from v1"})
-	other := kittest.NewTool(t, "calc", "calc")
-	second := kittest.NewTool(t, "search", "v2")
+type testHistory struct {
+	messages []kit.Message
 
-	a, err := New(nil, xmemory.NewHistory(), xtool.NewSet(), WithTools(first, other), WithTools(second))
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
-
-	registered := a.tools.List()
-	if len(registered) != 2 {
-		t.Fatalf("len(tools) = %d, want 2", len(registered))
-	}
-
-	if registered[0].Definition().Description != "v1" {
-		t.Fatalf("tools[0] description = %q, want v1 (first wins)", registered[0].Definition().Description)
-	}
-
-	if registered[1].Definition().Name != "calc" {
-		t.Fatalf("tools[1] name = %q, want calc", registered[1].Definition().Name)
-	}
-
-	result, err := a.executeTool(&kit.RunContext{Context: context.Background()}, kit.NewToolCall("call-1", "search", nil))
-	if err != nil {
-		t.Fatalf("executeTool: %v", err)
-	}
-
-	if got := kit.ContentsText(result.Output.Content); got != "from v1" {
-		t.Fatalf("Content = %q, want from v1 (first registration wins)", got)
-	}
-
-	first.AssertCallCount(t, 1)
-	second.AssertNeverCalled(t)
+	read    func([]kit.Message) ([]kit.Message, error)
+	appends [][]kit.Message
 }
 
-func TestRun_ToolHookErrorIsSentBackToModel(t *testing.T) {
-	call := kit.NewToolCall("call-1", "search", map[string]any{"q": "go"})
-
-	tool := kittest.NewTool(t, "search", "search tool")
-
-	model := kittest.NewModel(t,
-		kittest.ModelResult{
-			Response: kit.ModelResponse{
-				Message:      kit.NewModelMessage(kit.NewToolCallContent(call)),
-				FinishReason: kit.FinishReasonToolCall,
-			},
-		},
-		kittest.ModelResult{
-			Response: kit.ModelResponse{
-				Message:      kit.NewModelMessage(kit.NewTextContent("recovered")),
-				FinishReason: kit.FinishReasonStop,
-			},
-		},
-	)
-
-	input := kit.NewUserMessage(kit.NewTextContent("search go"))
-
-	a, err := New(model, xmemory.NewHistory(), xtool.NewSet(),
-		WithTools(tool),
-		WithOnToolCall(func(_ *kit.RunContext, _ kit.ToolCall) (kit.ToolCall, error) {
-			return kit.ToolCall{}, errors.New("policy denied")
-		}),
-	)
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
-
-	resp, err := a.Run(context.Background(), input)
-	if err != nil {
-		t.Fatalf("Run: %v", err)
-	}
-
-	if resp.Output.Text != "recovered" {
-		t.Fatalf("Output = %q, want recovered", resp.Output.Text)
-	}
-
-	results := model.CallAt(1).Messages[len(model.CallAt(1).Messages)-1].ToolResults()
-	if len(results) != 1 {
-		t.Fatalf("len(ToolResults) = %d, want 1", len(results))
-	}
-
-	if results[0].Call.ID != "call-1" {
-		t.Fatalf("ToolResult.Call.ID = %q, want call-1", results[0].Call.ID)
-	}
-
-	if results[0].Error != "policy denied" {
-		t.Fatalf("ToolResult.Error = %q, want policy denied", results[0].Error)
-	}
-
-	tool.AssertNeverCalled(t)
+func newTestHistory(messages ...kit.Message) *testHistory {
+	return &testHistory{messages: messages}
 }
 
-func TestRun_WithMemoryLoadsContextAndRecordsMessages(t *testing.T) {
-	remembered := kit.NewUserMessage(kit.NewTextContent("remember me"))
-	input := kit.NewUserMessage(kit.NewTextContent("what do you remember?"))
-	final := kit.NewModelMessage(kit.NewTextContent("I remember you."))
-
-	mem := xmemory.NewHistory(remembered)
-	model := kittest.NewModel(t, kittest.ModelResult{
-		Response: kit.ModelResponse{
-			Message:      final,
-			FinishReason: kit.FinishReasonStop,
-		},
-	})
-
-	a, err := New(model, mem, xtool.NewSet())
-	if err != nil {
-		t.Fatalf("New: %v", err)
+func (h *testHistory) Messages(ctx context.Context) ([]kit.Message, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
 	}
 
-	resp, err := a.Run(context.Background(), input)
-	if err != nil {
-		t.Fatalf("Run: %v", err)
+	messages := slices.Clone(h.messages)
+	if h.read == nil {
+		return messages, nil
 	}
 
-	if resp.Output.Text != "I remember you." {
-		t.Fatalf("Output = %q, want final memory response", resp.Output.Text)
-	}
-
-	model.AssertCalledWith(t, 0, kit.ModelRequest{
-		Messages: []kit.Message{remembered, input},
-	})
-
-	got, err := mem.History(context.Background())
-	if err != nil {
-		t.Fatalf("History: %v", err)
-	}
-
-	want := []kit.Message{remembered, input, final}
-
-	if len(got) != len(want) {
-		t.Fatalf("len(memory history) = %d, want %d", len(got), len(want))
-	}
-
-	for i := range want {
-		if got[i].Role != want[i].Role || got[i].TextContent().Text != want[i].TextContent().Text {
-			t.Fatalf("memory history[%d] = %+v, want %+v", i, got[i], want[i])
-		}
-	}
+	return h.read(messages)
 }
 
-func TestRun_RejectsToolCallFinishWithoutCalls(t *testing.T) {
-	model := kittest.NewModel(t, kittest.ModelResult{
-		Response: kit.ModelResponse{
-			Message:      kit.NewModelMessage(kit.NewTextContent("working on it")),
-			FinishReason: kit.FinishReasonToolCall,
-		},
-	})
+func (h *testHistory) Append(_ context.Context, messages ...kit.Message) error {
+	h.appends = append(h.appends, slices.Clone(messages))
+	h.messages = append(h.messages, messages...)
 
-	agent, err := New(model, xmemory.NewHistory(), xtool.NewSet())
-	if err != nil {
-		t.Fatalf("New() error = %v", err)
-	}
+	return nil
+}
 
-	_, err = agent.Run(
-		context.Background(),
-		kit.NewUserMessage(kit.NewTextContent("hi")),
-	)
-	if !errors.Is(err, kit.ErrInvalidOutput) {
-		t.Fatalf("Run() error = %v, want %v", err, kit.ErrInvalidOutput)
-	}
+func (h *testHistory) replace(messages ...kit.Message) {
+	h.messages = messages
+}
 
-	model.AssertCallCount(t, 1)
+type panicTool struct {
+	name string
+}
+
+func (p panicTool) Definition() kit.ToolDefinition {
+	return kit.ToolDefinition{Name: p.name}
+}
+
+func (p panicTool) Execute(*kit.RunContext, kit.ToolCall) (kit.ToolOutput, error) {
+	panic("bad things")
+}
+
+type cancelTool struct {
+	cancel context.CancelFunc
+	called bool
+}
+
+func (c *cancelTool) Definition() kit.ToolDefinition {
+	return kit.ToolDefinition{Name: "cancel"}
+}
+
+func (c *cancelTool) Execute(rc *kit.RunContext, _ kit.ToolCall) (kit.ToolOutput, error) {
+	c.called = true
+	c.cancel()
+
+	return kit.ToolOutput{}, rc.Err()
 }
