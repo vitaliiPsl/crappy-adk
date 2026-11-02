@@ -114,6 +114,7 @@ func (a *Agent) run(
 
 		rc.RecordUsage(resp.Usage)
 		rc.FinishReason = resp.FinishReason
+		resp.Message.Usage = resp.Usage
 
 		if err := a.record(rc, resp.Message, kit.NewAgentMessageEvent(resp.Message)); err != nil {
 			return rc.Response(), err

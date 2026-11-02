@@ -20,6 +20,9 @@ type Message struct {
 	Role Role `json:"role"`
 	// Content is the text of the message.
 	Content []Content `json:"content,omitempty"`
+	// Usage is the token usage of the model call that produced the message.
+	// It is zero for messages that no model call produced.
+	Usage Usage `json:"usage,omitzero"`
 }
 
 // NewUserMessage creates a new user message with the given content.

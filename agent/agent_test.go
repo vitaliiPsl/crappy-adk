@@ -565,10 +565,13 @@ func TestRun_ExecutesToolCallAndContinues(t *testing.T) {
 		Tools:        []kit.Tool{tool},
 	})
 
+	recordedToolCall := toolCallMessage
+	recordedToolCall.Usage = kit.Usage{InputTokens: 5, OutputTokens: 2}
+
 	model.AssertCalledWith(t, 1, kit.ModelRequest{
 		Instructions: "use tools",
 		Messages: append(messages,
-			toolCallMessage,
+			recordedToolCall,
 			kit.NewToolMessage(
 				kit.NewToolResultContent(kit.NewToolResult(call, kit.NewToolOutput(kit.NewTextContent("7")), nil))),
 		),

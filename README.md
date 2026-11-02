@@ -105,7 +105,7 @@ a, err := agent.New(model, history.New(),
 
 ## History
 
-The conversation an agent works on is a `kit.History`. Before each model request the agent reads the history's messages, and it appends the input, every model message, and every tool result to it.
+The conversation an agent works on is a `kit.History`. Before each model request the agent reads the history's messages, and it appends the input, every model message, and every tool result to it. Each model message carries the `Usage` of the call that produced it.
 
 ```go
 type History interface {
