@@ -10,8 +10,8 @@ import (
 // and returns the final response.
 type Agent interface {
 	Context(ctx context.Context) (AgentContext, error)
-	Run(ctx context.Context, input Message) (AgentResponse, error)
-	Stream(ctx context.Context, input Message) *Stream[AgentEvent, AgentResponse]
+	Run(ctx context.Context, input ...Message) (AgentResponse, error)
+	Stream(ctx context.Context, input ...Message) *Stream[AgentEvent, AgentResponse]
 }
 
 // History holds the conversation the model sees. The agent reads Messages

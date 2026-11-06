@@ -68,13 +68,13 @@ func (a *Agent) Context(ctx context.Context) (kit.AgentContext, error) {
 	}, nil
 }
 
-// Run executes the agentic loop and returns agent reponse when run finishes.
-func (a *Agent) Run(ctx context.Context, input kit.Message) (kit.AgentResponse, error) {
+// Run appends input and runs the agent loop. With no input, it continues from history.
+func (a *Agent) Run(ctx context.Context, input ...kit.Message) (kit.AgentResponse, error) {
 	return a.run(ctx, input, kit.NoopEmitter[kit.AgentEvent]{})
 }
 
-// Stream executes the agentic loop and yields events as the run progresses.
-func (a *Agent) Stream(ctx context.Context, input kit.Message) *kit.Stream[kit.AgentEvent, kit.AgentResponse] {
+// Stream runs the agent loop with events. With no input, it continues from history.
+func (a *Agent) Stream(ctx context.Context, input ...kit.Message) *kit.Stream[kit.AgentEvent, kit.AgentResponse] {
 	return kit.NewStream(func(emit kit.Emitter[kit.AgentEvent]) (kit.AgentResponse, error) {
 		return a.run(ctx, input, emit)
 	})
@@ -82,7 +82,7 @@ func (a *Agent) Stream(ctx context.Context, input kit.Message) *kit.Stream[kit.A
 
 func (a *Agent) run(
 	ctx context.Context,
-	input kit.Message,
+	input []kit.Message,
 	events kit.Emitter[kit.AgentEvent],
 ) (kit.AgentResponse, error) {
 	if err := ctx.Err(); err != nil {
@@ -94,8 +94,10 @@ func (a *Agent) run(
 		Events:  events,
 	}
 
-	if err := a.history.Append(ctx, input); err != nil {
-		return rc.Response(), err
+	if len(input) > 0 {
+		if err := a.history.Append(ctx, input...); err != nil {
+			return rc.Response(), err
+		}
 	}
 
 	for {

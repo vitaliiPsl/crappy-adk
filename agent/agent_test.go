@@ -104,6 +104,39 @@ func TestRun_BuildsRequestFromDefinitionAndHistory(t *testing.T) {
 	}
 }
 
+func TestRun_ContinuesFromHistoryWithoutInput(t *testing.T) {
+	for _, mode := range []string{"run", "stream"} {
+		t.Run(mode, func(t *testing.T) {
+			prior := kit.NewUserMessage(kit.NewTextContent("unfinished work"))
+			h := newTestHistory(prior)
+			model := doneModel(t)
+
+			a, err := New(model, h)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if mode == "stream" {
+				_, err = a.Stream(context.Background()).Result()
+			} else {
+				_, err = a.Run(context.Background())
+			}
+
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if !reflect.DeepEqual(model.CallAt(0).Messages, []kit.Message{prior}) {
+				t.Fatalf("continued request = %+v", model.CallAt(0).Messages)
+			}
+
+			if len(h.messages) != 2 || !reflect.DeepEqual(h.messages[0], prior) {
+				t.Fatalf("continued history = %+v", h.messages)
+			}
+		})
+	}
+}
+
 func TestRun_HistoryReadFailureStopsRun(t *testing.T) {
 	failure := errors.New("cannot read history")
 	model := kittest.NewModel(t)
