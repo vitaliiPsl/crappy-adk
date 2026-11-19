@@ -11,7 +11,70 @@ import (
 	"github.com/vitaliiPsl/crappy-adk/kit"
 	"github.com/vitaliiPsl/crappy-adk/kittest"
 	"github.com/vitaliiPsl/crappy-adk/x/history"
+	"github.com/vitaliiPsl/crappy-adk/x/toolset"
 )
+
+func TestRunUsesPluggableToolSetForExposureAndDispatch(t *testing.T) {
+	remote := kittest.NewTool(t, "remote", "Deferred tool", kittest.ToolResult{Result: "found"})
+
+	registered := toolset.New()
+	if err := registered.Register(remote); err != nil {
+		t.Fatal(err)
+	}
+
+	selected := &selectedToolSet{registry: registered}
+	model := kittest.NewModel(t,
+		kittest.ModelResult{Response: kit.ModelResponse{
+			Message:      kit.NewModelMessage(kit.NewToolCallContent(kit.NewToolCall("call", "remote", nil))),
+			FinishReason: kit.FinishReasonToolCall,
+		}},
+		kittest.ModelResult{Response: kit.ModelResponse{
+			Message: kit.NewModelMessage(kit.NewTextContent("done")), FinishReason: kit.FinishReasonStop,
+		}},
+	)
+
+	a, err := New(model, history.New(), WithToolSet(selected),
+		WithOnToolResult(func(_ *kit.RunContext, result kit.ToolResult) (kit.ToolResult, error) {
+			selected.exposed = true
+
+			return result, nil
+		}),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := a.Run(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(model.CallAt(0).Tools) != 0 || len(model.CallAt(1).Tools) != 1 {
+		t.Fatal("request exposure did not follow the tool set")
+	}
+
+	remote.AssertCallCount(t, 1)
+}
+
+type selectedToolSet struct {
+	registry kit.ToolSet
+	exposed  bool
+}
+
+func (s *selectedToolSet) Tools() []kit.Tool {
+	if !s.exposed {
+		return nil
+	}
+
+	return s.registry.Tools()
+}
+
+func (s *selectedToolSet) Lookup(name string) (kit.Tool, bool) {
+	return s.registry.Lookup(name)
+}
+
+func (s *selectedToolSet) Register(tools ...kit.Tool) error {
+	return s.registry.Register(tools...)
+}
 
 func TestNew_RejectsDuplicateToolNames(t *testing.T) {
 	first := kittest.NewTool(t, "lookup", "first")

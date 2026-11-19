@@ -8,7 +8,28 @@ import (
 	"github.com/vitaliiPsl/crappy-adk/kit"
 	"github.com/vitaliiPsl/crappy-adk/kittest"
 	"github.com/vitaliiPsl/crappy-adk/x/history"
+	"github.com/vitaliiPsl/crappy-adk/x/toolset"
 )
+
+func TestWithToolsRegistersIntoConfiguredSetImmediately(t *testing.T) {
+	registered := toolset.New()
+	tool := kittest.NewTool(t, "plugin_tool", "")
+
+	_, err := New(doneModel(t), history.New(),
+		WithToolSet(registered),
+		WithTools(tool),
+		func(*Options) error {
+			if found, ok := registered.Lookup("plugin_tool"); !ok || found != tool {
+				t.Fatal("tool was not registered when the preceding option ran")
+			}
+
+			return nil
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
 
 func TestInstructionOptions_RenderInstructionsBeforeSourcedSections(t *testing.T) {
 	model := doneModel(t)
@@ -185,7 +206,7 @@ func TestWithExtensions_ReturnsNestedError(t *testing.T) {
 	_, err := New(
 		doneModel(t),
 		history.New(),
-		WithExtensions(func(*Agent) error {
+		WithExtensions(func(*Options) error {
 			return wantErr
 		}),
 	)

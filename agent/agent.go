@@ -7,6 +7,7 @@ import (
 	"slices"
 
 	"github.com/vitaliiPsl/crappy-adk/kit"
+	"github.com/vitaliiPsl/crappy-adk/x/toolset"
 )
 
 var _ kit.Agent = (*Agent)(nil)
@@ -21,8 +22,7 @@ type Agent struct {
 	history kit.History
 
 	instructions []kit.Instruction
-	tools        []kit.Tool
-	toolsByName  map[string]kit.Tool
+	tools        kit.ToolSet
 
 	hooks hooks
 }
@@ -30,28 +30,23 @@ type Agent struct {
 // New creates an Agent that appends every message it produces to history.
 // It returns an error if two tools share a name.
 func New(model kit.Model, history kit.History, options ...Option) (*Agent, error) {
-	agent := &Agent{
-		model:   model,
-		history: history,
-	}
+	configured := Options{tools: toolset.New()}
 
 	for _, opt := range options {
-		if err := opt(agent); err != nil {
+		if err := opt(&configured); err != nil {
 			return nil, err
 		}
 	}
 
-	agent.toolsByName = make(map[string]kit.Tool, len(agent.tools))
-	for _, tool := range agent.tools {
-		name := tool.Definition().Name
-		if _, exists := agent.toolsByName[name]; exists {
-			return nil, fmt.Errorf("duplicate tool %q", name)
-		}
-
-		agent.toolsByName[name] = tool
-	}
-
-	return agent, nil
+	return &Agent{
+		config:       configured.config,
+		output:       configured.output,
+		model:        model,
+		history:      history,
+		instructions: configured.instructions,
+		tools:        configured.tools,
+		hooks:        configured.hooks,
+	}, nil
 }
 
 // Context returns what the next model request would be built from.
@@ -64,7 +59,7 @@ func (a *Agent) Context(ctx context.Context) (kit.AgentContext, error) {
 	return kit.AgentContext{
 		Instructions: append(kit.NewInstructions("", a.config.Instructions), a.instructions...),
 		Messages:     messages,
-		Tools:        slices.Clone(a.tools),
+		Tools:        slices.Clone(a.tools.Tools()),
 	}, nil
 }
 
@@ -262,7 +257,7 @@ func (a *Agent) executeTool(rc *kit.RunContext, call kit.ToolCall) (result kit.T
 		}
 	}()
 
-	tool, ok := a.toolsByName[call.Name]
+	tool, ok := a.tools.Lookup(call.Name)
 	if !ok {
 		result = kit.NewToolResult(call, kit.ToolOutput{}, fmt.Errorf("tool %q not found", call.Name))
 

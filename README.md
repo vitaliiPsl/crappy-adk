@@ -209,6 +209,10 @@ a, err := agent.New(model, history.New(),
 )
 ```
 
+For selective exposure, implement `kit.ToolSet`: `Register(...)` adds tools during construction, `Tools()` returns the tools exposed to the next model request, and `Lookup(name)` resolves registered tools for execution. Both reads must be free of side effects. `x/toolset.New()` provides the default static implementation.
+
+Apply `agent.WithToolSet(set)` before `agent.WithTools(...)` to use a custom registry. Options run in order, and `WithTools` registers directly into the current set. The agent reads the set again for each request, including retries and context inspection; changing exposure does not change the tool execution pipeline.
+
 ## Structured output
 
 Use `agent.WithOutputSchema(...)` when the final model response must conform to a JSON schema. `output.For[T]` derives the schema from a Go type, and `output.Decode[T]` decodes the validated result.
